@@ -1,4 +1,9 @@
-use std::{ffi::OsString, path::PathBuf, time::Duration};
+use std::{
+    ffi::OsString,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use anyhow::{Context, Result};
 use better_wallpaper_core::{
@@ -12,7 +17,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
-#[command(version, about = "Linux 视频壁纸服务")]
+#[command(version, about = "Linux video wallpaper service")]
 struct Cli {
     #[arg(long)]
     config: Option<PathBuf>,
@@ -22,10 +27,10 @@ struct Cli {
     no_ui: bool,
     #[arg(long, default_value = "info")]
     log_level: String,
-    /// niri 启动时要求 NVIDIA Vulkan/DMA-BUF 可用，否则退出
+    /// Require NVIDIA Vulkan/DMA-BUF to be available when starting niri, otherwise exit
     #[arg(long)]
     require_nvidia: bool,
-    /// 运行指定秒数后正常退出；用于 headless 稳定性测试
+    /// Exit normally after the specified seconds; used for headless stability tests
     #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
     run_for_seconds: Option<u64>,
 }
@@ -52,14 +57,14 @@ impl From<CliBackend> for BackendKind {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_new(&cli.log_level).context("无效的 --log-level")?)
+        .with_env_filter(EnvFilter::try_new(&cli.log_level).context("invalid --log-level")?)
         .with_target(true)
         .init();
-    std::panic::set_hook(Box::new(|panic| error!(%panic, "进程发生 panic")));
+    std::panic::set_hook(Box::new(|panic| error!(%panic, "process panicked")));
 
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
-        .context("HOME 未设置")?;
+        .context("HOME not set")?;
     let path = cli.config.unwrap_or(ConfigStore::default_path()?);
     let config = ConfigStore::new(path.clone(), home.clone()).load_or_create()?;
     let detection = detect_desktop(&ProcessEnvironment);
@@ -69,48 +74,48 @@ fn main() -> Result<()> {
         detection.kind,
     );
 
-    info!(config = %path.display(), desktop = ?detection.kind, evidence = %detection.evidence, candidates = ?detection.candidates, backend = ?backend, ui_enabled = !cli.no_ui, "启动配置已解析");
+    info!(config = %path.display(), desktop = ?detection.kind, evidence = %detection.evidence, candidates = ?detection.candidates, backend = ?backend, ui_enabled = !cli.no_ui, "startup config parsed");
     let _nvidia_renderer = if backend == BackendKind::Niri {
         match NvidiaVulkanContext::new() {
             Ok(context) => Some(context),
             Err(error) if cli.require_nvidia => {
-                return Err(error).context("NVIDIA GPU 渲染为必需项，但初始化失败");
+                return Err(error)
+                    .context("NVIDIA GPU rendering is required but initialization failed");
             }
             Err(error) => {
-                warn!(%error, "NVIDIA Vulkan/DMA-BUF 不可用，将使用 CPU wl_shm 渲染路径");
+                warn!(%error, "NVIDIA Vulkan/DMA-BUF unavailable, falling back to CPU wl_shm rendering");
                 None
             }
         }
     } else {
-        info!(?backend, "当前后端不初始化 NVIDIA niri 渲染器");
+        info!(
+            ?backend,
+            "current backend does not initialize NVIDIA niri renderer"
+        );
         None
     };
     if !cli.no_ui {
-        let playback_config = config.clone();
+        let shared_config = Arc::new(RwLock::new(config));
+        let playback_config = Arc::clone(&shared_config);
         let playback_control = playback::PlaybackControl::default();
         let worker_control = playback_control.clone();
         std::thread::Builder::new()
             .name("wallpaper-playback".into())
             .spawn(move || {
-                worker_control.set_running(true);
-                let result = run_playback(
+                run_playback_supervisor(
                     backend,
                     playback_config,
                     cli.run_for_seconds,
-                    worker_control.clone(),
+                    worker_control,
                 );
-                worker_control.set_running(false);
-                if let Err(error) = result {
-                    error!(%error, "壁纸播放线程退出");
-                }
             })
-            .context("创建壁纸播放线程失败")?;
+            .context("failed to create wallpaper playback thread")?;
         let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
         return server::serve(
             "127.0.0.1:17321",
             web_root,
             server::ApiState::new(
-                config,
+                shared_config,
                 ConfigStore::new(path, home.clone()),
                 detection,
                 backend,
@@ -125,6 +130,43 @@ fn main() -> Result<()> {
         cli.run_for_seconds,
         playback::PlaybackControl::default(),
     )
+}
+
+fn run_playback_supervisor(
+    backend: BackendKind,
+    config: Arc<RwLock<better_wallpaper_core::AppConfig>>,
+    run_for_seconds: Option<u64>,
+    control: playback::PlaybackControl,
+) {
+    loop {
+        let current = match config.read() {
+            Ok(config) => config.clone(),
+            Err(_) => {
+                error!("config lock poisoned, playback supervisor exiting");
+                return;
+            }
+        };
+        control.set_running(true);
+        let result = run_playback(backend, current, run_for_seconds, control.clone());
+        control.set_running(false);
+        if let Err(error) = result {
+            error!(%error, "wallpaper playback pipeline exited");
+        }
+        if control.take_reload_request() {
+            info!("rebuilding playback pipeline with latest config");
+            continue;
+        }
+        // Keep the supervisor alive when playback ends naturally or the current config is empty,
+        // so it can respond to later UI config updates.
+        while !control.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if control.take_reload_request() {
+            info!("idle playback supervisor received config update, rebuilding playback pipeline");
+            continue;
+        }
+        return;
+    }
 }
 
 fn resolve_web_root(configured: Option<OsString>) -> PathBuf {
@@ -167,10 +209,10 @@ fn run_playback(
                     )?;
                 }
             } else {
-                info!("未配置 wallpaper.path，headless 后端保持空闲");
+                info!("wallpaper.path not configured, headless backend idle");
             }
         } else {
-            info!("restore_on_start=false，headless 后端不自动播放");
+            info!("restore_on_start=false, headless backend will not auto-play");
         }
     } else if backend == BackendKind::Niri {
         if config.general.restore_on_start {
@@ -193,13 +235,13 @@ fn run_playback(
                     control,
                 )?;
             } else {
-                info!("未配置 wallpaper.path，niri 后端保持空闲");
+                info!("wallpaper.path not configured, niri backend idle");
             }
         } else {
-            info!("restore_on_start=false，niri 后端不自动播放");
+            info!("restore_on_start=false, niri backend will not auto-play");
         }
     } else {
-        warn!(backend = ?backend, "桌面后端尚未实现；本次仅完成配置与后端选择");
+        warn!(backend = ?backend, "desktop backend not implemented; only config and backend selection completed");
     }
     Ok(())
 }

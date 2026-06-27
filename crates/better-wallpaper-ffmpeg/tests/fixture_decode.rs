@@ -13,7 +13,7 @@ fn decode_fixture(name: &str) {
     let mut decoder = FfmpegDecoder::new();
     let media = decoder
         .open(&fixture(name), DecodeOptions { hardware: false })
-        .expect("fixture 应能打开");
+        .expect("fixture should open");
     assert_eq!((media.width, media.height), (64, 36));
 
     let mut frames = Vec::new();
@@ -26,7 +26,7 @@ fn decode_fixture(name: &str) {
                 frames.push(frame.pts);
             }
             Err(VideoError::EndOfStream) => break,
-            Err(error) => panic!("fixture 解码失败: {error}"),
+            Err(error) => panic!("fixture decode failed: {error}"),
         }
     }
 
@@ -46,8 +46,10 @@ fn hardware_request_decodes_or_falls_back_to_software() {
     let mut decoder = FfmpegDecoder::new();
     decoder
         .open(&fixture("h264.mp4"), DecodeOptions { hardware: true })
-        .expect("硬解请求不应阻止打开视频");
-    let frame = decoder.next_frame().expect("硬解或软解降级后应能产帧");
+        .expect("hardware decode request should not prevent opening");
+    let frame = decoder
+        .next_frame()
+        .expect("should produce frames after hardware or software fallback");
     assert_eq!(frame.format, PixelFormat::Rgba);
     assert_eq!(frame.pixels.len(), 64 * 36 * 4);
 }
@@ -78,7 +80,7 @@ fn preserves_variable_frame_timestamps() {
         match decoder.next_frame() {
             Ok(frame) => presentation_times.push(frame.presentation_time()),
             Err(VideoError::EndOfStream) => break,
-            Err(error) => panic!("可变帧率 fixture 解码失败: {error}"),
+            Err(error) => panic!("variable framerate fixture decode failed: {error}"),
         }
     }
 
@@ -98,6 +100,6 @@ fn rejects_corrupt_input() {
             &fixture("corrupt-video.bin"),
             DecodeOptions { hardware: false },
         )
-        .expect_err("损坏输入不应成功打开");
+        .expect_err("corrupt input should not open successfully");
     assert!(matches!(error, VideoError::Open { .. }));
 }

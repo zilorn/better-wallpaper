@@ -52,7 +52,7 @@ struct PlaybackPayload {
 
 impl ApiState {
     pub fn new(
-        config: AppConfig,
+        config: Arc<RwLock<AppConfig>>,
         store: ConfigStore,
         detection: DesktopDetection,
         backend: BackendKind,
@@ -60,7 +60,7 @@ impl ApiState {
         home: PathBuf,
     ) -> Self {
         Self {
-            config: Arc::new(RwLock::new(config)),
+            config,
             store,
             detection,
             backend,
@@ -72,12 +72,12 @@ impl ApiState {
 
 pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
     let server = Server::http(bind).map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    info!(bind, web_root = %web_root.display(), "本机管理服务已启动");
+    info!(bind, web_root = %web_root.display(), "local management service started");
     loop {
         match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(request)) => handle_request(request, &web_root, &state),
             Ok(None) => {}
-            Err(error) => warn!(%error, "接收 HTTP 请求失败"),
+            Err(error) => warn!(%error, "failed to receive HTTP request"),
         }
     }
 }
@@ -86,7 +86,7 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
     let method = request.method().clone();
     let request_url = request.url().to_owned();
     let url = request_url.split('?').next().unwrap_or("/").to_owned();
-    info!(method = %method, %url, "处理管理接口请求");
+    info!(method = %method, %url, "handling management API request");
     if method == Method::Get && url == "/api/v1/ws" {
         upgrade_websocket(request, state.clone());
         return;
@@ -94,14 +94,14 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
     if method == Method::Get && url == "/api/v1/library/media" {
         let response = library_media_response(&request, &request_url, state);
         if let Err(error) = request.respond(response) {
-            warn!(%error, %url, "发送壁纸库媒体响应失败");
+            warn!(%error, %url, "failed to send library media response");
         }
         return;
     }
     if method == Method::Get && url == "/api/v1/wallpaper/media" {
         let response = wallpaper_media_response(&request, state);
         if let Err(error) = request.respond(response) {
-            warn!(%error, %url, "发送当前壁纸媒体响应失败");
+            warn!(%error, %url, "failed to send current wallpaper media response");
         }
         return;
     }
@@ -119,17 +119,17 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         ),
         (Method::Get, "/api/v1/config") => match state.config.read() {
             Ok(config) => json_response(StatusCode(200), &*config),
-            Err(_) => error_response(StatusCode(500), "配置锁已损坏"),
+            Err(_) => error_response(StatusCode(500), "config lock poisoned"),
         },
         (Method::Get, "/api/v1/library") => library_response(state),
         (Method::Put, "/api/v1/config") => update_config(&mut request, state),
         (Method::Post, "/api/v1/playback/pause") => set_paused(state, true),
         (Method::Post, "/api/v1/playback/resume") => set_paused(state, false),
         (Method::Get, _) => static_response(web_root, &url),
-        _ => error_response(StatusCode(404), "接口不存在"),
+        _ => error_response(StatusCode(404), "endpoint not found"),
     };
     if let Err(error) = request.respond(response) {
-        warn!(%error, %url, "发送 HTTP 响应失败");
+        warn!(%error, %url, "failed to send HTTP response");
     }
 }
 
@@ -155,7 +155,7 @@ fn library_response(state: &ApiState) -> Response<std::io::Cursor<Vec<u8>>> {
         roots = roots.len(),
         entries = entries.len(),
         truncated,
-        "壁纸库扫描完成"
+        "library scan complete"
     );
     json_response(
         StatusCode(200),
@@ -181,10 +181,10 @@ fn library_roots(state: &ApiState) -> Vec<PathBuf> {
 
 fn library_media_response(request: &Request, request_url: &str, state: &ApiState) -> ResponseBox {
     let Some(encoded_path) = query_parameter(request_url, "path") else {
-        return error_response(StatusCode(400), "缺少媒体 path 参数").boxed();
+        return error_response(StatusCode(400), "missing media path parameter").boxed();
     };
     let Some(path) = percent_decode(encoded_path).map(PathBuf::from) else {
-        return error_response(StatusCode(400), "媒体 path 参数编码无效").boxed();
+        return error_response(StatusCode(400), "invalid media path parameter encoding").boxed();
     };
     media_response(request, path, state, true)
 }
@@ -192,10 +192,10 @@ fn library_media_response(request: &Request, request_url: &str, state: &ApiState
 fn wallpaper_media_response(request: &Request, state: &ApiState) -> ResponseBox {
     let path = match state.config.read() {
         Ok(config) => config.wallpaper.path.clone(),
-        Err(_) => return error_response(StatusCode(500), "配置锁已损坏").boxed(),
+        Err(_) => return error_response(StatusCode(500), "config lock poisoned").boxed(),
     };
     let Some(path) = path else {
-        return error_response(StatusCode(404), "尚未配置当前壁纸").boxed();
+        return error_response(StatusCode(404), "no current wallpaper configured").boxed();
     };
     media_response(request, path, state, false)
 }
@@ -209,8 +209,8 @@ fn media_response(
     let canonical = match path.canonicalize() {
         Ok(path) => path,
         Err(error) => {
-            warn!(path = %path.display(), %error, "壁纸库媒体文件不存在");
-            return error_response(StatusCode(404), "媒体文件不存在").boxed();
+            warn!(path = %path.display(), %error, "library media file does not exist");
+            return error_response(StatusCode(404), "media file does not exist").boxed();
         }
     };
     let allowed = !require_library_entry
@@ -221,21 +221,21 @@ fn media_response(
                 .is_ok_and(|candidate| candidate == canonical)
         });
     if !allowed {
-        warn!(path = %canonical.display(), "拒绝读取壁纸库范围外的媒体文件");
-        return error_response(StatusCode(403), "媒体文件不在壁纸库中").boxed();
+        warn!(path = %canonical.display(), "refusing to read media file outside library");
+        return error_response(StatusCode(403), "media file is not in the library").boxed();
     }
     let mut file = match File::open(&canonical) {
         Ok(file) => file,
         Err(error) => {
-            warn!(path = %canonical.display(), %error, "打开壁纸库媒体失败");
-            return error_response(StatusCode(404), "无法打开媒体文件").boxed();
+            warn!(path = %canonical.display(), %error, "failed to open library media");
+            return error_response(StatusCode(404), "cannot open media file").boxed();
         }
     };
     let length = match file.metadata() {
         Ok(metadata) => metadata.len(),
         Err(error) => {
-            warn!(path = %canonical.display(), %error, "读取壁纸库媒体大小失败");
-            return error_response(StatusCode(500), "无法读取媒体文件").boxed();
+            warn!(path = %canonical.display(), %error, "failed to read library media size");
+            return error_response(StatusCode(500), "cannot read media file").boxed();
         }
     };
     let content_type = video_content_type(&canonical);
@@ -246,10 +246,10 @@ fn media_response(
         .and_then(|header| parse_byte_range(header.value.as_str(), length));
     if let Some((start, end)) = range {
         if file.seek(SeekFrom::Start(start)).is_err() {
-            return error_response(StatusCode(500), "无法定位媒体文件").boxed();
+            return error_response(StatusCode(500), "cannot seek media file").boxed();
         }
         let response_length = end - start + 1;
-        info!(path = %canonical.display(), start, end, "传输壁纸库媒体分段");
+        info!(path = %canonical.display(), start, end, "serving library media range");
         return Response::new(
             StatusCode(206),
             vec![
@@ -263,7 +263,7 @@ fn media_response(
         )
         .boxed();
     }
-    info!(path = %canonical.display(), length, "传输完整壁纸库媒体");
+    info!(path = %canonical.display(), length, "serving full library media");
     Response::from_file(file)
         .with_header(header("Content-Type", content_type))
         .with_header(header("Accept-Ranges", "bytes"))
@@ -326,7 +326,7 @@ fn parse_byte_range(value: &str, length: u64) -> Option<(u64, u64)> {
 }
 
 fn header(name: &str, value: &str) -> Header {
-    Header::from_bytes(name, value).expect("HTTP 响应头有效")
+    Header::from_bytes(name, value).expect("valid HTTP response header")
 }
 
 fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
@@ -342,20 +342,20 @@ fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
         let children = match fs::read_dir(&canonical) {
             Ok(children) => children,
             Err(error) => {
-                warn!(path = %canonical.display(), %error, "跳过无法读取的壁纸库目录");
+                warn!(path = %canonical.display(), %error, "skipping unreadable library directory");
                 continue;
             }
         };
         for child in children.flatten() {
             let path = child.path();
             if child.file_type().is_ok_and(|kind| kind.is_symlink()) {
-                warn!(path = %path.display(), "跳过壁纸库中的符号链接");
+                warn!(path = %path.display(), "skipping symlink in library");
                 continue;
             }
             let metadata = match child.metadata() {
                 Ok(metadata) => metadata,
                 Err(error) => {
-                    warn!(path = %path.display(), %error, "跳过无法读取元数据的壁纸库条目");
+                    warn!(path = %path.display(), %error, "skipping library entry with unreadable metadata");
                     continue;
                 }
             };
@@ -433,22 +433,29 @@ fn upgrade_websocket(request: Request, state: ApiState) {
         header.field.equiv("Upgrade") && header.value.as_str().eq_ignore_ascii_case("websocket")
     });
     let Some(key) = key.filter(|_| is_upgrade) else {
-        warn!("拒绝无效的 WebSocket 升级请求");
-        let _ = request.respond(error_response(StatusCode(400), "无效的 WebSocket 升级请求"));
+        warn!("rejecting invalid WebSocket upgrade request");
+        let _ = request.respond(error_response(
+            StatusCode(400),
+            "invalid WebSocket upgrade request",
+        ));
         return;
     };
     let response = Response::empty(StatusCode(101))
-        .with_header(Header::from_bytes("Upgrade", "websocket").expect("WebSocket 响应头有效"))
-        .with_header(Header::from_bytes("Connection", "Upgrade").expect("WebSocket 响应头有效"))
+        .with_header(
+            Header::from_bytes("Upgrade", "websocket").expect("valid WebSocket response header"),
+        )
+        .with_header(
+            Header::from_bytes("Connection", "Upgrade").expect("valid WebSocket response header"),
+        )
         .with_header(
             Header::from_bytes("Sec-WebSocket-Accept", websocket_accept(&key))
-                .expect("WebSocket 接受响应头有效"),
+                .expect("valid WebSocket accept response header"),
         );
     let mut stream = request.upgrade("websocket", response);
     if let Err(error) = thread::Builder::new()
         .name("status-websocket".into())
         .spawn(move || {
-            info!("WebSocket 状态订阅已连接");
+            info!("WebSocket status subscription connected");
             let mut previous = Vec::new();
             let mut last_sent = Instant::now() - STATUS_HEARTBEAT_INTERVAL;
             loop {
@@ -458,14 +465,14 @@ fn upgrade_websocket(request: Request, state: ApiState) {
                 })) {
                     Ok(payload) => payload,
                     Err(error) => {
-                        warn!(%error, "序列化 WebSocket 状态失败");
+                        warn!(%error, "failed to serialize WebSocket status");
                         break;
                     }
                 };
                 if (payload != previous || last_sent.elapsed() >= STATUS_HEARTBEAT_INTERVAL)
                     && write_websocket_text(&mut stream, &payload).is_err()
                 {
-                    info!("WebSocket 状态订阅已断开");
+                    info!("WebSocket status subscription disconnected");
                     break;
                 }
                 if payload != previous || last_sent.elapsed() >= STATUS_HEARTBEAT_INTERVAL {
@@ -476,7 +483,7 @@ fn upgrade_websocket(request: Request, state: ApiState) {
             }
         })
     {
-        warn!(%error, "创建 WebSocket 状态推送线程失败");
+        warn!(%error, "failed to create WebSocket status push thread");
     }
 }
 
@@ -513,13 +520,16 @@ fn playback_payload(control: &PlaybackControl) -> PlaybackPayload {
 
 fn set_paused(state: &ApiState, paused: bool) -> Response<std::io::Cursor<Vec<u8>>> {
     if state.playback.is_cancelled() {
-        return error_response(StatusCode(409), "播放已停止，无法更改暂停状态");
+        return error_response(
+            StatusCode(409),
+            "playback already stopped, cannot change pause state",
+        );
     }
     if !state.playback.is_running() {
-        return error_response(StatusCode(409), "当前没有正在运行的播放任务");
+        return error_response(StatusCode(409), "no playback task currently running");
     }
     state.playback.set_paused(paused);
-    info!(paused, "管理接口已应用播放控制命令");
+    info!(paused, "management API applied playback control command");
     json_response(StatusCode(200), &playback_payload(&state.playback))
 }
 
@@ -531,34 +541,35 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         .read_to_end(&mut body)
         .is_err()
     {
-        return error_response(StatusCode(400), "读取请求体失败");
+        return error_response(StatusCode(400), "failed to read request body");
     }
     if body.len() > MAX_REQUEST_BYTES {
-        return error_response(StatusCode(413), "请求体过大");
+        return error_response(StatusCode(413), "request body too large");
     }
     let config: AppConfig = match serde_json::from_slice(&body) {
         Ok(config) => config,
-        Err(error) => return error_response(StatusCode(400), &format!("JSON 无效: {error}")),
+        Err(error) => return error_response(StatusCode(400), &format!("invalid JSON: {error}")),
     };
     if let Err(error) = state.store.save(&config) {
-        warn!(%error, "管理接口配置更新失败");
+        warn!(%error, "management API config update failed");
         return error_response(StatusCode(400), &error.to_string());
     }
     let config = match state.store.load_or_create() {
         Ok(config) => config,
         Err(error) => {
-            warn!(%error, "重新读取已保存配置失败");
+            warn!(%error, "failed to reload saved config");
             return error_response(StatusCode(500), &error.to_string());
         }
     };
     match state.config.write() {
         Ok(mut current) => *current = config,
-        Err(_) => return error_response(StatusCode(500), "配置锁已损坏"),
+        Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     }
-    info!("管理接口配置更新完成；播放进程下次启动时生效");
+    state.playback.request_reload();
+    info!("management API config update complete, playback pipeline rebuild requested");
     json_response(
         StatusCode(200),
-        &serde_json::json!({ "saved": true, "restart_required": true }),
+        &serde_json::json!({ "saved": true, "restart_required": false, "reload_requested": true }),
     )
 }
 
@@ -569,7 +580,7 @@ fn static_response(web_root: &Path, url: &str) -> Response<std::io::Cursor<Vec<u
         url.trim_start_matches('/')
     };
     if relative.contains("..") {
-        return error_response(StatusCode(400), "无效路径");
+        return error_response(StatusCode(400), "invalid path");
     }
     let path = web_root.join(relative);
     let path = if path.is_file() {
@@ -580,8 +591,8 @@ fn static_response(web_root: &Path, url: &str) -> Response<std::io::Cursor<Vec<u
     match fs::read(&path) {
         Ok(body) => response(StatusCode(200), content_type(&path), body),
         Err(error) => {
-            warn!(path = %path.display(), %error, "读取 Web 静态资源失败");
-            error_response(StatusCode(404), "Web UI 尚未构建，请运行 bun run build")
+            warn!(path = %path.display(), %error, "failed to read Web static asset");
+            error_response(StatusCode(404), "Web UI not built, run bun run build")
         }
     }
 }
@@ -592,7 +603,10 @@ fn json_response<T: Serialize>(
 ) -> Response<std::io::Cursor<Vec<u8>>> {
     match serde_json::to_vec(value) {
         Ok(body) => response(status, "application/json; charset=utf-8", body),
-        Err(error) => error_response(StatusCode(500), &format!("序列化响应失败: {error}")),
+        Err(error) => error_response(
+            StatusCode(500),
+            &format!("failed to serialize response: {error}"),
+        ),
     }
 }
 
@@ -608,7 +622,7 @@ fn response(
     Response::from_data(body)
         .with_status_code(status)
         .with_header(
-            Header::from_bytes("Content-Type", content_type).expect("静态 Content-Type 有效"),
+            Header::from_bytes("Content-Type", content_type).expect("valid static Content-Type"),
         )
 }
 

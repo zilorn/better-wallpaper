@@ -19,6 +19,13 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 卸载时运行 `./packaging/uninstall.sh`；脚本先停止并禁用用户服务，不删除
 `~/.better-wallpaper` 中的用户配置。
 
+提交发行产物前运行完整 staging 验收。脚本会构建 daemon 和 Web、验证 systemd/动态依赖/QML，
+并检查卸载后无包文件残留：
+
+```bash
+./packaging/verify.sh
+```
+
 ## 构建依赖
 
 - Rust stable、Cargo、Clang 和 `pkg-config`

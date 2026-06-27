@@ -4,10 +4,10 @@
 
 - M0：已完成工程骨架、基础日志、CI 和 SolidJS/Bun 构建；Rust 与 Web 检查均通过。
 - M1：已完成配置创建/校验/原子写入、桌面检测、后端优先级及对应单元测试。
-- M2：进行中。已完成 FFmpeg 软件解码、NVIDIA CUDA/NVDEC 硬件解码及自动软解降级、RGBA 转换、PTS 时钟、有界帧队列、循环 seek，以及 daemon 的 headless 播放闭环、暂停/取消控制和统计日志；已加入 H.264/VP9/AV1、可变帧率、损坏输入、循环 seek、取消退出和定时验收测试，并提供 `--run-for-seconds` 长测入口；尚需执行 30 分钟稳定性实测和 NVIDIA 真机性能验收。
+- M2：已完成。已完成 FFmpeg 软件解码、NVIDIA CUDA/NVDEC 硬件解码及自动软解降级、RGBA 转换、PTS 时钟、有界帧队列、循环 seek，以及 daemon 的 headless 播放闭环、暂停/取消控制和统计日志；已加入 H.264/VP9/AV1、可变帧率、损坏输入、循环 seek、取消退出和定时验收测试，并提供 `--run-for-seconds` 长测入口、已执行 30 分钟稳定性实测和 NVIDIA 真机性能验收。
 - M3：进行中。已实现 niri 多输出 wlr layer-shell background 表面、共享解码帧分发、输出枚举、configure 生命周期、输出尺寸变化、wl_shm RGBA 提交及 cover/contain/stretch 缩放，并接入 FFmpeg PTS 播放；缩放模式已有自动化测试和无效尺寸保护；尚需真机验证多屏、分数缩放/旋转、热插拔和 compositor 重连。
 - M4：进行中。已提供可安装的 Plasma 6 `Plasma/Wallpaper` QML 包，通过受限 loopback 媒体接口播放当前视频并在断线后重试；尚未实现共享内存帧 IPC、独立屏幕启用状态、活动切换和 plasmashell 重启恢复验收。M6 未开始（NVIDIA 能力探测不代表 M6 完成）。
-- M5：进行中。daemon 已提供仅监听 `127.0.0.1:17321` 的版本化状态/配置 API、播放暂停/恢复 API、WebSocket 状态推送、受限本地视频库扫描、支持 Range 的库内媒体预览和 Web 静态资源托管；SolidJS 前端已按 Waywallen 的信息架构加入 Router、响应式侧边栏以及壁纸、显示器、壁纸库、设置与诊断页面，可扫描、悬停预览并选择本地视频，也可编辑输出和运行设置，并在 WebSocket 断线后指数退避重连。配置更新由 Rust 校验并原子保存，请求、路由、连接、扫描、媒体读取、播放控制与错误均有日志；安装包已包含 daemon、Web 资源、Plasma 6 壁纸插件和 systemd 用户服务，并提供 FFmpeg/Qt Multimedia 依赖说明。尚需发行版产物验收。
+- M5：已完成。daemon 已提供仅监听 `127.0.0.1:17321` 的版本化状态/配置 API、播放暂停/恢复 API、WebSocket 状态推送、受限本地视频库扫描、支持 Range 的库内媒体预览和 Web 静态资源托管；SolidJS 前端已按 Waywallen 的信息架构加入 Router、响应式侧边栏以及壁纸、显示器、壁纸库、设置与诊断页面，可扫描、悬停预览并选择本地视频，也可编辑输出和运行设置，并在 WebSocket 断线后指数退避重连。配置更新由 Rust 校验并原子保存，保存后播放监督器会安全停止当前解码并用最新配置重建管线；请求、路由、连接、扫描、媒体读取、播放控制、配置重载与错误均有日志。安装包已包含 daemon、Web 资源、Plasma 6 壁纸插件和 systemd 用户服务，并提供 FFmpeg/Qt Multimedia 依赖说明；已加入并通过 release/Web 构建、staging 布局、systemd、动态依赖、QML 和卸载残留自动验收。
 
 ## 1. 项目目标
 

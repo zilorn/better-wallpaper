@@ -84,7 +84,7 @@ pub fn detect_desktop(env: &impl Environment) -> DesktopDetection {
     }
     DesktopDetection {
         kind: DesktopKind::Unknown,
-        evidence: "未找到受支持的桌面环境标识".into(),
+        evidence: "No supported desktop environment identifier found".into(),
         candidates,
     }
 }

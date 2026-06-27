@@ -109,10 +109,9 @@ impl FfmpegDecoder {
     }
 
     fn receive_frame(&mut self) -> Result<Option<DecodedFrame>, VideoError> {
-        let decoder = self
-            .decoder
-            .as_mut()
-            .ok_or_else(|| VideoError::Decode("必须先调用 open 再读取视频帧".to_owned()))?;
+        let decoder = self.decoder.as_mut().ok_or_else(|| {
+            VideoError::Decode("open must be called before reading video frames".to_owned())
+        })?;
         let mut source = ffmpeg::util::frame::Video::empty();
         match decoder.receive_frame(&mut source) {
             Ok(()) => {}
@@ -132,9 +131,11 @@ impl FfmpegDecoder {
         if self.hardware_requested && self.hardware_active != Some(hardware_frame) {
             self.hardware_active = Some(hardware_frame);
             if hardware_frame {
-                info!("NVIDIA CUDA/NVDEC 硬件解码已启用");
+                info!("NVIDIA CUDA/NVDEC hardware decoding enabled");
             } else {
-                warn!("当前视频编解码器不支持 CUDA 硬解，已使用软件解码");
+                warn!(
+                    "Current video codec does not support CUDA hardware decoding, falling back to software decoding"
+                );
             }
         }
         let mut software_frame = ffmpeg::util::frame::Video::empty();
@@ -150,7 +151,7 @@ impl FfmpegDecoder {
             };
             if result < 0 {
                 return Err(VideoError::Decode(format!(
-                    "CUDA 帧传回系统内存失败: {}",
+                    "Failed to transfer CUDA frame back to system memory: {}",
                     ffmpeg::Error::from(result)
                 )));
             }
@@ -170,34 +171,52 @@ impl FfmpegDecoder {
                     ffmpeg::format::Pixel::RGBA,
                     source.width(),
                     source.height(),
-                    ffmpeg::software::scaling::Flags::BILINEAR,
+                    // 这里只负责 YUV -> RGBA 色彩转换，几何尺寸保持不变。
+                    // BILINEAR 会启用无意义的高质量缩放路径；FAST_BILINEAR
+                    // 在同尺寸转换时显著减少 swscale 的 CPU 开销。
+                    ffmpeg::software::scaling::Flags::FAST_BILINEAR,
                 )
-                .map_err(|error| VideoError::Decode(format!("创建 RGBA 转换器失败: {error}")))?,
+                .map_err(|error| {
+                    VideoError::Decode(format!("Failed to create RGBA converter: {error}"))
+                })?,
             );
             self.scaler_source = Some(source_format);
-            debug!(?source_format, "已为解码帧格式创建 RGBA 转换器");
+            debug!(
+                ?source_format,
+                "Created RGBA converter for decoded frame format"
+            );
         }
-        let scaler = self.scaler.as_mut().expect("scaler 刚刚完成初始化");
-        let mut rgba = ffmpeg::util::frame::Video::empty();
-        let convert_started = Instant::now();
-        scaler
-            .run(source, &mut rgba)
-            .map_err(|error| VideoError::Decode(format!("像素格式转换失败: {error}")))?;
-        self.perf_convert += convert_started.elapsed();
-        let width = rgba.width();
-        let height = rgba.height();
+        let scaler = self.scaler.as_mut().expect("scaler was just initialized");
+        let width = source.width();
+        let height = source.height();
         let row_bytes = width as usize * 4;
-        let source_stride = rgba.stride(0);
-        let data = rgba.data(0);
-        let mut pixels = vec![0; row_bytes * height as usize];
-        let copy_started = Instant::now();
-        for row in 0..height as usize {
-            let src_start = row * source_stride;
-            let dst_start = row * row_bytes;
-            pixels[dst_start..dst_start + row_bytes]
-                .copy_from_slice(&data[src_start..src_start + row_bytes]);
+        let mut pixels = Vec::with_capacity(row_bytes * height as usize);
+        // SAFETY: sws_scale 在成功时写满 height 个紧凑 RGBA 行；u8 没有析构逻辑，
+        // 调用失败时 Vec 也可以安全释放尚未初始化的容量。
+        unsafe { pixels.set_len(row_bytes * height as usize) };
+        let convert_started = Instant::now();
+        let mut destination_data = [std::ptr::null_mut(); 8];
+        destination_data[0] = pixels.as_mut_ptr();
+        let mut destination_stride = [0_i32; 8];
+        destination_stride[0] = row_bytes as i32;
+        // 直接写入 DecodedFrame 最终缓冲，避免 FFmpeg RGBA AVFrame -> Vec 的整帧复制。
+        let converted_rows = unsafe {
+            ffmpeg::ffi::sws_scale(
+                scaler.as_mut_ptr(),
+                (*source.as_ptr()).data.as_ptr() as *const *const u8,
+                (*source.as_ptr()).linesize.as_ptr(),
+                0,
+                height as i32,
+                destination_data.as_mut_ptr(),
+                destination_stride.as_mut_ptr(),
+            )
+        };
+        if converted_rows != height as i32 {
+            return Err(VideoError::Decode(format!(
+                "Pixel format conversion returned {converted_rows}/{height} rows"
+            )));
         }
-        self.perf_copy += copy_started.elapsed();
+        self.perf_convert += convert_started.elapsed();
         self.perf_frames += 1;
         let perf_elapsed = self.perf_started.elapsed();
         if perf_elapsed >= Duration::from_secs(1) {
@@ -207,7 +226,7 @@ impl FfmpegDecoder {
                 gpu_transfer_avg_ms = self.perf_transfer.as_secs_f64() * 1000.0 / frames,
                 rgba_convert_avg_ms = self.perf_convert.as_secs_f64() * 1000.0 / frames,
                 rgba_copy_avg_ms = self.perf_copy.as_secs_f64() * 1000.0 / frames,
-                "FFmpeg 实时帧处理性能"
+                "FFmpeg real-time frame processing performance"
             );
             self.perf_started = Instant::now();
             self.perf_frames = 0;
@@ -254,8 +273,12 @@ impl VideoDecoder for FfmpegDecoder {
             .map_err(|error| VideoError::Decode(error.to_string()))?;
         if options.hardware {
             match enable_cuda(&mut context) {
-                Ok(()) => info!("已创建 FFmpeg CUDA 硬件设备，等待解码格式协商"),
-                Err(error) => warn!(%error, "NVIDIA CUDA 解码设备初始化失败，回退软件解码"),
+                Ok(()) => info!(
+                    "FFmpeg CUDA hardware device created, waiting for decode format negotiation"
+                ),
+                Err(error) => {
+                    warn!(%error, "NVIDIA CUDA decode device initialization failed, falling back to software decoding")
+                }
             }
         }
         let decoder = context
@@ -279,7 +302,7 @@ impl VideoDecoder for FfmpegDecoder {
         info!(
             path = %path.display(), width, height, frame_rate = ?rate,
             time_base_num = time_base.numerator, time_base_den = time_base.denominator,
-            "FFmpeg 视频流已打开"
+            "FFmpeg video stream opened"
         );
         Ok(MediaInfo {
             width,
@@ -302,7 +325,7 @@ impl VideoDecoder for FfmpegDecoder {
             let packet = self
                 .input
                 .as_mut()
-                .ok_or_else(|| VideoError::Decode("必须先调用 open".to_owned()))?
+                .ok_or_else(|| VideoError::Decode("open must be called first".to_owned()))?
                 .packets()
                 .find_map(|(stream, packet)| {
                     (stream.index() == self.stream_index).then_some(packet)
@@ -311,14 +334,14 @@ impl VideoDecoder for FfmpegDecoder {
                 Some(packet) => self
                     .decoder
                     .as_mut()
-                    .expect("open 后 decoder 必须存在")
+                    .expect("decoder must exist after open")
                     .send_packet(&packet)
                     .map_err(|error| VideoError::Decode(error.to_string()))?,
                 None => {
-                    debug!("输入到达 EOF，刷新 FFmpeg 解码器");
+                    debug!("Input reached EOF, flushing FFmpeg decoder");
                     self.decoder
                         .as_mut()
-                        .expect("open 后 decoder 必须存在")
+                        .expect("decoder must exist after open")
                         .send_eof()
                         .map_err(|error| VideoError::Decode(error.to_string()))?;
                     self.draining = true;
@@ -330,15 +353,15 @@ impl VideoDecoder for FfmpegDecoder {
     fn seek_start(&mut self) -> Result<(), VideoError> {
         self.input
             .as_mut()
-            .ok_or_else(|| VideoError::Seek("必须先调用 open".to_owned()))?
+            .ok_or_else(|| VideoError::Seek("open must be called first".to_owned()))?
             .seek(0, ..0)
             .map_err(|error| VideoError::Seek(error.to_string()))?;
         self.decoder
             .as_mut()
-            .ok_or_else(|| VideoError::Seek("必须先调用 open".to_owned()))?
+            .ok_or_else(|| VideoError::Seek("open must be called first".to_owned()))?
             .flush();
         self.draining = false;
-        debug!("FFmpeg 已跳转到视频起点并重置解码器");
+        debug!("FFmpeg seeked to video start and reset decoder");
         Ok(())
     }
 }

@@ -26,18 +26,28 @@ const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 pub struct PlaybackControl {
     paused: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
+    reload_requested: Arc<AtomicBool>,
     running: Arc<AtomicBool>,
 }
 
 impl PlaybackControl {
     pub fn set_paused(&self, paused: bool) {
         self.paused.store(paused, Ordering::Release);
-        info!(paused, "播放暂停状态已更新");
+        info!(paused, "playback pause state updated");
     }
 
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
-        info!("收到播放取消请求");
+        info!("playback cancel request received");
+    }
+
+    pub fn request_reload(&self) {
+        self.reload_requested.store(true, Ordering::Release);
+        info!("playback config reload request received");
+    }
+
+    pub fn take_reload_request(&self) -> bool {
+        self.reload_requested.swap(false, Ordering::AcqRel)
     }
 
     pub fn is_paused(&self) -> bool {
@@ -45,7 +55,7 @@ impl PlaybackControl {
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.cancelled.load(Ordering::Acquire) || self.reload_requested.load(Ordering::Acquire)
     }
 
     pub fn is_running(&self) -> bool {
@@ -54,7 +64,7 @@ impl PlaybackControl {
 
     pub fn set_running(&self, running: bool) {
         self.running.store(running, Ordering::Release);
-        info!(running, "播放运行状态已更新");
+        info!(running, "playback running state updated");
     }
 }
 
@@ -109,7 +119,7 @@ impl NiriPerformanceWindow {
             buffer_avg_ms = self.buffer_allocate.as_secs_f64() * 1000.0 / presented,
             submit_avg_ms = self.submit.as_secs_f64() * 1000.0 / presented,
             output_count,
-            "niri 实时播放性能"
+            "niri realtime playback performance"
         );
         *self = Self::new();
     }
@@ -136,18 +146,18 @@ pub fn run_headless_for(
             if finished_rx.recv_timeout(duration).is_err() {
                 info!(
                     duration_ms = duration.as_millis(),
-                    "播放时限到达，开始正常退出"
+                    "playback deadline reached, starting graceful shutdown"
                 );
                 timer_control.cancel();
             }
         })
-        .context("创建播放计时线程失败")?;
+        .context("failed to create playback deadline thread")?;
 
     let result = run_headless_controlled(path, loop_playback, hardware, control);
     let _ = finished_tx.send(());
     timer
         .join()
-        .map_err(|_| anyhow::anyhow!("播放计时线程发生 panic"))?;
+        .map_err(|_| anyhow::anyhow!("playback deadline thread panicked"))?;
     result
 }
 
@@ -179,13 +189,16 @@ pub fn run_niri_controlled(
     control: PlaybackControl,
 ) -> Result<()> {
     let mut backends = if output_names.is_empty() {
-        vec![NiriBackend::connect(None).context("自动选择并初始化 niri 输出失败")?]
+        vec![
+            NiriBackend::connect(None)
+                .context("failed to auto-select and initialize niri output")?,
+        ]
     } else {
         output_names
             .iter()
             .map(|name| {
                 NiriBackend::connect(Some(name))
-                    .with_context(|| format!("初始化 niri 输出 {name} 失败"))
+                    .with_context(|| format!("failed to initialize niri output {name}"))
             })
             .collect::<Result<Vec<_>>>()?
     };
@@ -201,7 +214,8 @@ pub fn run_niri_controlled(
             let media = match decoder.open(&decode_path, DecodeOptions { hardware }) {
                 Ok(media) => media,
                 Err(error) => {
-                    let message = format!("打开视频 {} 失败: {error}", decode_path.display());
+                    let message =
+                        format!("failed to open video {}: {error}", decode_path.display());
                     let _ = startup_tx.send(Err(message.clone()));
                     let _ = decode_result_tx.send(Err(anyhow::anyhow!(message)));
                     return;
@@ -234,7 +248,9 @@ pub fn run_niri_controlled(
                     },
                     Err(VideoError::EndOfStream) if loop_playback => {
                         if let Err(error) = decoder.seek_start() {
-                            break Err(anyhow::anyhow!(error).context("niri 循环播放跳转失败"));
+                            break Err(
+                                anyhow::anyhow!(error).context("niri loop playback seek failed")
+                            );
                         }
                     }
                     Err(VideoError::EndOfStream) => break Ok(()),
@@ -243,10 +259,10 @@ pub fn run_niri_controlled(
             };
             let _ = decode_result_tx.send(result);
         })
-        .context("创建 niri 解码线程失败")?;
+        .context("failed to create niri decode thread")?;
     let media = startup_rx
         .recv()
-        .context("niri 解码线程未返回媒体信息")?
+        .context("niri decode thread did not return media info")?
         .map_err(anyhow::Error::msg)?;
     info!(
         path = %path.display(),
@@ -257,7 +273,7 @@ pub fn run_niri_controlled(
         output_count = backends.len(),
         video_size = ?(media.width, media.height),
         ?fill_mode,
-        "niri 视频播放开始"
+        "niri video playback started"
     );
     let mut clock: Option<PlaybackClock> = None;
     let mut previous_pts = Duration::ZERO;
@@ -269,14 +285,14 @@ pub fn run_niri_controlled(
 
     loop {
         if control.is_cancelled() {
-            info!(path = %path.display(), "niri 播放已响应取消请求");
+            info!(path = %path.display(), "niri playback responded to cancel request");
             break;
         }
         if control.is_paused() {
             for backend in &mut backends {
                 backend.dispatch_pending().with_context(|| {
                     format!(
-                        "暂停期间处理 niri 输出 {} 的事件失败",
+                        "failed to dispatch events for niri output {} during pause",
                         backend.output_name()
                     )
                 })?;
@@ -301,14 +317,17 @@ pub fn run_niri_controlled(
                 loop {
                     match clock
                         .as_ref()
-                        .expect("时钟已初始化")
+                        .expect("clock initialized")
                         .decide(Instant::now(), pts)
                     {
                         FrameDecision::Wait(duration) => {
                             thread::sleep(duration.min(CONTROL_POLL_INTERVAL));
                             for backend in &mut backends {
                                 backend.dispatch_pending().with_context(|| {
-                                    format!("处理 niri 输出 {} 的事件失败", backend.output_name())
+                                    format!(
+                                        "failed to dispatch events for niri output {}",
+                                        backend.output_name()
+                                    )
                                 })?;
                             }
                             if control.is_cancelled() || control.is_paused() {
@@ -320,7 +339,10 @@ pub fn run_niri_controlled(
                             for backend in &mut backends {
                                 let metrics =
                                     backend.present(&frame, fill_mode).with_context(|| {
-                                        format!("向 niri 输出 {} 提交帧失败", backend.output_name())
+                                        format!(
+                                            "failed to submit frame to niri output {}",
+                                            backend.output_name()
+                                        )
                                     })?;
                                 perf.callback_wait += metrics.frame_callback_wait;
                                 perf.buffer_allocate += metrics.buffer_allocate;
@@ -334,19 +356,19 @@ pub fn run_niri_controlled(
                             if !first_frame_presented {
                                 clock
                                     .as_mut()
-                                    .expect("时钟已初始化")
+                                    .expect("clock initialized")
                                     .reset(Instant::now(), pts);
                                 first_frame_presented = true;
                                 info!(
                                     present_ms = present_elapsed.as_millis(),
-                                    "首帧已提交，播放时钟已排除后端初始化耗时"
+                                    "first frame submitted, playback clock excludes backend initialization time"
                                 );
                             } else if presented.is_multiple_of(STATS_INTERVAL) {
                                 debug!(
                                     presented,
                                     dropped,
                                     present_ms = present_elapsed.as_millis(),
-                                    "niri 呈现统计"
+                                    "niri present statistics"
                                 );
                             }
                             break;
@@ -356,14 +378,14 @@ pub fn run_niri_controlled(
                             perf.dropped += 1;
                             clock
                                 .as_mut()
-                                .expect("时钟已初始化")
+                                .expect("clock initialized")
                                 .reset(Instant::now(), pts);
                             let present_started = Instant::now();
                             for backend in &mut backends {
                                 let metrics =
                                     backend.present(&frame, fill_mode).with_context(|| {
                                         format!(
-                                            "向 niri 输出 {} 提交过载恢复帧失败",
+                                            "failed to submit overload recovery frame to niri output {}",
                                             backend.output_name()
                                         )
                                     })?;
@@ -377,7 +399,8 @@ pub fn run_niri_controlled(
                             perf.present_time += present_started.elapsed();
                             debug!(
                                 pts_ms = pts.as_millis(),
-                                dropped, "niri 解码过载，提交当前帧并重建时钟"
+                                dropped,
+                                "niri decode overload, submitting current frame and rebuilding clock"
                             );
                             break;
                         }
@@ -391,11 +414,11 @@ pub fn run_niri_controlled(
     }
     decoder_thread
         .join()
-        .map_err(|_| anyhow::anyhow!("niri 解码线程发生 panic"))?;
+        .map_err(|_| anyhow::anyhow!("niri decode thread panicked"))?;
     decode_result_rx
         .recv()
-        .context("niri 解码线程未返回结果")??;
-    info!(path = %path.display(), output_count = backends.len(), presented, dropped, loops, "niri 视频播放结束");
+        .context("niri decode thread did not return a result")??;
+    info!(path = %path.display(), output_count = backends.len(), presented, dropped, loops, "niri video playback ended");
     Ok(())
 }
 
@@ -421,7 +444,7 @@ pub fn run_headless_controlled(
             );
             let _ = result_tx.send(result);
         })
-        .context("创建视频解码线程失败")?;
+        .context("failed to create video decode thread")?;
 
     let mut stats = PlaybackStats::default();
     let mut clock: Option<PlaybackClock> = None;
@@ -443,7 +466,10 @@ pub fn run_headless_controlled(
             Some(clock) if pts < previous_pts => {
                 stats.loops += 1;
                 clock.reset(Instant::now(), pts);
-                info!(loops = stats.loops, "检测到循环起点，播放时钟已重置");
+                info!(
+                    loops = stats.loops,
+                    "loop start detected, playback clock reset"
+                );
             }
             Some(_) => {}
         }
@@ -452,7 +478,7 @@ pub fn run_headless_controlled(
         loop {
             match clock
                 .as_ref()
-                .expect("播放时钟已初始化")
+                .expect("playback clock initialized")
                 .decide(Instant::now(), pts)
             {
                 FrameDecision::Wait(duration) => {
@@ -470,7 +496,7 @@ pub fn run_headless_controlled(
                     warn!(
                         pts_ms = pts.as_millis(),
                         dropped = stats.dropped,
-                        "headless 消费端丢弃过期帧"
+                        "headless consumer dropped stale frame"
                     );
                     break;
                 }
@@ -481,16 +507,18 @@ pub fn run_headless_controlled(
                 presented = stats.presented,
                 dropped = stats.dropped,
                 loops = stats.loops,
-                "headless 播放统计"
+                "headless playback statistics"
             );
         }
     }
 
     decoder_thread
         .join()
-        .map_err(|_| anyhow::anyhow!("视频解码线程发生 panic"))?;
-    result_rx.recv().context("视频解码线程未返回结果")??;
-    info!(path = %path.display(), presented = stats.presented, dropped = stats.dropped, loops = stats.loops, "headless 播放结束");
+        .map_err(|_| anyhow::anyhow!("video decode thread panicked"))?;
+    result_rx
+        .recv()
+        .context("video decode thread did not return a result")??;
+    info!(path = %path.display(), presented = stats.presented, dropped = stats.dropped, loops = stats.loops, "headless playback ended");
     Ok(stats)
 }
 
@@ -504,12 +532,12 @@ fn decode_frames(
     let mut decoder = FfmpegDecoder::new();
     let media = decoder
         .open(&path, DecodeOptions { hardware })
-        .with_context(|| format!("打开视频 {} 失败", path.display()))?;
-    info!(path = %path.display(), width = media.width, height = media.height, duration_ms = ?media.duration.map(|value| value.as_millis()), frame_rate = ?media.frame_rate, queue_capacity = FRAME_QUEUE_CAPACITY, "headless 解码开始");
+        .with_context(|| format!("failed to open video {}", path.display()))?;
+    info!(path = %path.display(), width = media.width, height = media.height, duration_ms = ?media.duration.map(|value| value.as_millis()), frame_rate = ?media.frame_rate, queue_capacity = FRAME_QUEUE_CAPACITY, "headless decode started");
 
     loop {
         if control.is_cancelled() {
-            info!("解码线程已响应取消请求");
+            info!("decode thread responded to cancel request");
             return Ok(());
         }
         if control.is_paused() {
@@ -523,18 +551,20 @@ fn decode_frames(
                     Err(mpsc::TrySendError::Full(returned)) => {
                         frame = returned;
                         if control.is_cancelled() {
-                            info!("解码线程在等待帧队列时响应取消请求");
+                            info!(
+                                "decode thread responded to cancel request while waiting for frame queue"
+                            );
                             return Ok(());
                         }
                         thread::sleep(CONTROL_POLL_INTERVAL);
                     }
                     Err(mpsc::TrySendError::Disconnected(_)) => {
-                        bail!("headless 消费端已停止")
+                        bail!("headless consumer stopped")
                     }
                 }
             },
             Err(VideoError::EndOfStream) if loop_playback => {
-                decoder.seek_start().context("循环播放跳转失败")?;
+                decoder.seek_start().context("loop playback seek failed")?;
             }
             Err(VideoError::EndOfStream) => return Ok(()),
             Err(error) => bail!(error),
@@ -573,5 +603,17 @@ mod tests {
 
         control.set_running(true);
         assert!(worker.is_running());
+    }
+
+    #[test]
+    fn playback_control_consumes_reload_request_once() {
+        let control = PlaybackControl::default();
+
+        assert!(!control.take_reload_request());
+        control.request_reload();
+        assert!(control.is_cancelled());
+        assert!(control.take_reload_request());
+        assert!(!control.take_reload_request());
+        assert!(!control.is_cancelled());
     }
 }

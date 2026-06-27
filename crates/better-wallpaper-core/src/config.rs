@@ -13,26 +13,28 @@ pub const CURRENT_CONFIG_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("无法确定用户主目录，请设置 HOME 或通过 --config 指定配置文件")]
+    #[error(
+        "Unable to determine user home directory; please set HOME or specify a config file via --config"
+    )]
     HomeNotFound,
-    #[error("读取配置 {path} 失败: {source}")]
+    #[error("Failed to read config {path}: {source}")]
     Read {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[error("解析配置 {path} 失败: {source}")]
+    #[error("Failed to parse config {path}: {source}")]
     Parse {
         path: PathBuf,
         source: toml::de::Error,
     },
-    #[error("配置校验失败: {0}")]
+    #[error("Config validation failed: {0}")]
     Validation(String),
-    #[error("写入配置 {path} 失败: {source}")]
+    #[error("Failed to write config {path}: {source}")]
     Write {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[error("序列化配置失败: {0}")]
+    #[error("Failed to serialize config: {0}")]
     Serialize(#[from] toml::ser::Error),
 }
 
@@ -146,17 +148,19 @@ impl AppConfig {
     pub fn validate_and_normalize(&mut self, home: &Path) -> Result<(), ConfigError> {
         if self.version != CURRENT_CONFIG_VERSION {
             return Err(ConfigError::Validation(format!(
-                "不支持配置版本 {}，当前版本为 {CURRENT_CONFIG_VERSION}",
+                "Unsupported config version {}, current version is {CURRENT_CONFIG_VERSION}",
                 self.version
             )));
         }
         if !(1..=240).contains(&self.wallpaper.fps_limit) {
             return Err(ConfigError::Validation(
-                "wallpaper.fps_limit 必须在 1..=240 范围内".into(),
+                "wallpaper.fps_limit must be in the range 1..=240".into(),
             ));
         }
         if self.general.log_level.trim().is_empty() {
-            return Err(ConfigError::Validation("general.log_level 不能为空".into()));
+            return Err(ConfigError::Validation(
+                "general.log_level cannot be empty".into(),
+            ));
         }
         if let Some(path) = &self.wallpaper.path {
             self.wallpaper.path = Some(expand_path(path, home));
@@ -199,13 +203,13 @@ impl ConfigStore {
 
     pub fn load_or_create(&self) -> Result<AppConfig, ConfigError> {
         if !self.path.exists() {
-            info!(path = %self.path.display(), "配置不存在，创建默认配置");
+            info!(path = %self.path.display(), "Config does not exist, creating default config");
             let mut config = AppConfig::default();
             config.validate_and_normalize(&self.home)?;
             self.save(&config)?;
             return Ok(config);
         }
-        debug!(path = %self.path.display(), "读取配置");
+        debug!(path = %self.path.display(), "Reading config");
         let text = fs::read_to_string(&self.path).map_err(|source| ConfigError::Read {
             path: self.path.clone(),
             source,
@@ -215,7 +219,7 @@ impl ConfigStore {
             source,
         })?;
         config.validate_and_normalize(&self.home)?;
-        info!(path = %self.path.display(), version = config.version, "配置加载完成");
+        info!(path = %self.path.display(), version = config.version, "Config loaded");
         Ok(config)
     }
 
@@ -248,7 +252,7 @@ impl ConfigStore {
                 path: self.path.clone(),
                 source,
             })?;
-        info!(path = %self.path.display(), "配置已原子写入");
+        info!(path = %self.path.display(), "Config atomically written");
         Ok(())
     }
 }

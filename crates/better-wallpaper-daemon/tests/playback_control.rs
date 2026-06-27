@@ -31,14 +31,14 @@ fn paused_playback_can_be_cancelled_without_deadlock() {
     control.cancel();
     result_rx
         .recv_timeout(Duration::from_secs(2))
-        .expect("取消播放后应及时退出")
-        .expect("取消应正常结束播放");
+        .expect("cancel should cause timely exit")
+        .expect("cancel should end playback normally");
 }
 
 #[test]
 fn deadline_stops_looping_playback_and_reports_stats() {
     let stats = run_headless_for(fixture("h264.mp4"), true, false, Duration::from_millis(650))
-        .expect("到期应正常结束循环播放");
+        .expect("deadline should end looped playback normally");
 
     assert!(stats.presented >= 5);
     assert!(stats.loops >= 1);

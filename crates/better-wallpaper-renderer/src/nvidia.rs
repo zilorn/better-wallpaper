@@ -17,21 +17,21 @@ const REQUIRED_DEVICE_EXTENSIONS: [&CStr; 4] = [
 
 #[derive(Debug, Error)]
 pub enum NvidiaVulkanError {
-    #[error("加载 Vulkan loader 失败: {0}")]
+    #[error("failed to load Vulkan loader: {0}")]
     Loader(#[from] ash::LoadingError),
-    #[error("Vulkan 操作 {operation} 失败: {result}")]
+    #[error("Vulkan operation {operation} failed: {result}")]
     Vulkan {
         operation: &'static str,
         result: vk::Result,
     },
-    #[error("未找到可用于图形渲染的 NVIDIA Vulkan 设备")]
+    #[error("no NVIDIA Vulkan device suitable for graphics rendering found")]
     DeviceNotFound,
-    #[error("NVIDIA 设备 {device} 缺少 DMA-BUF 必需扩展: {missing:?}")]
+    #[error("NVIDIA device {device} is missing required DMA-BUF extensions: {missing:?}")]
     MissingExtensions {
         device: String,
         missing: Vec<String>,
     },
-    #[error("NVIDIA 设备名称包含无效字节")]
+    #[error("NVIDIA device name contains invalid bytes")]
     InvalidDeviceName,
 }
 
@@ -61,7 +61,8 @@ impl NvidiaVulkanContext {
     pub fn new() -> Result<Self, NvidiaVulkanError> {
         // SAFETY: ash 负责验证动态库符号，Entry 在 Instance 整个生命周期内被持有。
         let entry = unsafe { Entry::load()? };
-        let app_name = CString::new("better-wallpaper").expect("固定应用名不含 NUL");
+        let app_name =
+            CString::new("better-wallpaper").expect("fixed application name does not contain NUL");
         let app_info = vk::ApplicationInfo::builder()
             .application_name(&app_name)
             .application_version(vk::make_api_version(0, 0, 1, 0))
@@ -83,7 +84,7 @@ impl NvidiaVulkanContext {
                     dma_buf_import = info.dma_buf_import,
                     dma_buf_export = info.dma_buf_export,
                     explicit_sync = info.explicit_sync,
-                    "NVIDIA Vulkan DMA-BUF 渲染设备已就绪"
+                    "NVIDIA Vulkan DMA-BUF interop capability detection completed"
                 );
                 Ok(Self {
                     device: Some(device),
@@ -116,7 +117,7 @@ impl NvidiaVulkanContext {
             if properties.vendor_id != NVIDIA_VENDOR_ID {
                 debug!(
                     vendor_id = properties.vendor_id,
-                    "跳过非 NVIDIA Vulkan 设备"
+                    "skipping non-NVIDIA Vulkan device"
                 );
                 continue;
             }
@@ -129,7 +130,7 @@ impl NvidiaVulkanContext {
                 .position(|family| family.queue_flags.contains(vk::QueueFlags::GRAPHICS))
                 .map(|index| index as u32)
             else {
-                warn!(gpu = %name, "NVIDIA 设备没有图形队列，跳过");
+                warn!(gpu = %name, "NVIDIA device has no graphics queue, skipping");
                 continue;
             };
 
@@ -189,7 +190,10 @@ impl Drop for NvidiaVulkanContext {
             // SAFETY: 设备仍有效；等待完成后销毁所有由该上下文持有的设备资源。
             unsafe {
                 if let Err(error) = device.device_wait_idle() {
-                    warn!(?error, "等待 NVIDIA Vulkan 设备空闲失败");
+                    warn!(
+                        ?error,
+                        "failed to wait for NVIDIA Vulkan device to become idle"
+                    );
                 }
                 device.destroy_device(None);
             }
@@ -198,7 +202,7 @@ impl Drop for NvidiaVulkanContext {
             // SAFETY: 逻辑设备已销毁，不再存在依赖 instance 的资源。
             unsafe { instance.destroy_instance(None) };
         }
-        debug!(gpu = %self.info.name, "NVIDIA Vulkan 上下文已释放");
+        debug!(gpu = %self.info.name, "NVIDIA Vulkan context released");
     }
 }
 

@@ -10,3 +10,6 @@ better-wallpaper-core = { path = "../better-wallpaper-core" }
 smithay-client-toolkit.workspace = true
 tracing.workspace = true
 wayland-client.workspace = true
+wayland-backend.workspace = true
+glow.workspace = true
+khronos-egl.workspace = true

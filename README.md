@@ -24,7 +24,7 @@ cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
 `/api/v1/wallpaper/media` 播放当前配置的视频，并在 daemon 暂时不可用时记录错误并重试。
-配置更新由 Rust 端校验并原子写入，当前需重启进程后应用到播放管线。
+配置更新由 Rust 端校验并原子写入；保存成功后会安全停止当前解码并用新配置重建播放管线。
 
 可用有限运行时间执行稳定性验收，到期后会走正常取消和资源释放路径：
 

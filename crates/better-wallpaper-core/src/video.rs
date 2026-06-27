@@ -4,15 +4,15 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum VideoError {
-    #[error("无法打开视频 {path}: {message}")]
+    #[error("Failed to open video {path}: {message}")]
     Open { path: String, message: String },
-    #[error("视频中没有可解码的视频流")]
+    #[error("No decodable video stream")]
     NoVideoStream,
-    #[error("解码视频帧失败: {0}")]
+    #[error("Failed to decode video frame: {0}")]
     Decode(String),
-    #[error("视频已播放完毕")]
+    #[error("Video playback finished")]
     EndOfStream,
-    #[error("跳转到视频起点失败: {0}")]
+    #[error("Failed to seek to start of video: {0}")]
     Seek(String),
 }
 
