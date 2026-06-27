@@ -17,8 +17,14 @@ cd web && bun run build
 cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 ```
 
-管理页面位于 `http://127.0.0.1:17321`。服务提供 `/api/v1/status` 和
-`/api/v1/config`，配置更新由 Rust 端校验并原子写入，当前需重启进程后应用到播放管线。
+管理页面位于 `http://127.0.0.1:17321`。服务提供 `/api/v1/status`、
+`/api/v1/config`、`/api/v1/library`、`/api/v1/library/media` 和 `/api/v1/ws`；壁纸库会扫描
+`~/Videos` 及当前视频目录，媒体接口只允许读取扫描结果并支持范围请求。WebSocket 会推送播放
+状态变化，断线后前端指数退避重连。
+
+Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
+`/api/v1/wallpaper/media` 播放当前配置的视频，并在 daemon 暂时不可用时记录错误并重试。
+配置更新由 Rust 端校验并原子写入，当前需重启进程后应用到播放管线。
 
 可用有限运行时间执行稳定性验收，到期后会走正常取消和资源释放路径：
 
@@ -49,3 +55,15 @@ cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui
 
 若配置中存在启用的 `[[outputs]]`，使用第一项匹配 Wayland 输出名称；否则使用 compositor
 报告的首个输出。当前阶段尚未完成多输出、热插拔和 compositor 断线重连。
+
+## 安装
+
+发布构建、Web 资源和 systemd 用户服务可通过打包脚本安装：
+
+```bash
+./packaging/install.sh
+systemctl --user enable --now better-wallpaper.service
+```
+
+默认安装到 `~/.local`，可通过 `PREFIX` 和 `DESTDIR` 覆盖。发行版依赖、离线打包和卸载方式见
+[`packaging/README.md`](packaging/README.md)。

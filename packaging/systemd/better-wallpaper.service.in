@@ -1,0 +1,19 @@
+[Unit]
+Description=Better Wallpaper video wallpaper daemon
+Documentation=https://github.com/zilorn/better-wallpaper
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/better-wallpaper-daemon
+Environment=BETTER_WALLPAPER_WEB_ROOT=@PREFIX@/share/better-wallpaper/web
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=10s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=graphical-session.target

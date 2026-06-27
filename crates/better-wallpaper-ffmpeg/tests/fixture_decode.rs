@@ -42,6 +42,17 @@ fn decodes_h264_vp9_and_av1_fixtures() {
 }
 
 #[test]
+fn hardware_request_decodes_or_falls_back_to_software() {
+    let mut decoder = FfmpegDecoder::new();
+    decoder
+        .open(&fixture("h264.mp4"), DecodeOptions { hardware: true })
+        .expect("硬解请求不应阻止打开视频");
+    let frame = decoder.next_frame().expect("硬解或软解降级后应能产帧");
+    assert_eq!(frame.format, PixelFormat::Rgba);
+    assert_eq!(frame.pixels.len(), 64 * 36 * 4);
+}
+
+#[test]
 fn seek_start_restarts_decoding() {
     let mut decoder = FfmpegDecoder::new();
     decoder

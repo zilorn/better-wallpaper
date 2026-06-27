@@ -6,6 +6,7 @@ import {
   createContext,
   createEffect,
   createMemo,
+  onCleanup,
   createResource,
   createSignal,
   useContext,
@@ -36,6 +37,8 @@ type Config = {
   decode: { hardware: string };
   outputs: Output[];
 };
+type LibraryEntry = { name: string; path: string; size_bytes: number; modified_unix_seconds: number | null };
+type Library = { entries: LibraryEntry[]; roots: string[]; truncated: boolean };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -48,12 +51,42 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function createAppState() {
-  const [status, { refetch: refetchStatus }] = createResource(() => requestJson<Status>("/api/v1/status"));
+  const [status, { mutate: setStatus, refetch: refetchStatus }] = createResource(() => requestJson<Status>("/api/v1/status"));
   const [config, { mutate: setConfig }] = createResource(() => requestJson<Config>("/api/v1/config"));
   const [busy, setBusy] = createSignal(false);
   const [notice, setNotice] = createSignal("");
 
   const connected = createMemo(() => Boolean(status()) && !status.error);
+  let reconnectTimer: number | undefined;
+  let reconnectAttempt = 0;
+  let socket: WebSocket | undefined;
+  const connectStatusStream = () => {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    socket = new WebSocket(`${protocol}://${window.location.host}/api/v1/ws`);
+    socket.addEventListener("open", () => {
+      reconnectAttempt = 0;
+      console.info("[Better Wallpaper] WebSocket 状态流已连接");
+    });
+    socket.addEventListener("message", (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as { type?: string; data?: Status };
+        if (message.type === "status" && message.data) setStatus(message.data);
+      } catch (error) {
+        console.error("[Better Wallpaper] WebSocket 状态消息无效", error);
+      }
+    });
+    socket.addEventListener("close", () => {
+      const delay = Math.min(30000, 1000 * 2 ** reconnectAttempt++);
+      console.warn(`[Better Wallpaper] WebSocket 状态流断开，${delay}ms 后重连`);
+      reconnectTimer = window.setTimeout(connectStatusStream, delay);
+    });
+    socket.addEventListener("error", () => socket?.close());
+  };
+  connectStatusStream();
+  onCleanup(() => {
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+    socket?.close();
+  });
   const run = async (label: string, action: () => Promise<void>) => {
     setBusy(true);
     setNotice("");
@@ -116,7 +149,7 @@ function AppShell(props: ParentProps) {
   return <AppContext.Provider value={state}>
     <main class="shell">
       <aside class="sidebar">
-        <div class="brand"><div class="brand-mark">BW</div><div><h1>Better Wallpaper</h1><span classList={{ status: true, ok: state.connected() }}>{state.connected() ? state.status()?.backend : "offline"}</span></div></div>
+        <div class="brand"><div class="brand-mark"><img src="/better-wallpaper-icon.png" alt="" /></div><div><h1>Better Wallpaper</h1><span classList={{ status: true, ok: state.connected() }}>{state.connected() ? state.status()?.backend : "offline"}</span></div></div>
         <nav class="navigation" aria-label="主导航">
           <A href="/wallpapers" activeClass="active"><NavigationIcon name="wallpapers" /><span>壁纸</span></A>
           <A href="/displays" activeClass="active"><NavigationIcon name="displays" /><span>显示器</span></A>
@@ -162,7 +195,20 @@ function DisplaysPage() {
 }
 
 function LibrariesPage() {
-  return <><PageHeader title="壁纸库" description="管理本地视频集合与后续壁纸来源。" /><section class="page-panel empty-state"><div class="empty-icon"><NavigationIcon name="libraries" /></div><h3>壁纸库后端尚未接入</h3><p>当前版本使用“壁纸”页面中的本地视频路径。完成扫描、索引和预览 API 后，此页面将与 Waywallen 的壁纸库工作流对齐。</p></section></>;
+  const state = useApp();
+  const [library, { refetch }] = createResource(() => requestJson<Library>("/api/v1/library"));
+  const select = (entry: LibraryEntry) => {
+    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, path: entry.path } }));
+    console.info(`[Better Wallpaper] 已从壁纸库选择：${entry.path}`);
+  };
+  return <><PageHeader title="壁纸库" description="扫描本地视频集合，并选择要应用的壁纸。" />
+    <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个视频</strong><small>{library()?.roots.join("、") || "正在读取扫描目录…"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
+    <Show when={library()} fallback={<Loading />}>{(result) => <>
+      <Show when={result().truncated}><div class="notice">结果已达到 1000 个条目的扫描上限。</div></Show>
+      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的视频文件。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview"><video src={`/api/v1/library/media?path=${encodeURIComponent(entry.path)}`} muted loop preload="metadata" onMouseEnter={(event) => void event.currentTarget.play()} onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} /><span>悬停预览</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择"}</button></div></article>}</For></section>
+      <div class="page-actions library-actions"><span></span><button class="command" disabled={state.busy() || !state.config()} onClick={state.saveConfig}>保存所选壁纸</button></div>
+    </>}</Show>
+  </>;
 }
 
 function SettingsPage() {
@@ -178,6 +224,7 @@ function Diagnostic(props: { label: string; value: string }) { return <div><span
 function Loading() { return <div class="empty">正在读取服务数据…</div>; }
 function fileName(path: string | null) { return path?.split("/").filter(Boolean).at(-1) ?? "尚未选择视频"; }
 function playbackLabel(playback?: PlaybackStatus) { return !playback ? "未知" : playback.cancelled ? "已停止" : !playback.running ? "空闲" : playback.paused ? "已暂停" : "播放中"; }
+function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 
 const root = document.getElementById("root");
 if (!root) throw new Error("缺少 #root 挂载节点");

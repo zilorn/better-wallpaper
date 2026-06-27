@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result};
 use better_wallpaper_core::{
@@ -105,18 +105,17 @@ fn main() -> Result<()> {
                 }
             })
             .context("创建壁纸播放线程失败")?;
-        let web_root = std::env::var_os("BETTER_WALLPAPER_WEB_ROOT")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("web/dist"));
+        let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
         return server::serve(
             "127.0.0.1:17321",
             web_root,
             server::ApiState::new(
                 config,
-                ConfigStore::new(path, home),
+                ConfigStore::new(path, home.clone()),
                 detection,
                 backend,
                 playback_control,
+                home,
             ),
         );
     }
@@ -126,6 +125,17 @@ fn main() -> Result<()> {
         cli.run_for_seconds,
         playback::PlaybackControl::default(),
     )
+}
+
+fn resolve_web_root(configured: Option<OsString>) -> PathBuf {
+    if let Some(path) = configured {
+        return PathBuf::from(path);
+    }
+    let development = PathBuf::from("web/dist");
+    if development.is_dir() {
+        return development;
+    }
+    PathBuf::from("/usr/share/better-wallpaper/web")
 }
 
 fn run_playback(

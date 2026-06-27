@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Better Wallpaper contributors"
+            }
+        ],
+        "Description": "Display the video selected by the Better Wallpaper daemon",
+        "Description[zh_CN]": "显示 Better Wallpaper 服务选择的视频",
+        "Icon": "preferences-desktop-wallpaper",
+        "Id": "org.better-wallpaper",
+        "License": "MIT",
+        "Name": "Better Wallpaper Video",
+        "Name[zh_CN]": "Better Wallpaper 视频壁纸",
+        "Version": "0.1.0"
+    },
+    "X-KDE-ParentApp": "org.kde.plasmashell",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

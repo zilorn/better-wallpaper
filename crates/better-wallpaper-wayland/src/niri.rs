@@ -15,6 +15,7 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler, slot::SlotPool},
 };
+use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 use wayland_client::{
     Connection, EventQueue, QueueHandle,
@@ -29,6 +30,14 @@ pub struct NiriBackend {
     layer: LayerSurface,
     pool: SlotPool,
     output_name: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PresentMetrics {
+    pub frame_callback_wait: Duration,
+    pub buffer_allocate: Duration,
+    pub scale: Duration,
+    pub submit: Duration,
 }
 
 impl NiriBackend {
@@ -127,8 +136,9 @@ impl NiriBackend {
         self.state.configured_size.unwrap_or((1, 1))
     }
 
-    pub fn present(&mut self, frame: &DecodedFrame, fill_mode: FillMode) -> Result<()> {
+    pub fn present(&mut self, frame: &DecodedFrame, fill_mode: FillMode) -> Result<PresentMetrics> {
         self.dispatch_pending()?;
+        let wait_started = Instant::now();
         while !self.state.frame_ready && !self.state.closed {
             self.event_queue
                 .blocking_dispatch(&mut self.state)
@@ -137,8 +147,10 @@ impl NiriBackend {
         if self.state.closed {
             bail!("layer surface 已被 compositor 关闭");
         }
+        let frame_callback_wait = wait_started.elapsed();
         let (width, height) = self.size();
         let stride = width.checked_mul(4).context("输出 stride 溢出")?;
+        let allocate_started = Instant::now();
         let (buffer, canvas) = self
             .pool
             .create_buffer(
@@ -148,7 +160,11 @@ impl NiriBackend {
                 wl_shm::Format::Abgr8888,
             )
             .context("分配 wl_shm frame buffer 失败")?;
+        let buffer_allocate = allocate_started.elapsed();
+        let scale_started = Instant::now();
         scale_rgba(frame, canvas, width, height, fill_mode);
+        let scale = scale_started.elapsed();
+        let submit_started = Instant::now();
         self.layer
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
@@ -161,8 +177,14 @@ impl NiriBackend {
             .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
         self.layer.commit();
         self.connection.flush().context("刷新 Wayland 请求失败")?;
+        let submit = submit_started.elapsed();
         debug!(output = %self.output_name, width, height, pts = frame.pts, "已提交 wl_shm 视频帧");
-        Ok(())
+        Ok(PresentMetrics {
+            frame_callback_wait,
+            buffer_allocate,
+            scale,
+            submit,
+        })
     }
 
     pub fn dispatch_pending(&mut self) -> Result<()> {
@@ -200,6 +222,28 @@ fn scale_rgba(frame: &DecodedFrame, target: &mut [u8], width: u32, height: u32, 
     };
     let offset_x = (width as i64 - draw_width as i64) / 2;
     let offset_y = (height as i64 - draw_height as i64) / 2;
+
+    // 最常见的同分辨率场景无需逐像素采样。FFmpeg 的 RGBA 行可能带 padding，
+    // 因此仅在 stride 紧凑时整块复制，否则按行复制有效像素。
+    if draw_width == frame.width
+        && draw_height == frame.height
+        && offset_x == 0
+        && offset_y == 0
+        && width == frame.width
+        && height == frame.height
+    {
+        let row_bytes = width as usize * 4;
+        if frame.stride == row_bytes {
+            target.copy_from_slice(&frame.pixels[..target.len()]);
+        } else {
+            for row in 0..height as usize {
+                let source = &frame.pixels[row * frame.stride..row * frame.stride + row_bytes];
+                let destination = &mut target[row * row_bytes..(row + 1) * row_bytes];
+                destination.copy_from_slice(source);
+            }
+        }
+        return;
+    }
     let visible_left = offset_x.max(0) as usize;
     let visible_top = offset_y.max(0) as usize;
     let visible_right = (offset_x + draw_width as i64).min(width as i64).max(0) as usize;
