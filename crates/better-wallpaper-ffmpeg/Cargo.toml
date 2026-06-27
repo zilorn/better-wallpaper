@@ -1,0 +1,10 @@
+[package]
+name = "better-wallpaper-ffmpeg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+better-wallpaper-core = { path = "../better-wallpaper-core" }
+ffmpeg-next.workspace = true
+tracing.workspace = true

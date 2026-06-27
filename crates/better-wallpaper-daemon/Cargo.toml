@@ -1,0 +1,18 @@
+[package]
+name = "better-wallpaper-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+better-wallpaper-core = { path = "../better-wallpaper-core" }
+better-wallpaper-ffmpeg = { path = "../better-wallpaper-ffmpeg" }
+better-wallpaper-renderer = { path = "../better-wallpaper-renderer" }
+better-wallpaper-wayland = { path = "../better-wallpaper-wayland" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tiny_http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

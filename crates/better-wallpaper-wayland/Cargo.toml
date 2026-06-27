@@ -1,0 +1,12 @@
+[package]
+name = "better-wallpaper-wayland"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+better-wallpaper-core = { path = "../better-wallpaper-core" }
+smithay-client-toolkit.workspace = true
+tracing.workspace = true
+wayland-client.workspace = true
