@@ -112,7 +112,7 @@ fn main() -> Result<()> {
             .context("failed to create wallpaper playback thread")?;
         let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
         return server::serve(
-            "127.0.0.1:17321",
+            "127.0.0.1:0",
             web_root,
             server::ApiState::new(
                 shared_config,

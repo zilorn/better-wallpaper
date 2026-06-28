@@ -21,6 +21,7 @@ clap = { version = "4.5", features = ["derive"] }
 ffmpeg-next = "8.0"
 glow = "0.13"
 khronos-egl = { version = "6.0", features = ["dynamic", "1_4"] }
+ksni = { version = "0.3.5", features = ["blocking"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha1 = "0.10"

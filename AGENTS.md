@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## 项目详情
+
+Better Wallpaper：Linux 视频壁纸程序，支持niri，Plasma
+项目使用以下技术栈：
+
+- rust+bun+solidjs
+
 ## 要求
 
 - 写日志以便跟踪问题，使用英语日志。

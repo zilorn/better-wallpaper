@@ -17,13 +17,17 @@ cd web && bun run build
 cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 ```
 
-管理页面位于 `http://127.0.0.1:17321`。服务提供 `/api/v1/status`、
+管理服务会在 `127.0.0.1` 动态分配空闲端口，并将本次地址写入
+`$XDG_RUNTIME_DIR/better-wallpaper/endpoint`；可通过托盘菜单打开管理页面。服务提供 `/api/v1/status`、
 `/api/v1/config`、`/api/v1/library`、`/api/v1/library/media` 和 `/api/v1/ws`；壁纸库会扫描
 `~/Videos` 及当前视频目录，媒体接口只允许读取扫描结果并支持范围请求。WebSocket 会推送播放
 状态变化，断线后前端指数退避重连。
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
-`/api/v1/wallpaper/media` 播放当前配置的视频，并在 daemon 暂时不可用时记录错误并重试。
+`/api/v1/plasma/config` 按 Plasma 屏幕名同步启用状态和播放参数，再通过
+`/api/v1/wallpaper/media` 播放当前配置的视频；daemon 或 plasmashell 重启后会自动重连恢复。
+插件实例会发送本机心跳，管理界面的诊断页可查看当前在线的 Plasma 屏幕实例。
+Plasma 在活动切换时隐藏壁纸实例后，视频会立即暂停并停止请求；实例重新可见时会同步最新配置并恢复。
 配置更新由 Rust 端校验并原子写入；保存成功后会安全停止当前解码并用新配置重建播放管线。
 
 可用有限运行时间执行稳定性验收，到期后会走正常取消和资源释放路径：

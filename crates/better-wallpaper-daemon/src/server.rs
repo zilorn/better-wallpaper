@@ -1,18 +1,21 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
     thread,
     time::{Duration, Instant},
 };
 
-use crate::playback::PlaybackControl;
+use crate::{playback::PlaybackControl, tray::WallpaperTray};
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use better_wallpaper_core::{AppConfig, BackendKind, ConfigStore, DesktopDetection};
-use serde::Serialize;
+use better_wallpaper_core::{
+    AppConfig, BackendKind, ConfigStore, DesktopDetection, config::FillMode,
+};
+use ksni::blocking::TrayMethods;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use tiny_http::{Header, Method, Request, Response, ResponseBox, Server, StatusCode};
 use tracing::{info, warn};
@@ -22,6 +25,7 @@ const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const STATUS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const MAX_LIBRARY_ENTRIES: usize = 1_000;
 const MAX_LIBRARY_DEPTH: usize = 4;
+const PLASMA_INSTANCE_TTL: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -31,6 +35,7 @@ pub struct ApiState {
     backend: BackendKind,
     playback: PlaybackControl,
     home: PathBuf,
+    plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
 #[derive(Serialize)]
@@ -41,6 +46,13 @@ struct StatusPayload<'a> {
     candidates: &'a [String],
     backend: BackendKind,
     playback: PlaybackPayload,
+    plasma_instances: Vec<PlasmaInstancePayload>,
+}
+
+#[derive(Serialize)]
+struct PlasmaInstancePayload {
+    output: String,
+    last_seen_ms: u128,
 }
 
 #[derive(Serialize)]
@@ -66,13 +78,38 @@ impl ApiState {
             backend,
             playback,
             home,
+            plasma_instances: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
 
 pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
     let server = Server::http(bind).map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    info!(bind, web_root = %web_root.display(), "local management service started");
+    let address = server
+        .server_addr()
+        .to_ip()
+        .ok_or_else(|| anyhow::anyhow!("management service did not bind an IP address"))?;
+    let ui_url = format!("http://127.0.0.1:{}", address.port());
+    write_endpoint_file(&state.home, &ui_url)?;
+    let _tray = match WallpaperTray::new(
+        Arc::clone(&state.config),
+        state.store.clone(),
+        state.playback.clone(),
+        ui_url.clone(),
+    )
+    .assume_sni_available(true)
+    .spawn()
+    {
+        Ok(handle) => {
+            info!("system tray service started");
+            Some(handle)
+        }
+        Err(error) => {
+            warn!(%error, "system tray service could not start");
+            None
+        }
+    };
+    info!(bind = %address, %ui_url, web_root = %web_root.display(), "local management service started");
     loop {
         match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(request)) => handle_request(request, &web_root, &state),
@@ -80,6 +117,18 @@ pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
             Err(error) => warn!(%error, "failed to receive HTTP request"),
         }
     }
+}
+
+fn write_endpoint_file(home: &Path, ui_url: &str) -> Result<()> {
+    let directory = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".better-wallpaper"))
+        .join("better-wallpaper");
+    fs::create_dir_all(&directory)?;
+    let path = directory.join("endpoint");
+    fs::write(&path, format!("{ui_url}\n"))?;
+    info!(path = %path.display(), %ui_url, "management endpoint discovery file updated");
+    Ok(())
 }
 
 fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
@@ -105,6 +154,20 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         }
         return;
     }
+    if method == Method::Get && url == "/api/v1/plasma/config" {
+        let response = plasma_config_response(&request_url, state);
+        if let Err(error) = request.respond(response) {
+            warn!(%error, %url, "failed to send Plasma config response");
+        }
+        return;
+    }
+    if method == Method::Post && url == "/api/v1/plasma/heartbeat" {
+        let response = plasma_heartbeat_response(&mut request, state);
+        if let Err(error) = request.respond(response) {
+            warn!(%error, %url, "failed to send Plasma heartbeat response");
+        }
+        return;
+    }
     let response = match (method, url.as_str()) {
         (Method::Get, "/api/v1/status") => json_response(
             StatusCode(200),
@@ -115,6 +178,7 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
                 candidates: &state.detection.candidates,
                 backend: state.backend,
                 playback: playback_payload(&state.playback),
+                plasma_instances: active_plasma_instances(state),
             },
         ),
         (Method::Get, "/api/v1/config") => match state.config.read() {
@@ -131,6 +195,132 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
     if let Err(error) = request.respond(response) {
         warn!(%error, %url, "failed to send HTTP response");
     }
+}
+
+#[derive(Deserialize)]
+struct PlasmaHeartbeatRequest {
+    output: String,
+}
+
+fn plasma_heartbeat_response(
+    request: &mut Request,
+    state: &ApiState,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = Vec::new();
+    if request
+        .as_reader()
+        .take((MAX_REQUEST_BYTES + 1) as u64)
+        .read_to_end(&mut body)
+        .is_err()
+        || body.len() > MAX_REQUEST_BYTES
+    {
+        return error_response(StatusCode(413), "request body too large");
+    }
+    let heartbeat: PlasmaHeartbeatRequest =
+        match serde_json::from_slice::<PlasmaHeartbeatRequest>(&body) {
+            Ok(heartbeat) if !heartbeat.output.trim().is_empty() => heartbeat,
+            _ => return error_response(StatusCode(400), "invalid Plasma heartbeat"),
+        };
+    let Ok(mut instances) = state.plasma_instances.lock() else {
+        return error_response(StatusCode(500), "Plasma instance lock poisoned");
+    };
+    let is_new = instances
+        .insert(heartbeat.output.clone(), Instant::now())
+        .is_none();
+    if is_new {
+        info!(
+            output = heartbeat.output,
+            "Plasma wallpaper instance connected"
+        );
+    }
+    json_response(StatusCode(200), &serde_json::json!({ "accepted": true }))
+}
+
+fn active_plasma_instances(state: &ApiState) -> Vec<PlasmaInstancePayload> {
+    let now = Instant::now();
+    let Ok(mut instances) = state.plasma_instances.lock() else {
+        warn!("Plasma instance lock poisoned");
+        return Vec::new();
+    };
+    instances.retain(|output, last_seen| {
+        let active = now.duration_since(*last_seen) <= PLASMA_INSTANCE_TTL;
+        if !active {
+            info!(output, "Plasma wallpaper instance disconnected");
+        }
+        active
+    });
+    let mut payload: Vec<_> = instances
+        .iter()
+        .map(|(output, last_seen)| PlasmaInstancePayload {
+            output: output.clone(),
+            last_seen_ms: now.duration_since(*last_seen).as_millis(),
+        })
+        .collect();
+    payload.sort_by(|left, right| left.output.cmp(&right.output));
+    payload
+}
+
+#[derive(Serialize)]
+struct PlasmaConfigPayload {
+    api_version: u8,
+    output: String,
+    enabled: bool,
+    media_url: &'static str,
+    fill_mode: FillMode,
+    muted: bool,
+    paused: bool,
+    loop_playback: bool,
+    revision: u64,
+}
+
+fn plasma_config_response(
+    request_url: &str,
+    state: &ApiState,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let output = query_parameter(request_url, "output")
+        .and_then(percent_decode)
+        .unwrap_or_default();
+    let config = match state.config.read() {
+        Ok(config) => config,
+        Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
+    };
+    let enabled = output_enabled(&config, &output);
+    info!(output, enabled, "serving Plasma wallpaper configuration");
+    json_response(
+        StatusCode(200),
+        &PlasmaConfigPayload {
+            api_version: 1,
+            output,
+            enabled,
+            media_url: "/api/v1/wallpaper/media",
+            fill_mode: config.wallpaper.fill_mode,
+            muted: config.wallpaper.muted,
+            paused: state.playback.is_paused(),
+            loop_playback: config.wallpaper.loop_playback,
+            revision: config_revision(&config),
+        },
+    )
+}
+
+fn output_enabled(config: &AppConfig, output: &str) -> bool {
+    if config.outputs.is_empty() {
+        return true;
+    }
+    config
+        .outputs
+        .iter()
+        .find(|candidate| candidate.name == output)
+        .is_some_and(|candidate| candidate.enabled)
+}
+
+fn config_revision(config: &AppConfig) -> u64 {
+    // Stable FNV-1a is sufficient as a cache-busting configuration revision.
+    serde_json::to_vec(config)
+        .unwrap_or_default()
+        .into_iter()
+        .fold(0xcbf29ce484222325, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+        })
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -420,6 +610,7 @@ fn status_payload(state: &ApiState) -> StatusPayload<'_> {
         candidates: &state.detection.candidates,
         backend: state.backend,
         playback: playback_payload(&state.playback),
+        plasma_instances: active_plasma_instances(state),
     }
 }
 
@@ -649,8 +840,10 @@ mod tests {
     use std::fs;
 
     use super::{
-        parse_byte_range, percent_decode, scan_library, websocket_accept, write_websocket_text,
+        config_revision, output_enabled, parse_byte_range, percent_decode, scan_library,
+        websocket_accept, write_websocket_text,
     };
+    use better_wallpaper_core::{AppConfig, config::OutputConfig};
 
     #[test]
     fn computes_websocket_accept_from_rfc_example() {
@@ -699,5 +892,21 @@ mod tests {
         assert_eq!(parse_byte_range("bytes=10-19", 100), Some((10, 19)));
         assert_eq!(parse_byte_range("bytes=90-", 100), Some((90, 99)));
         assert_eq!(parse_byte_range("bytes=100-", 100), None);
+    }
+
+    #[test]
+    fn resolves_plasma_output_enablement_and_revision() {
+        let mut config = AppConfig::default();
+        assert!(output_enabled(&config, "DP-1"));
+        config.outputs = vec![OutputConfig {
+            name: "DP-1".into(),
+            enabled: true,
+        }];
+        assert!(output_enabled(&config, "DP-1"));
+        assert!(!output_enabled(&config, "HDMI-A-1"));
+
+        let revision = config_revision(&config);
+        config.wallpaper.muted = false;
+        assert_ne!(revision, config_revision(&config));
     }
 }

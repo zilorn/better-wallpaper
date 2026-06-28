@@ -190,10 +190,7 @@ impl FfmpegDecoder {
         let width = source.width();
         let height = source.height();
         let row_bytes = width as usize * 4;
-        let mut pixels = Vec::with_capacity(row_bytes * height as usize);
-        // SAFETY: sws_scale 在成功时写满 height 个紧凑 RGBA 行；u8 没有析构逻辑，
-        // 调用失败时 Vec 也可以安全释放尚未初始化的容量。
-        unsafe { pixels.set_len(row_bytes * height as usize) };
+        let mut pixels = vec![0; row_bytes * height as usize];
         let convert_started = Instant::now();
         let mut destination_data = [std::ptr::null_mut(); 8];
         destination_data[0] = pixels.as_mut_ptr();
