@@ -24,6 +24,16 @@ const STATS_INTERVAL: u64 = 300;
 const REALTIME_STATS_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
+/// Keep the daemon-side Plasma control plane alive while Plasma owns media rendering.
+/// The loop exits on either process cancellation or a configuration reload request.
+pub fn run_kde_controlled(control: PlaybackControl) {
+    info!("Plasma playback control plane started");
+    while !control.is_cancelled() {
+        thread::sleep(CONTROL_POLL_INTERVAL);
+    }
+    info!("Plasma playback control plane stopped");
+}
+
 struct AudioPlayback {
     _stream: OutputStream,
     sink: Sink,

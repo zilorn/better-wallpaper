@@ -112,7 +112,16 @@ pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
     info!(bind = %address, %ui_url, web_root = %web_root.display(), "local management service started");
     loop {
         match server.recv_timeout(Duration::from_secs(1)) {
-            Ok(Some(request)) => handle_request(request, &web_root, &state),
+            Ok(Some(request)) => {
+                let request_state = state.clone();
+                let request_web_root = web_root.clone();
+                if let Err(error) = thread::Builder::new()
+                    .name("management-request".into())
+                    .spawn(move || handle_request(request, &request_web_root, &request_state))
+                {
+                    warn!(%error, "failed to create management request thread");
+                }
+            }
             Ok(None) => {}
             Err(error) => warn!(%error, "failed to receive HTTP request"),
         }

@@ -17,7 +17,7 @@ cd web && bun run build
 cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 ```
 
-管理服务会在 `127.0.0.1` 动态分配空闲端口，并将本次地址写入
+管理服务固定绑定到 `127.0.0.1:43129`，并将管理地址写入
 `$XDG_RUNTIME_DIR/better-wallpaper/endpoint`；可通过托盘菜单打开管理页面。服务提供 `/api/v1/status`、
 `/api/v1/config`、`/api/v1/library`、`/api/v1/library/media` 和 `/api/v1/ws`；壁纸库会扫描
 `~/Videos` 及当前视频目录，媒体接口只允许读取扫描结果并支持范围请求。WebSocket 会推送播放
@@ -63,12 +63,82 @@ cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui
 
 ## 安装
 
-发布构建、Web 资源和 systemd 用户服务可通过打包脚本安装：
+项目仅支持 Plasma 6。插件运行时需要 Qt 6 Multimedia QML 模块；具体包名因发行版而异，
+例如 Debian/Ubuntu 通常为 `qml6-module-qtmultimedia`。
+
+### 完整安装（推荐）
+
+在项目根目录运行：
 
 ```bash
-./packaging/install.sh
+./install.sh
 systemctl --user enable --now better-wallpaper.service
 ```
 
-默认安装到 `~/.local`，可通过 `PREFIX` 和 `DESTDIR` 覆盖。发行版依赖、离线打包和卸载方式见
+该脚本会构建并安装 daemon、Web UI、systemd 用户服务以及 Plasma 壁纸插件。
+默认不需要 root 权限，插件安装到：
+
+```text
+~/.local/share/plasma/wallpapers/org.better-wallpaper
+```
+
+安装脚本会检查 `web/dist/index.html` 和 Plasma `main.qml`，并在复制后再次验证目标文件。
+不要使用 `SKIP_BUILD=1`，除非已手动完成 Rust 发布构建和 `bun run build`。
+
+如果日志仍显示 `/usr/share/better-wallpaper`，但本次安装输出是 `~/.local`，说明旧的系统级服务仍在运行。
+可检查当前用户服务实际使用的路径：
+
+```bash
+systemctl --user cat better-wallpaper.service
+systemctl --user restart better-wallpaper.service
+```
+
+daemon 不依赖 systemd 才能找到 Web UI。未显式设置 `BETTER_WALLPAPER_WEB_ROOT` 时，默认路径为
+`$XDG_DATA_HOME/better-wallpaper/web`；如果 `XDG_DATA_HOME` 未设置，则使用
+`~/.local/share/better-wallpaper/web`。
+
+### 仅安装 Plasma 插件
+
+已安装 `kpackagetool6` 时，可直接安装源码树中的 Plasma 包：
+
+```bash
+kpackagetool6 --type Plasma/Wallpaper --install kde/org.better-wallpaper
+```
+
+更新已安装的插件：
+
+```bash
+kpackagetool6 --type Plasma/Wallpaper --upgrade kde/org.better-wallpaper
+```
+
+仅安装插件不会安装或启动 daemon。需另行运行
+`better-wallpaper-daemon`，否则插件无法获取配置和视频。
+
+### 在 Plasma 中启用
+
+1. 右键单击桌面，选择“桌面和壁纸”或“配置桌面和壁纸”。
+2. 在“壁纸类型”中选择“Better Wallpaper 视频壁纸”。
+3. 单击“应用”，然后在 Better Wallpaper Web UI 中选择视频和目标显示器。
+
+如果列表中没有出现插件，请先注销并重新登录 Plasma 会话。可用以下命令确认插件文件已安装：
+
+```bash
+test -f ~/.local/share/plasma/wallpapers/org.better-wallpaper/metadata.json && echo installed
+```
+
+### 卸载
+
+整套安装的内容使用项目脚本卸载：
+
+```bash
+./packaging/uninstall.sh
+```
+
+仅通过 `kpackagetool6` 安装的插件可单独卸载：
+
+```bash
+kpackagetool6 --type Plasma/Wallpaper --remove org.better-wallpaper
+```
+
+默认安装前缀为 `~/.local`，可通过 `PREFIX` 和 `DESTDIR` 覆盖。发行版依赖、离线打包和更详细的卸载说明见
 [`packaging/README.md`](packaging/README.md)。

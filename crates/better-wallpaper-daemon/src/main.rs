@@ -16,6 +16,8 @@ use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+const MANAGEMENT_BIND: &str = "127.0.0.1:43129";
+
 #[derive(Debug, Parser)]
 #[command(version, about = "Linux video wallpaper service")]
 struct Cli {
@@ -112,7 +114,7 @@ fn main() -> Result<()> {
             .context("failed to create wallpaper playback thread")?;
         let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
         return server::serve(
-            "127.0.0.1:0",
+            MANAGEMENT_BIND,
             web_root,
             server::ApiState::new(
                 shared_config,
@@ -177,7 +179,15 @@ fn resolve_web_root(configured: Option<OsString>) -> PathBuf {
     if development.is_dir() {
         return development;
     }
-    PathBuf::from("/usr/share/better-wallpaper/web")
+    user_web_root(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
+}
+
+fn user_web_root(xdg_data_home: Option<OsString>, home: Option<OsString>) -> PathBuf {
+    xdg_data_home
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| PathBuf::from(home).join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from(".local/share"))
+        .join("better-wallpaper/web")
 }
 
 fn run_playback(
@@ -241,8 +251,34 @@ fn run_playback(
         } else {
             info!("restore_on_start=false, niri backend will not auto-play");
         }
+    } else if backend == BackendKind::Kde {
+        // Plasma owns the wallpaper surface and reads playback state from the local API. Keep the
+        // supervisor alive so pause/resume and config reload commands remain effective.
+        playback::run_kde_controlled(control);
     } else {
-        warn!(backend = ?backend, "desktop backend not implemented; only config and backend selection completed");
+        warn!(backend = ?backend, "desktop backend is unavailable");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, path::PathBuf};
+
+    use super::user_web_root;
+
+    #[test]
+    fn defaults_web_root_to_user_data_directory() {
+        assert_eq!(
+            user_web_root(None, Some(OsString::from("/home/user"))),
+            PathBuf::from("/home/user/.local/share/better-wallpaper/web")
+        );
+        assert_eq!(
+            user_web_root(
+                Some(OsString::from("/home/user/.data")),
+                Some(OsString::from("/ignored"))
+            ),
+            PathBuf::from("/home/user/.data/better-wallpaper/web")
+        );
+    }
 }

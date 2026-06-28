@@ -3,13 +3,12 @@
 import QtQuick
 import QtQuick.Window
 import QtMultimedia
-import QtCore
 import org.kde.plasma.plasmoid
 
 WallpaperItem {
     id: root
 
-    property string daemonUrl: ""
+    readonly property string daemonUrl: "http://127.0.0.1:43129"
     readonly property string outputName: Screen.name
     property bool wallpaperEnabled: false
     property bool wallpaperPaused: false
@@ -18,8 +17,7 @@ WallpaperItem {
 
     Component.onCompleted: {
         console.info("[Better Wallpaper] Plasma wallpaper instance created for output " + outputName)
-        discoverDaemon()
-        if (visible && daemonUrl !== "")
+        if (visible)
             refreshConfig()
     }
     Component.onDestruction: console.info("[Better Wallpaper] Plasma wallpaper instance destroyed")
@@ -35,10 +33,6 @@ WallpaperItem {
     }
 
     function refreshConfig() {
-        if (daemonUrl === "") {
-            discoverDaemon()
-            return
-        }
         const request = new XMLHttpRequest()
         request.open("GET", daemonUrl + "/api/v1/plasma/config?output=" + encodeURIComponent(outputName))
         request.onreadystatechange = function() {
@@ -50,7 +44,14 @@ WallpaperItem {
                 player.stop()
                 return
             }
-            const config = JSON.parse(request.responseText)
+            let config
+            try {
+                config = JSON.parse(request.responseText)
+            } catch (error) {
+                console.error("[Better Wallpaper] Plasma config response is invalid JSON: " + error)
+                player.stop()
+                return
+            }
             sendHeartbeat()
             wallpaperEnabled = config.enabled
             wallpaperPaused = config.paused
@@ -81,31 +82,6 @@ WallpaperItem {
             }
         }
         request.send()
-    }
-
-    function discoverDaemon() {
-        const runtimePath = StandardPaths.writableLocation(StandardPaths.RuntimeLocation)
-        const homePath = StandardPaths.writableLocation(StandardPaths.HomeLocation)
-        const candidates = [runtimePath + "/better-wallpaper/endpoint",
-                            homePath + "/.better-wallpaper/better-wallpaper/endpoint"]
-        for (let index = 0; index < candidates.length; ++index) {
-            const request = new XMLHttpRequest()
-            request.open("GET", "file://" + candidates[index], false)
-            try {
-                request.send()
-                const endpoint = request.responseText.trim()
-                if (endpoint.indexOf("http://127.0.0.1:") === 0) {
-                    if (daemonUrl !== endpoint)
-                        console.info("[Better Wallpaper] Discovered daemon endpoint " + endpoint)
-                    daemonUrl = endpoint
-                    return
-                }
-            } catch (error) {
-                // The daemon may still be starting; the refresh timer will retry discovery.
-            }
-        }
-        console.warn("[Better Wallpaper] Daemon endpoint discovery file is unavailable")
-        daemonUrl = ""
     }
 
     function sendHeartbeat() {

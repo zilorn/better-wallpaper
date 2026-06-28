@@ -6,6 +6,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+ExecStartPre=/usr/bin/test -f @PREFIX@/share/better-wallpaper/web/index.html
+ExecStartPre=/usr/bin/test -f @PREFIX@/share/plasma/wallpapers/org.better-wallpaper/contents/ui/main.qml
 ExecStart=@PREFIX@/bin/better-wallpaper-daemon
 Environment=BETTER_WALLPAPER_WEB_ROOT=@PREFIX@/share/better-wallpaper/web
 Restart=on-failure
