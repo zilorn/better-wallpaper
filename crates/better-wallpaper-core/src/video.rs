@@ -8,12 +8,18 @@ pub enum VideoError {
     Open { path: String, message: String },
     #[error("No decodable video stream")]
     NoVideoStream,
+    #[error("No decodable audio stream")]
+    NoAudioStream,
     #[error("Failed to decode video frame: {0}")]
     Decode(String),
+    #[error("Failed to decode audio samples: {0}")]
+    AudioDecode(String),
     #[error("Video playback finished")]
     EndOfStream,
     #[error("Failed to seek to start of video: {0}")]
     Seek(String),
+    #[error("Failed to seek to start of audio: {0}")]
+    AudioSeek(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -45,6 +45,7 @@ impl WallpaperTray {
             warn!(%error, "failed to persist tray mute state");
             return;
         }
+        self.playback.request_reload();
         info!(muted = config.wallpaper.muted, "tray mute state updated");
     }
 

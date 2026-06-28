@@ -57,7 +57,10 @@ WallpaperItem {
             videoOutput.fillMode = config.fill_mode === "contain"
                 ? VideoOutput.PreserveAspectFit
                 : config.fill_mode === "stretch" ? VideoOutput.Stretch : VideoOutput.PreserveAspectCrop
-            player.audioOutput.muted = config.muted
+            if (player.audioOutput.muted !== config.muted) {
+                player.audioOutput.muted = config.muted
+                console.info("[Better Wallpaper] Plasma audio mute state changed: " + config.muted)
+            }
             player.loops = config.loop_playback ? MediaPlayer.Infinite : 1
             const nextUrl = daemonUrl + config.media_url + "?revision=" + config.revision
             if (wallpaperEnabled && (configRevision !== String(config.revision) || player.source.toString() === "")) {

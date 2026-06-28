@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::{debug, info};
+use zerocopy::IntoBytes;
 
 #[link(name = "wayland-egl")]
 unsafe extern "C" {
@@ -161,11 +162,8 @@ impl EglRenderer {
         unsafe {
             self.gl.use_program(Some(self.program));
             self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.buffer));
-            self.gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                std::slice::from_raw_parts(v.as_ptr().cast(), std::mem::size_of_val(&v)),
-                glow::DYNAMIC_DRAW,
-            );
+            self.gl
+                .buffer_data_u8_slice(glow::ARRAY_BUFFER, v.as_bytes(), glow::DYNAMIC_DRAW);
             for (i, off) in [(0, 0), (1, 8)] {
                 self.gl.enable_vertex_attrib_array(i);
                 self.gl

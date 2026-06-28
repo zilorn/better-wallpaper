@@ -13,3 +13,4 @@ wayland-client.workspace = true
 wayland-backend.workspace = true
 glow.workspace = true
 khronos-egl.workspace = true
+zerocopy.workspace = true

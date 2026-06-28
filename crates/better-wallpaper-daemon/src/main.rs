@@ -226,6 +226,7 @@ fn run_playback(
                 playback::run_niri_controlled(
                     video_path,
                     config.wallpaper.loop_playback,
+                    !config.wallpaper.muted,
                     matches!(
                         config.decode.hardware,
                         better_wallpaper_core::config::HardwareDecode::Auto

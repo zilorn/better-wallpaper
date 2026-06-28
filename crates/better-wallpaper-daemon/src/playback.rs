@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -11,8 +11,11 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_core::{DecodeOptions, VideoDecoder, VideoError, config::FillMode};
-use better_wallpaper_ffmpeg::{FfmpegDecoder, FrameDecision, PlaybackClock, frame_queue};
+use better_wallpaper_ffmpeg::{
+    AudioInfo, FfmpegAudioDecoder, FfmpegDecoder, FrameDecision, PlaybackClock, frame_queue,
+};
 use better_wallpaper_wayland::NiriBackend;
+use rodio::{OutputStream, OutputStreamBuilder, Sink, Source};
 use tracing::{debug, info, warn};
 
 const FRAME_QUEUE_CAPACITY: usize = 3;
@@ -20,6 +23,111 @@ const DROP_THRESHOLD: Duration = Duration::from_millis(100);
 const STATS_INTERVAL: u64 = 300;
 const REALTIME_STATS_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+struct AudioPlayback {
+    _stream: OutputStream,
+    sink: Sink,
+    paused: bool,
+}
+
+struct FfmpegAudioSource {
+    decoder: FfmpegAudioDecoder,
+    info: AudioInfo,
+    pending: std::vec::IntoIter<f32>,
+    loop_playback: bool,
+    failed: bool,
+}
+
+impl FfmpegAudioSource {
+    fn open(path: &Path, loop_playback: bool) -> Result<Self> {
+        let (decoder, info) = FfmpegAudioDecoder::open(path)?;
+        Ok(Self {
+            decoder,
+            info,
+            pending: Vec::new().into_iter(),
+            loop_playback,
+            failed: false,
+        })
+    }
+}
+
+impl Iterator for FfmpegAudioSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(sample) = self.pending.next() {
+                return Some(sample);
+            }
+            if self.failed {
+                return None;
+            }
+            match self.decoder.next_samples() {
+                Ok(samples) => self.pending = samples.into_iter(),
+                Err(VideoError::EndOfStream) if self.loop_playback => {
+                    if let Err(error) = self.decoder.seek_start() {
+                        warn!(%error, "niri audio loop seek failed");
+                        self.failed = true;
+                    }
+                }
+                Err(VideoError::EndOfStream) => return None,
+                Err(error) => {
+                    warn!(%error, "niri audio decoding stopped");
+                    self.failed = true;
+                }
+            }
+        }
+    }
+}
+
+impl Source for FfmpegAudioSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn channels(&self) -> u16 {
+        self.info.channels
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.info.sample_rate
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
+}
+
+impl AudioPlayback {
+    fn open(path: &Path, loop_playback: bool) -> Result<Self> {
+        let stream = OutputStreamBuilder::open_default_stream()
+            .context("failed to open default audio output")?;
+        let sink = Sink::connect_new(stream.mixer());
+        let source = FfmpegAudioSource::open(path, loop_playback)
+            .with_context(|| format!("failed to decode audio source {}", path.display()))?;
+        sink.append(source);
+        sink.pause();
+        info!(path = %path.display(), loop_playback, "niri audio output initialized");
+        Ok(Self {
+            _stream: stream,
+            sink,
+            paused: true,
+        })
+    }
+
+    fn set_paused(&mut self, paused: bool) {
+        if self.paused == paused {
+            return;
+        }
+        if paused {
+            self.sink.pause();
+        } else {
+            self.sink.play();
+        }
+        self.paused = paused;
+        info!(paused, "niri audio pause state updated");
+    }
+}
 
 /// 可跨线程复制的播放控制句柄。解码和消费端都定期检查取消状态，避免队列满时无法退出。
 #[derive(Clone, Debug, Default)]
@@ -165,6 +273,7 @@ pub fn run_headless_for(
 pub fn run_niri(
     path: PathBuf,
     loop_playback: bool,
+    play_audio: bool,
     hardware: bool,
     fill_mode: FillMode,
     output_names: &[String],
@@ -172,6 +281,7 @@ pub fn run_niri(
     run_niri_controlled(
         path,
         loop_playback,
+        play_audio,
         hardware,
         fill_mode,
         output_names,
@@ -183,6 +293,7 @@ pub fn run_niri(
 pub fn run_niri_controlled(
     path: PathBuf,
     loop_playback: bool,
+    play_audio: bool,
     hardware: bool,
     fill_mode: FillMode,
     output_names: &[String],
@@ -264,6 +375,18 @@ pub fn run_niri_controlled(
         .recv()
         .context("niri decode thread did not return media info")?
         .map_err(anyhow::Error::msg)?;
+    let mut audio = if play_audio {
+        match AudioPlayback::open(&path, loop_playback) {
+            Ok(audio) => Some(audio),
+            Err(error) => {
+                warn!(%error, path = %path.display(), "niri audio unavailable; continuing with video only");
+                None
+            }
+        }
+    } else {
+        info!(path = %path.display(), "niri audio disabled by configuration");
+        None
+    };
     info!(
         path = %path.display(),
         outputs = ?backends
@@ -289,6 +412,9 @@ pub fn run_niri_controlled(
             break;
         }
         if control.is_paused() {
+            if let Some(audio) = audio.as_mut() {
+                audio.set_paused(true);
+            }
             for backend in &mut backends {
                 backend.dispatch_pending().with_context(|| {
                     format!(
@@ -300,6 +426,9 @@ pub fn run_niri_controlled(
             clock = None;
             thread::sleep(CONTROL_POLL_INTERVAL);
             continue;
+        }
+        if first_frame_presented && let Some(audio) = audio.as_mut() {
+            audio.set_paused(false);
         }
         match frames_rx.recv_timeout(CONTROL_POLL_INTERVAL) {
             Ok(frame) => {
@@ -359,6 +488,9 @@ pub fn run_niri_controlled(
                                     .expect("clock initialized")
                                     .reset(Instant::now(), pts);
                                 first_frame_presented = true;
+                                if let Some(audio) = audio.as_mut() {
+                                    audio.set_paused(false);
+                                }
                                 info!(
                                     present_ms = present_elapsed.as_millis(),
                                     "first frame submitted, playback clock excludes backend initialization time"

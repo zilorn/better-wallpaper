@@ -37,11 +37,12 @@ cargo run --release -p better-wallpaper-daemon -- \
   --backend headless --no-ui --run-for-seconds 1800
 ```
 
-构建解码模块需要系统提供 `libavformat`、`libavcodec`、`libavutil`、`libswscale`
-及 Clang。可使用解码探针验证本地视频和循环 seek：
+构建解码模块需要系统提供 `libavformat`、`libavcodec`、`libavutil`、`libswscale`、
+`libswresample` 及 Clang。可使用解码探针验证本地视频、音频和循环 seek：
 
 ```bash
 cargo run -p better-wallpaper-ffmpeg --example decode_probe -- /path/to/video.mp4
+cargo run -p better-wallpaper-ffmpeg --example audio_probe -- /path/to/video.mp4
 ```
 
 在 niri 会话中会自动探测 NVIDIA Vulkan 设备，并校验 DMA-BUF 导入/导出与外部同步扩展。需要禁止 CPU 路径降级时使用：

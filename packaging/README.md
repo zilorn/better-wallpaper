@@ -30,19 +30,24 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 
 - Rust stable、Cargo、Clang 和 `pkg-config`
 - Bun（只用于构建 Web UI）
-- FFmpeg 开发库：`libavformat`、`libavcodec`、`libavutil`、`libswscale`
+- FFmpeg 开发库：`libavformat`、`libavcodec`、`libavutil`、`libswscale`、`libswresample`
+- ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
 - Wayland 客户端开发文件
 
 Debian/Ubuntu 的 FFmpeg 开发包通常为 `libavformat-dev libavcodec-dev libavutil-dev
-libswscale-dev`；Fedora 通常由启用的 FFmpeg 仓库提供对应 `ffmpeg-free-devel` 或
-`ffmpeg-devel` 包。包名随发行版和仓库变化，构建时以 `pkg-config` 检测结果为准。
+libswscale-dev libswresample-dev`，ALSA 开发包为 `libasound2-dev`；Fedora 通常由启用的 FFmpeg 仓库提供对应
+`ffmpeg-free-devel` 或 `ffmpeg-devel` 包，ALSA 开发包为 `alsa-lib-devel`。包名随发行版和仓库
+变化，构建时以 `pkg-config` 检测结果为准。
 
 ## 运行时依赖
 
-daemon 动态链接构建环境中的 FFmpeg、Wayland、Vulkan loader 和系统 C/C++ 运行库。
+daemon 动态链接构建环境中的 FFmpeg、ALSA、Wayland、Vulkan loader 和系统 C/C++ 运行库。
 发行包必须声明由 `ldd`/发行版依赖生成器得到的精确 ABI 依赖，不能只复制可执行文件。
 Web UI 已编译为静态文件，运行时不需要 Bun。NVIDIA/Vulkan 不可用时会记录降级原因并使用
 CPU `wl_shm` 路径。
+
+niri 后端通过系统默认音频设备播放视频音轨；暂停、恢复、循环和配置重载会同步作用于音频。
+媒体没有可解码音轨或音频设备不可用时，daemon 会记录英文警告并继续无声播放视频。
 
 Plasma 插件依赖 Qt 6 Multimedia QML 模块。安装后在桌面壁纸设置的“壁纸类型”中选择
 “Better Wallpaper 视频壁纸”；插件从仅监听 loopback 的 daemon 媒体接口读取当前视频。
