@@ -71,6 +71,7 @@ pub struct FfmpegDecoder {
     time_base: Rational,
     draining: bool,
     hardware_requested: bool,
+    max_height: u32,
     hardware_active: Option<bool>,
     perf_started: Instant,
     perf_frames: u64,
@@ -93,6 +94,7 @@ impl Default for FfmpegDecoder {
             },
             draining: false,
             hardware_requested: false,
+            max_height: 0,
             hardware_active: None,
             perf_started: Instant::now(),
             perf_frames: 0,
@@ -162,6 +164,16 @@ impl FfmpegDecoder {
         };
 
         let source_format = source.format();
+        let target_height = if self.max_height > 0 {
+            self.max_height.min(source.height())
+        } else {
+            source.height()
+        };
+        let target_width = if target_height < source.height() {
+            (source.width() as u64 * target_height as u64 / source.height() as u64) as u32
+        } else {
+            source.width()
+        };
         if self.scaler_source != Some(source_format) {
             self.scaler = Some(
                 ffmpeg::software::scaling::Context::get(
@@ -169,11 +181,8 @@ impl FfmpegDecoder {
                     source.width(),
                     source.height(),
                     ffmpeg::format::Pixel::RGBA,
-                    source.width(),
-                    source.height(),
-                    // 这里只负责 YUV -> RGBA 色彩转换，几何尺寸保持不变。
-                    // BILINEAR 会启用无意义的高质量缩放路径；FAST_BILINEAR
-                    // 在同尺寸转换时显著减少 swscale 的 CPU 开销。
+                    target_width,
+                    target_height,
                     ffmpeg::software::scaling::Flags::FAST_BILINEAR,
                 )
                 .map_err(|error| {
@@ -187,8 +196,8 @@ impl FfmpegDecoder {
             );
         }
         let scaler = self.scaler.as_mut().expect("scaler was just initialized");
-        let width = source.width();
-        let height = source.height();
+        let width = target_width;
+        let height = target_height;
         let row_bytes = width as usize * 4;
         let mut pixels = vec![0; row_bytes * height as usize];
         let convert_started = Instant::now();
@@ -295,6 +304,7 @@ impl VideoDecoder for FfmpegDecoder {
         self.time_base = time_base;
         self.draining = false;
         self.hardware_requested = options.hardware;
+        self.max_height = options.max_height;
         self.hardware_active = None;
         info!(
             path = %path.display(), width, height, frame_rate = ?rate,

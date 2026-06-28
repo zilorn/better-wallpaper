@@ -25,7 +25,9 @@ cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
 `/api/v1/plasma/config` 按 Plasma 屏幕名同步启用状态和播放参数，再通过
-`/api/v1/wallpaper/media` 播放当前配置的视频；daemon 或 plasmashell 重启后会自动重连恢复。
+共享内存三缓冲接收 Rust/FFmpeg 已解码的 RGBA 帧。原生 Qt Quick 渲染项只上传完整发布的
+最新帧，因此循环 seek 期间会保留上一帧，不经过 Qt Multimedia 的 EOS 清屏；daemon 或
+plasmashell 重启后会自动重连恢复。
 插件实例会发送本机心跳，管理界面的诊断页可查看当前在线的 Plasma 屏幕实例。
 Plasma 在活动切换时隐藏壁纸实例后，视频会立即暂停并停止请求；实例重新可见时会同步最新配置并恢复。
 配置更新由 Rust 端校验并原子写入；保存成功后会安全停止当前解码并用新配置重建播放管线。
@@ -63,8 +65,8 @@ cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui
 
 ## 安装
 
-项目仅支持 Plasma 6。插件运行时需要 Qt 6 Multimedia QML 模块；具体包名因发行版而异，
-例如 Debian/Ubuntu 通常为 `qml6-module-qtmultimedia`。
+项目仅支持 Plasma 6。构建 Plasma 共享帧插件需要 CMake 以及 Qt 6 Core、Qml、Quick 开发包。
+运行时不再依赖 Qt Multimedia QML 模块。
 
 ### 完整安装（推荐）
 

@@ -23,6 +23,10 @@ log "构建 Web 静态资源"
     bun install --frozen-lockfile
     bun run build
 )
+log "构建 Plasma 共享帧插件"
+cmake -S "$PROJECT_ROOT/kde/frame-plugin" -B "$PROJECT_ROOT/target/plasma-plugin" \
+    -DCMAKE_BUILD_TYPE=Release
+cmake --build "$PROJECT_ROOT/target/plasma-plugin" --parallel
 
 log "安装到临时 staging: $STAGE"
 DESTDIR="$STAGE" PREFIX=/usr SKIP_BUILD=1 "$SCRIPT_DIR/install.sh"
@@ -39,6 +43,8 @@ test -f "$UNIT"
 test -f "$WEB"
 test -f "$PLASMA/metadata.json"
 test -f "$PLASMA/contents/ui/main.qml"
+test -x "$PLASMA/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so"
+test -z "$(find "$STAGE" -name '*.new.*' -print -quit)"
 grep -q '^ExecStart=/usr/bin/better-wallpaper-daemon$' "$UNIT"
 grep -q '^ExecStartPre=/usr/bin/test -f /usr/share/better-wallpaper/web/index.html$' "$UNIT"
 grep -q '^Environment=BETTER_WALLPAPER_WEB_ROOT=/usr/share/better-wallpaper/web$' "$UNIT"
@@ -60,6 +66,11 @@ if ldd "$DAEMON" | grep -q 'not found'; then
     exit 1
 fi
 qmllint "$PLASMA/contents/ui/main.qml"
+if ldd "$PLASMA/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so" | grep -q 'not found'; then
+    log "Plasma 帧插件存在缺失的动态链接库"
+    ldd "$PLASMA/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so"
+    exit 1
+fi
 
 log "验证 staging 卸载"
 DESTDIR="$STAGE" PREFIX=/usr "$SCRIPT_DIR/uninstall.sh"

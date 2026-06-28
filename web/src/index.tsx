@@ -1,12 +1,11 @@
-import { A, Navigate, Route, Router, useLocation } from "@solidjs/router";
+import { A, Navigate, Route, Router } from "@solidjs/router";
 import {
   For,
   ParentProps,
   Show,
   createContext,
-  createEffect,
   createMemo,
-  onCleanup,
+  onMount, onCleanup,
   createResource,
   createSignal,
   useContext,
@@ -35,7 +34,7 @@ type Config = {
     fill_mode: string;
     fps_limit: number;
   };
-  decode: { hardware: string };
+  decode: { hardware: string; max_height: number };
   outputs: Output[];
 };
 type LibraryEntry = { name: string; path: string; size_bytes: number; modified_unix_seconds: number | null };
@@ -145,8 +144,6 @@ function NavigationIcon(props: { name: IconName }) {
 
 function AppShell(props: ParentProps) {
   const state = createAppState();
-  const location = useLocation();
-  createEffect(() => console.info(`[Better Wallpaper] 路由切换：${location.pathname}`));
   return <AppContext.Provider value={state}>
     <main class="shell">
       <aside class="sidebar">
@@ -156,6 +153,7 @@ function AppShell(props: ParentProps) {
           <A href="/displays" activeClass="active"><NavigationIcon name="displays" /><span>显示器</span></A>
           <A href="/libraries" activeClass="active"><NavigationIcon name="libraries" /><span>壁纸库</span></A>
           <A href="/settings" activeClass="active"><NavigationIcon name="settings" /><span>设置与诊断</span></A>
+          <A href="/logs" activeClass="active"><NavigationIcon name="settings" /><span>日志</span></A>
         </nav>
       </aside>
       <section class="content"><Show when={state.notice()}><div class="notice" role="status">{state.notice()}</div></Show>{props.children}</section>
@@ -216,7 +214,7 @@ function SettingsPage() {
   const state = useApp();
   const updateGeneral = (key: keyof Config["general"], value: string | boolean) => state.updateConfig((current) => ({ ...current, general: { ...current.general, [key]: value } }));
   return <><PageHeader title="设置与诊断" description="调整启动和解码选项，检查桌面集成状态。" /><Show when={state.config()} fallback={<Loading />}>{(config) => <div class="settings-grid">
-    <section class="page-panel"><h3>运行设置</h3><label>显示后端<select value={config().general.backend} onChange={(event) => updateGeneral("backend", event.currentTarget.value)}><option value="auto">自动检测</option><option value="niri">niri</option><option value="kde">KDE Plasma</option><option value="headless">Headless</option></select></label><label>硬件解码<select value={config().decode.hardware} onChange={(event) => state.updateConfig((current) => ({ ...current, decode: { hardware: event.currentTarget.value } }))}><option value="auto">自动</option><option value="software">软件解码</option></select></label><label>日志级别<select value={config().general.log_level} onChange={(event) => updateGeneral("log_level", event.currentTarget.value)}><option value="error">Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="trace">Trace</option></select></label><label class="check"><input type="checkbox" checked={config().general.restore_on_start} onChange={(event) => updateGeneral("restore_on_start", event.currentTarget.checked)} />启动时恢复播放</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存设置</button></section>
+    <section class="page-panel"><h3>运行设置</h3><label>显示后端<select value={config().general.backend} onChange={(event) => updateGeneral("backend", event.currentTarget.value)}><option value="auto">自动检测</option><option value="niri">niri</option><option value="kde">KDE Plasma</option><option value="headless">Headless</option></select></label><label>硬件解码<select value={config().decode.hardware} onChange={(event) => state.updateConfig((current) => ({ ...current, decode: { ...current.decode, hardware: event.currentTarget.value } }))}><option value="auto">自动</option><option value="software">软件解码</option></select></label><label>日志级别<select value={config().general.log_level} onChange={(event) => updateGeneral("log_level", event.currentTarget.value)}><option value="error">Error</option><option value="warn">Warn</option><option value="info">Info</option><option value="debug">Debug</option><option value="trace">Trace</option></select></label><label class="check"><input type="checkbox" checked={config().general.restore_on_start} onChange={(event) => updateGeneral("restore_on_start", event.currentTarget.checked)} />启动时恢复播放</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存设置</button></section>
     <section class="page-panel"><h3>诊断</h3><Show when={state.status()} fallback={<Loading />}>{(status) => <div class="diagnostics"><Diagnostic label="桌面环境" value={status().desktop} /><Diagnostic label="显示后端" value={status().backend} /><Diagnostic label="播放状态" value={playbackLabel(status().playback)} /><Diagnostic label="Plasma 实例" value={status().plasma_instances.map((instance) => instance.output).join("、") || "无"} /><Diagnostic label="检测依据" value={status().evidence} /><Diagnostic label="候选桌面" value={status().candidates.join("、") || "无"} /><Diagnostic label="API 版本" value={String(status().api_version)} /></div>}</Show></section>
   </div>}</Show></>;
 }
@@ -227,6 +225,40 @@ function fileName(path: string | null) { return path?.split("/").filter(Boolean)
 function playbackLabel(playback?: PlaybackStatus) { return !playback ? "未知" : playback.cancelled ? "已停止" : !playback.running ? "空闲" : playback.paused ? "已暂停" : "播放中"; }
 function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 
+function LogsPage() {
+  const [logLines, setLogLines] = createSignal<string[]>([]);
+  const [paused, setPaused] = createSignal(false);
+  let logContainer: HTMLDivElement | undefined;
+  let logTimerId: number | undefined;
+  onMount(() => {
+    const fetchLogs = async () => {
+      try {
+        const data = await requestJson<{ lines: string[] }>('/api/v1/logs');
+        setLogLines(data.lines);
+        if (!paused() && logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+      } catch { /* network errors ignored */ }
+    };
+    fetchLogs();
+    logTimerId = window.setInterval(fetchLogs, 1000);
+  });
+  onCleanup(() => { if (logTimerId !== undefined) window.clearInterval(logTimerId); });
+  return <>
+    <PageHeader title="日志" description="实时查看 Better Wallpaper 服务日志，用于诊断播放性能问题。" />
+    <div class="log-page-toolbar">
+      <span>{logLines().length} 条日志</span>
+      <div class="log-page-actions">
+        <button class="command secondary" onClick={() => setPaused(!paused())}>{paused() ? "恢复滚动" : "暂停滚动"}</button>
+        <button class="command secondary" onClick={() => setLogLines([])}>清除</button>
+      </div>
+    </div>
+    <div class="log-page-list" ref={logContainer}>
+      <Show when={logLines().length > 0} fallback={<div class="empty">等待日志输出…</div>}>
+        <For each={logLines()}>{(line) => <code>{line}</code>}</For>
+      </Show>
+    </div>
+  </>;
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("缺少 #root 挂载节点");
 render(() => <Router root={AppShell}>
@@ -235,5 +267,6 @@ render(() => <Router root={AppShell}>
   <Route path="/displays" component={DisplaysPage} />
   <Route path="/libraries" component={LibrariesPage} />
   <Route path="/settings" component={SettingsPage} />
+  <Route path="/logs" component={LogsPage} />
   <Route path="*" component={() => <Navigate href="/wallpapers" />} />
 </Router>, root);

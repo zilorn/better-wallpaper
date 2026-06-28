@@ -10,7 +10,7 @@ use better_wallpaper_core::{
     BackendKind, ConfigStore,
     desktop::{ProcessEnvironment, detect_desktop, select_backend},
 };
-use better_wallpaper_daemon::{playback, server};
+use better_wallpaper_daemon::{playback, server, LogStore};
 use better_wallpaper_renderer::NvidiaVulkanContext;
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
@@ -58,8 +58,10 @@ impl From<CliBackend> for BackendKind {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let log_store = LogStore::new(2000);
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_new(&cli.log_level).context("invalid --log-level")?)
+        .with_writer(log_store.clone())
         .with_target(true)
         .init();
     std::panic::set_hook(Box::new(|panic| error!(%panic, "process panicked")));
@@ -123,6 +125,7 @@ fn main() -> Result<()> {
                 backend,
                 playback_control,
                 home,
+                log_store,
             ),
         );
     }
@@ -196,6 +199,7 @@ fn run_playback(
     run_for_seconds: Option<u64>,
     control: playback::PlaybackControl,
 ) -> Result<()> {
+    let max_height = config.decode.max_height;
     if backend == BackendKind::Headless {
         if config.general.restore_on_start {
             if let Some(video_path) = config.wallpaper.path {
@@ -208,6 +212,7 @@ fn run_playback(
                         video_path,
                         config.wallpaper.loop_playback,
                         hardware,
+                        max_height,
                         Duration::from_secs(seconds),
                     )?;
                 } else {
@@ -215,6 +220,7 @@ fn run_playback(
                         video_path,
                         config.wallpaper.loop_playback,
                         hardware,
+                        max_height,
                         control,
                     )?;
                 }
@@ -241,6 +247,7 @@ fn run_playback(
                         config.decode.hardware,
                         better_wallpaper_core::config::HardwareDecode::Auto
                     ),
+                    max_height,
                     config.wallpaper.fill_mode,
                     &output_names,
                     control,
@@ -252,9 +259,27 @@ fn run_playback(
             info!("restore_on_start=false, niri backend will not auto-play");
         }
     } else if backend == BackendKind::Kde {
-        // Plasma owns the wallpaper surface and reads playback state from the local API. Keep the
-        // supervisor alive so pause/resume and config reload commands remain effective.
-        playback::run_kde_controlled(control);
+        if config.general.restore_on_start {
+            let frame_path = better_wallpaper_daemon::plasma_frames::frame_path(&config);
+            if let Some(video_path) = config.wallpaper.path {
+                playback::run_kde_frames_controlled(
+                    video_path,
+                    frame_path,
+                    config.wallpaper.loop_playback,
+                    !config.wallpaper.muted,
+                    matches!(
+                        config.decode.hardware,
+                        better_wallpaper_core::config::HardwareDecode::Auto
+                    ),
+                    max_height,
+                    control,
+                )?;
+            } else {
+                info!("wallpaper.path not configured, KDE backend idle");
+            }
+        } else {
+            info!("restore_on_start=false, KDE backend will not auto-play");
+        }
     } else {
         warn!(backend = ?backend, "desktop backend is unavailable");
     }

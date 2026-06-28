@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::plasma_frames::PlasmaFramePublisher;
 use anyhow::{Context, Result, bail};
 use better_wallpaper_core::{DecodeOptions, VideoDecoder, VideoError, config::FillMode};
 use better_wallpaper_ffmpeg::{
@@ -27,11 +28,117 @@ const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// Keep the daemon-side Plasma control plane alive while Plasma owns media rendering.
 /// The loop exits on either process cancellation or a configuration reload request.
 pub fn run_kde_controlled(control: PlaybackControl) {
-    info!("Plasma playback control plane started");
+    info!("Plasma playback control plane started without a configured video");
     while !control.is_cancelled() {
         thread::sleep(CONTROL_POLL_INTERVAL);
     }
     info!("Plasma playback control plane stopped");
+}
+
+pub fn run_kde_frames_controlled(
+    path: PathBuf,
+    frame_path: PathBuf,
+    loop_playback: bool,
+    _play_audio: bool,
+    hardware: bool,
+    max_height: u32,
+    control: PlaybackControl,
+) -> Result<()> {
+    let mut decoder = FfmpegDecoder::new();
+    let media = decoder
+        .open(&path, DecodeOptions { hardware, max_height })
+        .with_context(|| format!("failed to open Plasma video {}", path.display()))?;
+    let mut publisher: Option<PlasmaFramePublisher> = None;
+    let mut clock: Option<PlaybackClock> = None;
+    let mut previous_pts = Duration::ZERO;
+    let mut loops = 0_u64;
+    let mut presented = 0_u64;
+    let mut dropped = 0_u64;
+    info!(path = %path.display(), frame_path = %frame_path.display(), width = media.width, height = media.height, "Plasma Rust frame playback started (audio handled by plugin)");
+
+    while !control.is_cancelled() {
+        if control.is_paused() {
+            clock = None;
+            thread::sleep(CONTROL_POLL_INTERVAL);
+            continue;
+        }
+        match decoder.next_frame() {
+            Ok(frame) => {
+                let pts = frame.presentation_time();
+                if publisher.is_none() {
+                    publisher = Some(PlasmaFramePublisher::create(
+                        &frame_path,
+                        &path,
+                        frame.width,
+                        frame.height,
+                        frame.stride,
+                    )?);
+                }
+                match clock.as_mut() {
+                    None => {
+                        clock = Some(PlaybackClock::new(Instant::now(), pts, DROP_THRESHOLD));
+                    }
+                    Some(clock) if pts < previous_pts => clock.reset(Instant::now(), pts),
+                    Some(_) => {}
+                }
+                previous_pts = pts;
+                loop {
+                    match clock
+                        .as_ref()
+                        .expect("Plasma clock initialized")
+                        .decide(Instant::now(), pts)
+                    {
+                        FrameDecision::Wait(duration) => {
+                            thread::sleep(duration.min(CONTROL_POLL_INTERVAL));
+                            if control.is_cancelled() || control.is_paused() {
+                                break;
+                            }
+                        }
+                        FrameDecision::Present => {
+                            publisher
+                                .as_mut()
+                                .expect("Plasma publisher initialized")
+                                .publish(&frame)?;
+                            presented += 1;
+                            break;
+                        }
+                        FrameDecision::Drop => {
+                            dropped += 1;
+                            clock
+                                .as_mut()
+                                .expect("Plasma clock initialized")
+                                .reset(Instant::now(), pts);
+                            publisher
+                                .as_mut()
+                                .expect("Plasma publisher initialized")
+                                .publish(&frame)?;
+                            presented += 1;
+                            if dropped == 1 || dropped % STATS_INTERVAL == 0 {
+                                warn!(
+                                    dropped,
+                                    pts_ms = pts.as_millis(),
+                                    "Plasma playback clock resynchronized to a late frame"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            Err(VideoError::EndOfStream) if loop_playback => {
+                decoder
+                    .seek_start()
+                    .context("Plasma loop playback seek failed")?;
+                loops += 1;
+                clock = None;
+                info!(loops, "Plasma decoder started a seamless loop");
+            }
+            Err(VideoError::EndOfStream) => break,
+            Err(error) => bail!(error),
+        }
+    }
+    info!(path = %path.display(), presented, dropped, loops, "Plasma Rust frame playback stopped");
+    Ok(())
 }
 
 struct AudioPlayback {
@@ -113,9 +220,10 @@ impl AudioPlayback {
         let stream = OutputStreamBuilder::open_default_stream()
             .context("failed to open default audio output")?;
         let sink = Sink::connect_new(stream.mixer());
-        let source = FfmpegAudioSource::open(path, loop_playback)
-            .with_context(|| format!("failed to decode audio source {}", path.display()))?;
-        sink.append(source);
+       let source = FfmpegAudioSource::open(path, loop_playback)
+           .with_context(|| format!("failed to decode audio source {}", path.display()))?
+            ;
+       sink.append(source);
         sink.pause();
         info!(path = %path.display(), loop_playback, "niri audio output initialized");
         Ok(Self {
@@ -134,8 +242,12 @@ impl AudioPlayback {
         } else {
             self.sink.play();
         }
-        self.paused = paused;
-        info!(paused, "niri audio pause state updated");
+       self.paused = paused;
+       info!(paused, "niri audio pause state updated");
+   }
+
+    fn get_pos(&self) -> Duration {
+        self.sink.get_pos()
     }
 }
 
@@ -244,8 +356,8 @@ impl NiriPerformanceWindow {
 }
 
 /// 运行软件解码和 headless 帧消费闭环。同步队列会在消费者落后时对解码线程施加背压。
-pub fn run_headless(path: PathBuf, loop_playback: bool, hardware: bool) -> Result<()> {
-    run_headless_controlled(path, loop_playback, hardware, PlaybackControl::default()).map(|_| ())
+pub fn run_headless(path: PathBuf, loop_playback: bool, hardware: bool, max_height: u32) -> Result<()> {
+    run_headless_controlled(path, loop_playback, hardware, max_height, PlaybackControl::default()).map(|_| ())
 }
 
 /// 在指定时间后通过正常取消路径结束播放，供稳定性测试和自动化验收使用。
@@ -253,6 +365,7 @@ pub fn run_headless_for(
     path: PathBuf,
     loop_playback: bool,
     hardware: bool,
+    max_height: u32,
     duration: Duration,
 ) -> Result<PlaybackStats> {
     let control = PlaybackControl::default();
@@ -271,7 +384,7 @@ pub fn run_headless_for(
         })
         .context("failed to create playback deadline thread")?;
 
-    let result = run_headless_controlled(path, loop_playback, hardware, control);
+    let result = run_headless_controlled(path, loop_playback, hardware, max_height, control);
     let _ = finished_tx.send(());
     timer
         .join()
@@ -285,6 +398,7 @@ pub fn run_niri(
     loop_playback: bool,
     play_audio: bool,
     hardware: bool,
+    max_height: u32,
     fill_mode: FillMode,
     output_names: &[String],
 ) -> Result<()> {
@@ -293,6 +407,7 @@ pub fn run_niri(
         loop_playback,
         play_audio,
         hardware,
+        max_height,
         fill_mode,
         output_names,
         PlaybackControl::default(),
@@ -305,6 +420,7 @@ pub fn run_niri_controlled(
     loop_playback: bool,
     play_audio: bool,
     hardware: bool,
+    max_height: u32,
     fill_mode: FillMode,
     output_names: &[String],
     control: PlaybackControl,
@@ -332,7 +448,7 @@ pub fn run_niri_controlled(
         .name("niri-video-decoder".into())
         .spawn(move || {
             let mut decoder = FfmpegDecoder::new();
-            let media = match decoder.open(&decode_path, DecodeOptions { hardware }) {
+            let media = match decoder.open(&decode_path, DecodeOptions { hardware, max_height }) {
                 Ok(media) => media,
                 Err(error) => {
                     let message =
@@ -413,7 +529,7 @@ pub fn run_niri_controlled(
     let mut presented = 0_u64;
     let mut dropped = 0_u64;
     let mut loops = 0_u64;
-    let mut first_frame_presented = false;
+   let mut first_frame_presented = false;
     let mut perf = NiriPerformanceWindow::new();
 
     loop {
@@ -433,7 +549,7 @@ pub fn run_niri_controlled(
                     )
                 })?;
             }
-            clock = None;
+           clock = None;
             thread::sleep(CONTROL_POLL_INTERVAL);
             continue;
         }
@@ -452,7 +568,7 @@ pub fn run_niri_controlled(
                     }
                     Some(_) => {}
                 }
-                previous_pts = pts;
+               previous_pts = pts;
                 loop {
                     match clock
                         .as_ref()
@@ -498,9 +614,9 @@ pub fn run_niri_controlled(
                                     .expect("clock initialized")
                                     .reset(Instant::now(), pts);
                                 first_frame_presented = true;
-                                if let Some(audio) = audio.as_mut() {
-                                    audio.set_paused(false);
-                                }
+                               if let Some(audio) = audio.as_mut() {
+                                   audio.set_paused(false);
+                               }
                                 info!(
                                     present_ms = present_elapsed.as_millis(),
                                     "first frame submitted, playback clock excludes backend initialization time"
@@ -568,6 +684,7 @@ pub fn run_headless_controlled(
     path: PathBuf,
     loop_playback: bool,
     hardware: bool,
+    max_height: u32,
     control: PlaybackControl,
 ) -> Result<PlaybackStats> {
     let (frames_tx, frames_rx) = frame_queue(FRAME_QUEUE_CAPACITY);
@@ -581,6 +698,7 @@ pub fn run_headless_controlled(
                 decode_path,
                 loop_playback,
                 hardware,
+                max_height,
                 frames_tx,
                 decode_control,
             );
@@ -668,12 +786,13 @@ fn decode_frames(
     path: PathBuf,
     loop_playback: bool,
     hardware: bool,
+    max_height: u32,
     sender: better_wallpaper_ffmpeg::FrameQueueSender,
     control: PlaybackControl,
 ) -> Result<()> {
     let mut decoder = FfmpegDecoder::new();
     let media = decoder
-        .open(&path, DecodeOptions { hardware })
+        .open(&path, DecodeOptions { hardware, max_height })
         .with_context(|| format!("failed to open video {}", path.display()))?;
     info!(path = %path.display(), width = media.width, height = media.height, duration_ms = ?media.duration.map(|value| value.as_millis()), frame_rate = ?media.frame_rate, queue_capacity = FRAME_QUEUE_CAPACITY, "headless decode started");
 

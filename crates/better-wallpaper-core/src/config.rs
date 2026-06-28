@@ -131,6 +131,7 @@ impl Default for WallpaperConfig {
 #[serde(default)]
 pub struct DecodeConfig {
     pub hardware: HardwareDecode,
+    pub max_height: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

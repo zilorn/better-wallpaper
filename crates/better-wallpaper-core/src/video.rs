@@ -69,6 +69,8 @@ impl DecodedFrame {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DecodeOptions {
     pub hardware: bool,
+    /// 解码输出最大高度（px），0 表示不限制
+    pub max_height: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]

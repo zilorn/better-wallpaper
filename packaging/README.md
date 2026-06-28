@@ -49,8 +49,9 @@ CPU `wl_shm` 路径。
 niri 后端通过系统默认音频设备播放视频音轨；暂停、恢复、循环和配置重载会同步作用于音频。
 媒体没有可解码音轨或音频设备不可用时，daemon 会记录英文警告并继续无声播放视频。
 
-Plasma 插件依赖 Qt 6 Multimedia QML 模块。安装后在桌面壁纸设置的“壁纸类型”中选择
-“Better Wallpaper 视频壁纸”；插件从仅监听 loopback 的 daemon 媒体接口读取当前视频。
+Plasma 插件构建依赖 CMake 以及 Qt 6 Core、Qml、Quick 开发包。安装后在桌面壁纸设置的
+“壁纸类型”中选择“Better Wallpaper 视频壁纸”；Rust daemon 通过共享内存三缓冲发布
+FFmpeg 解码帧，原生 Qt Quick 插件负责纹理显示。
 
 服务日志写入 systemd journal：
 

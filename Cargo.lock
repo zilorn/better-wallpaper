@@ -173,6 +173,7 @@ dependencies = [
  "better-wallpaper-wayland",
  "clap",
  "ksni",
+ "memmap2",
  "rodio",
  "serde",
  "serde_json",
@@ -208,6 +209,7 @@ dependencies = [
  "anyhow",
  "better-wallpaper-core",
  "glow",
+ "gpu-renderer",
  "khronos-egl",
  "smithay-client-toolkit",
  "tracing",
@@ -691,6 +693,15 @@ dependencies = [
  "slotmap",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "gpu-renderer"
+version = "0.1.0"
+dependencies = [
+ "better-wallpaper-core",
+ "glow",
+ "tracing",
 ]
 
 [[package]]

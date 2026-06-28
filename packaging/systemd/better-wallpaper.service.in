@@ -8,6 +8,7 @@ PartOf=graphical-session.target
 Type=simple
 ExecStartPre=/usr/bin/test -f @PREFIX@/share/better-wallpaper/web/index.html
 ExecStartPre=/usr/bin/test -f @PREFIX@/share/plasma/wallpapers/org.better-wallpaper/contents/ui/main.qml
+ExecStartPre=/usr/bin/test -f @PREFIX@/share/plasma/wallpapers/org.better-wallpaper/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so
 ExecStart=@PREFIX@/bin/better-wallpaper-daemon
 Environment=BETTER_WALLPAPER_WEB_ROOT=@PREFIX@/share/better-wallpaper/web
 Restart=on-failure

@@ -9,7 +9,8 @@ Better Wallpaper：Linux 视频壁纸程序，支持niri，Plasma
 
 ## 要求
 
-- 写日志以便跟踪问题，使用英语日志。
+- 写日志以便跟踪问题，使用英语日志（无需写web路由访问日志）。
+- 安装脚本在`packaging/install.sh`。
 
 ## 目标
 

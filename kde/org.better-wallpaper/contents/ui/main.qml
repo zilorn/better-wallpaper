@@ -2,8 +2,8 @@
 
 import QtQuick
 import QtQuick.Window
-import QtMultimedia
 import org.kde.plasma.plasmoid
+import "BetterWallpaper"
 
 WallpaperItem {
     id: root
@@ -12,7 +12,7 @@ WallpaperItem {
     readonly property string outputName: Screen.name
     property bool wallpaperEnabled: false
     property bool wallpaperPaused: false
-    property string mediaUrl: ""
+    property string framePath: ""
     property string configRevision: ""
 
     Component.onCompleted: {
@@ -28,7 +28,6 @@ WallpaperItem {
         } else {
             console.info("[Better Wallpaper] Plasma wallpaper instance became hidden; pausing playback")
             retryTimer.stop()
-            player.pause()
         }
     }
 
@@ -41,7 +40,6 @@ WallpaperItem {
             if (request.status !== 200) {
                 console.warn("[Better Wallpaper] Plasma config request failed with status " + request.status)
                 wallpaperEnabled = false
-                player.stop()
                 return
             }
             let config
@@ -49,36 +47,18 @@ WallpaperItem {
                 config = JSON.parse(request.responseText)
             } catch (error) {
                 console.error("[Better Wallpaper] Plasma config response is invalid JSON: " + error)
-                player.stop()
                 return
             }
             sendHeartbeat()
             wallpaperEnabled = config.enabled
             wallpaperPaused = config.paused
-            videoOutput.fillMode = config.fill_mode === "contain"
-                ? VideoOutput.PreserveAspectFit
-                : config.fill_mode === "stretch" ? VideoOutput.Stretch : VideoOutput.PreserveAspectCrop
-            if (player.audioOutput.muted !== config.muted) {
-                player.audioOutput.muted = config.muted
-                console.info("[Better Wallpaper] Plasma audio mute state changed: " + config.muted)
-            }
-            player.loops = config.loop_playback ? MediaPlayer.Infinite : 1
-            const nextUrl = daemonUrl + config.media_url + "?revision=" + config.revision
-            if (wallpaperEnabled && (configRevision !== String(config.revision) || player.source.toString() === "")) {
+            frameView.fillMode = config.fill_mode
+            if (wallpaperEnabled && (configRevision !== String(config.revision) || framePath === "")) {
                 configRevision = String(config.revision)
-                mediaUrl = nextUrl
-                player.source = mediaUrl
-                if (wallpaperPaused)
-                    player.pause()
-                else
-                    player.play()
-            } else if (wallpaperEnabled && wallpaperPaused) {
-                player.pause()
-            } else if (wallpaperEnabled && player.playbackState !== MediaPlayer.PlayingState) {
-                player.play()
+                framePath = config.frame_path
+                console.info("[Better Wallpaper] Plasma shared frame source configured: " + framePath)
             } else if (!wallpaperEnabled) {
-                player.stop()
-                player.source = ""
+                framePath = ""
             }
         }
         request.send()
@@ -96,28 +76,11 @@ WallpaperItem {
         color: "black"
     }
 
-    VideoOutput {
-        id: videoOutput
+    SharedFrameItem {
+        id: frameView
         anchors.fill: parent
-        fillMode: VideoOutput.PreserveAspectCrop
-    }
-
-    MediaPlayer {
-        id: player
-        source: root.mediaUrl
-        videoOutput: videoOutput
-        loops: MediaPlayer.Infinite
-
-        audioOutput: AudioOutput {
-            muted: true
-        }
-
-        onErrorOccurred: (error, errorString) => {
-            console.error("[Better Wallpaper] Plasma video playback failed: " + errorString)
-            if (root.visible)
-                retryTimer.restart()
-        }
-        onPlaybackStateChanged: console.info("[Better Wallpaper] Plasma playback state: " + playbackState)
+        source: root.wallpaperEnabled ? root.framePath : ""
+        fillMode: "cover"
     }
 
     Timer {
@@ -126,9 +89,7 @@ WallpaperItem {
         repeat: false
         onTriggered: {
             console.warn("[Better Wallpaper] Plasma retrying daemon connection")
-            player.source = ""
-            player.source = root.mediaUrl + "&retry=" + Date.now()
-            player.play()
+            root.refreshConfig()
         }
     }
 

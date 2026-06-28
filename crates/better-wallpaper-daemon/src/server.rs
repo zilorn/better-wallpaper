@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{playback::PlaybackControl, tray::WallpaperTray};
+use crate::{playback::PlaybackControl, tray::WallpaperTray, LogStore};
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use better_wallpaper_core::{
@@ -36,6 +36,7 @@ pub struct ApiState {
     playback: PlaybackControl,
     home: PathBuf,
     plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
+    pub log_store: LogStore,
 }
 
 #[derive(Serialize)]
@@ -70,6 +71,7 @@ impl ApiState {
         backend: BackendKind,
         playback: PlaybackControl,
         home: PathBuf,
+        log_store: LogStore,
     ) -> Self {
         Self {
             config,
@@ -79,6 +81,7 @@ impl ApiState {
             playback,
             home,
             plasma_instances: Arc::new(Mutex::new(HashMap::new())),
+            log_store,
         }
     }
 }
@@ -144,7 +147,6 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
     let method = request.method().clone();
     let request_url = request.url().to_owned();
     let url = request_url.split('?').next().unwrap_or("/").to_owned();
-    info!(method = %method, %url, "handling management API request");
     if method == Method::Get && url == "/api/v1/ws" {
         upgrade_websocket(request, state.clone());
         return;
@@ -167,6 +169,16 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         let response = plasma_config_response(&request_url, state);
         if let Err(error) = request.respond(response) {
             warn!(%error, %url, "failed to send Plasma config response");
+        }
+        return;
+    }
+    if method == Method::Get && url == "/api/v1/logs" {
+        let response = json_response(
+            StatusCode(200),
+            &serde_json::json!({ "lines": state.log_store.lines() }),
+        );
+        if let Err(error) = request.respond(response) {
+            warn!(%error, %url, "failed to send logs response");
         }
         return;
     }
@@ -275,6 +287,7 @@ struct PlasmaConfigPayload {
     output: String,
     enabled: bool,
     media_url: &'static str,
+    frame_path: PathBuf,
     fill_mode: FillMode,
     muted: bool,
     paused: bool,
@@ -302,6 +315,7 @@ fn plasma_config_response(
             output,
             enabled,
             media_url: "/api/v1/wallpaper/media",
+            frame_path: crate::plasma_frames::frame_path(&config),
             fill_mode: config.wallpaper.fill_mode,
             muted: config.wallpaper.muted,
             paused: state.playback.is_paused(),
@@ -830,7 +844,7 @@ fn content_type(path: &Path) -> &'static str {
     match path.extension().and_then(|value| value.to_str()) {
         Some("html") => "text/html; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
-        Some("js") => "text/javascript; charset=utf-8",
+        Some("js") => "application/javascript; charset=utf-8",
         Some("svg") => "image/svg+xml",
         _ => "application/octet-stream",
     }
