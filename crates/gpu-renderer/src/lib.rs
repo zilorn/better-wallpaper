@@ -7,9 +7,9 @@ use better_wallpaper_core::config::FillMode;
 use glow::HasContext;
 use tracing::debug;
 
-const VERTEX_SHADER: &str = "attribute vec2 p;attribute vec2 t;varying vec2 u;void main(){gl_Position=vec4(p,0.,1.);u=t;}";
-const FRAGMENT_SHADER: &str =
-    "precision mediump float;varying vec2 u;uniform sampler2D v;void main(){gl_FragColor=texture2D(v,u);}";
+const VERTEX_SHADER: &str =
+    "attribute vec2 p;attribute vec2 t;varying vec2 u;void main(){gl_Position=vec4(p,0.,1.);u=t;}";
+const FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;uniform sampler2D v;void main(){gl_FragColor=texture2D(v,u);}";
 const PBO_RING_SIZE: usize = 3;
 
 pub type GlLoaderFn = Option<unsafe extern "C" fn(name: *const c_char) -> *const std::ffi::c_void>;
@@ -37,7 +37,9 @@ impl GpuRenderer {
     pub fn new(gl: glow::Context, output_width: u32, output_height: u32) -> Result<Self, String> {
         unsafe {
             let program = compile_program(&gl)?;
-            let vbo = gl.create_buffer().map_err(|msg| format!("VBO allocate: {msg}"))?;
+            let vbo = gl
+                .create_buffer()
+                .map_err(|msg| format!("VBO allocate: {msg}"))?;
             let texture = gl
                 .create_texture()
                 .map_err(|msg| format!("texture allocate: {msg}"))?;
@@ -127,18 +129,14 @@ impl GpuRenderer {
             }
             let pbo = self.pbo_ring[self.pbo_index];
             self.pbo_index = (self.pbo_index + 1) % self.pbo_ring.len();
-            self.gl
-                .bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(pbo));
+            self.gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(pbo));
             self.gl.buffer_data_size(
                 glow::PIXEL_UNPACK_BUFFER,
                 expected as i32,
                 glow::STREAM_DRAW,
             );
-            self.gl.buffer_sub_data_u8_slice(
-                glow::PIXEL_UNPACK_BUFFER,
-                0,
-                &data[..expected],
-            );
+            self.gl
+                .buffer_sub_data_u8_slice(glow::PIXEL_UNPACK_BUFFER, 0, &data[..expected]);
             self.gl.tex_sub_image_2d(
                 glow::TEXTURE_2D,
                 0,
@@ -171,27 +169,17 @@ impl GpuRenderer {
                 vertices.len() * std::mem::size_of::<f32>(),
             );
             self.gl.use_program(Some(self.program));
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
             self.gl
-                .bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
-            self.gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                vertex_bytes,
-                glow::DYNAMIC_DRAW,
-            );
+                .buffer_data_u8_slice(glow::ARRAY_BUFFER, vertex_bytes, glow::DYNAMIC_DRAW);
             for (index, offset) in [(0, 0), (1, 8)] {
                 self.gl.enable_vertex_attrib_array(index);
-                self.gl.vertex_attrib_pointer_f32(
-                    index,
-                    2,
-                    glow::FLOAT,
-                    false,
-                    16,
-                    offset,
-                );
+                self.gl
+                    .vertex_attrib_pointer_f32(index, 2, glow::FLOAT, false, 16, offset);
             }
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
             self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.texture));
-            self.gl.viewport(0, 0, output_width as i32, output_height as i32);
+                .viewport(0, 0, output_width as i32, output_height as i32);
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
             self.gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
@@ -301,4 +289,3 @@ fn fill_vertices(sw: u32, sh: u32, tw: u32, th: u32, m: FillMode) -> [f32; 16] {
     }
     [-x, -y, a, d, x, -y, c, d, -x, y, a, b, x, y, c, b]
 }
-

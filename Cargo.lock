@@ -169,6 +169,7 @@ dependencies = [
  "base64",
  "better-wallpaper-core",
  "better-wallpaper-ffmpeg",
+ "better-wallpaper-kde",
  "better-wallpaper-renderer",
  "better-wallpaper-wayland",
  "clap",
@@ -190,6 +191,14 @@ version = "0.1.0"
 dependencies = [
  "better-wallpaper-core",
  "ffmpeg-next",
+ "tracing",
+]
+
+[[package]]
+name = "better-wallpaper-kde"
+version = "0.1.0"
+dependencies = [
+ "better-wallpaper-core",
  "tracing",
 ]
 

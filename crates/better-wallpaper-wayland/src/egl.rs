@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use better_wallpaper_core::{DecodedFrame, config::FillMode};
-use gpu_renderer::GpuRenderer;
 use glow::HasContext;
+use gpu_renderer::GpuRenderer;
 use khronos_egl as egl;
 use std::{
     ffi::c_void,
@@ -132,7 +132,12 @@ impl EglRenderer {
 
         let upload_started = Instant::now();
         self.renderer
-            .upload_frame(&frame.pixels, frame.width, frame.height, frame.stride as u32)
+            .upload_frame(
+                &frame.pixels,
+                frame.width,
+                frame.height,
+                frame.stride as u32,
+            )
             .map_err(|msg| anyhow::anyhow!("gpu upload: {msg}"))?;
         self.perf_upload += upload_started.elapsed();
 
@@ -163,9 +168,7 @@ impl EglRenderer {
 impl Drop for EglRenderer {
     fn drop(&mut self) {
         unsafe {
-            let _ = self
-                .egl
-                .make_current(self.display, None, None, None);
+            let _ = self.egl.make_current(self.display, None, None, None);
             let _ = self.egl.destroy_context(self.display, self.context);
             let _ = self.egl.destroy_surface(self.display, self.surface);
             wl_egl_window_destroy(self.window);
@@ -174,4 +177,3 @@ impl Drop for EglRenderer {
         debug!("EGL GPU renderer released");
     }
 }
-

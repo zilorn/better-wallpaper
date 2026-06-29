@@ -7,10 +7,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use better_wallpaper_core::{
-    BackendKind, ConfigStore,
+    BackendKind, ConfigStore, PlaybackControl,
     desktop::{ProcessEnvironment, detect_desktop, select_backend},
 };
-use better_wallpaper_daemon::{playback, server, LogStore};
+use better_wallpaper_daemon::{LogStore, playback, server};
+use better_wallpaper_kde::run_kde_controlled;
 use better_wallpaper_renderer::NvidiaVulkanContext;
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
@@ -101,7 +102,7 @@ fn main() -> Result<()> {
     if !cli.no_ui {
         let shared_config = Arc::new(RwLock::new(config));
         let playback_config = Arc::clone(&shared_config);
-        let playback_control = playback::PlaybackControl::default();
+        let playback_control = PlaybackControl::default();
         let worker_control = playback_control.clone();
         std::thread::Builder::new()
             .name("wallpaper-playback".into())
@@ -133,7 +134,7 @@ fn main() -> Result<()> {
         backend,
         config,
         cli.run_for_seconds,
-        playback::PlaybackControl::default(),
+        PlaybackControl::default(),
     )
 }
 
@@ -141,7 +142,7 @@ fn run_playback_supervisor(
     backend: BackendKind,
     config: Arc<RwLock<better_wallpaper_core::AppConfig>>,
     run_for_seconds: Option<u64>,
-    control: playback::PlaybackControl,
+    control: PlaybackControl,
 ) {
     loop {
         let current = match config.read() {
@@ -197,7 +198,7 @@ fn run_playback(
     backend: BackendKind,
     config: better_wallpaper_core::AppConfig,
     run_for_seconds: Option<u64>,
-    control: playback::PlaybackControl,
+    control: PlaybackControl,
 ) -> Result<()> {
     let max_height = config.decode.max_height;
     if backend == BackendKind::Headless {
@@ -260,7 +261,7 @@ fn run_playback(
         }
     } else if backend == BackendKind::Kde {
         info!("KDE media rendering is owned by the Plasma plugin");
-        playback::run_kde_controlled(control);
+        run_kde_controlled(control);
     } else {
         warn!(backend = ?backend, "desktop backend is unavailable");
     }

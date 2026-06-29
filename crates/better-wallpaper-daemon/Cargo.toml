@@ -9,6 +9,7 @@ anyhow.workspace = true
 base64.workspace = true
 better-wallpaper-core = { path = "../better-wallpaper-core" }
 better-wallpaper-ffmpeg = { path = "../better-wallpaper-ffmpeg" }
+better-wallpaper-kde = { path = "../better-wallpaper-kde" }
 better-wallpaper-renderer = { path = "../better-wallpaper-renderer" }
 better-wallpaper-wayland = { path = "../better-wallpaper-wayland" }
 clap.workspace = true

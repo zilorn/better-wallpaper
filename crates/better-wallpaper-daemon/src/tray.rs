@@ -3,14 +3,12 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use better_wallpaper_core::{AppConfig, ConfigStore};
+use better_wallpaper_core::{AppConfig, ConfigStore, PlaybackControl};
 use ksni::{
     Tray,
     menu::{CheckmarkItem, StandardItem},
 };
 use tracing::{info, warn};
-
-use crate::playback::PlaybackControl;
 
 pub struct WallpaperTray {
     config: Arc<RwLock<AppConfig>>,

@@ -3,6 +3,7 @@ members = [
   "crates/better-wallpaper-core",
   "crates/better-wallpaper-daemon",
   "crates/better-wallpaper-ffmpeg",
+  "crates/better-wallpaper-kde",
   "crates/better-wallpaper-renderer",
   "crates/better-wallpaper-wayland",
   "crates/gpu-renderer",

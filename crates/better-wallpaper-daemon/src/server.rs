@@ -8,11 +8,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{playback::PlaybackControl, tray::WallpaperTray, LogStore};
+use crate::{LogStore, tray::WallpaperTray};
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use better_wallpaper_core::{
-    AppConfig, BackendKind, ConfigStore, DesktopDetection, config::FillMode,
+    AppConfig, BackendKind, ConfigStore, DesktopDetection, PlaybackControl, config::FillMode,
 };
 use ksni::blocking::TrayMethods;
 use serde::{Deserialize, Serialize};

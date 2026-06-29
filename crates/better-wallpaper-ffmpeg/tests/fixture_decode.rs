@@ -12,7 +12,13 @@ fn fixture(name: &str) -> PathBuf {
 fn decode_fixture(name: &str) {
     let mut decoder = FfmpegDecoder::new();
     let media = decoder
-        .open(&fixture(name), DecodeOptions { hardware: false, max_height: 0 })
+        .open(
+            &fixture(name),
+            DecodeOptions {
+                hardware: false,
+                max_height: 0,
+            },
+        )
         .expect("fixture should open");
     assert_eq!((media.width, media.height), (64, 36));
 
@@ -45,7 +51,13 @@ fn decodes_h264_vp9_and_av1_fixtures() {
 fn hardware_request_decodes_or_falls_back_to_software() {
     let mut decoder = FfmpegDecoder::new();
     decoder
-        .open(&fixture("h264.mp4"), DecodeOptions { hardware: true, max_height: 0 })
+        .open(
+            &fixture("h264.mp4"),
+            DecodeOptions {
+                hardware: true,
+                max_height: 0,
+            },
+        )
         .expect("hardware decode request should not prevent opening");
     let frame = decoder
         .next_frame()
@@ -58,7 +70,13 @@ fn hardware_request_decodes_or_falls_back_to_software() {
 fn seek_start_restarts_decoding() {
     let mut decoder = FfmpegDecoder::new();
     decoder
-        .open(&fixture("h264.mp4"), DecodeOptions { hardware: false, max_height: 0 })
+        .open(
+            &fixture("h264.mp4"),
+            DecodeOptions {
+                hardware: false,
+                max_height: 0,
+            },
+        )
         .unwrap();
     let first_pts = decoder.next_frame().unwrap().pts;
 
@@ -72,7 +90,13 @@ fn seek_start_restarts_decoding() {
 fn preserves_variable_frame_timestamps() {
     let mut decoder = FfmpegDecoder::new();
     decoder
-        .open(&fixture("vfr-h264.mp4"), DecodeOptions { hardware: false, max_height: 0 })
+        .open(
+            &fixture("vfr-h264.mp4"),
+            DecodeOptions {
+                hardware: false,
+                max_height: 0,
+            },
+        )
         .unwrap();
     let mut presentation_times = Vec::new();
 
@@ -98,7 +122,10 @@ fn rejects_corrupt_input() {
     let error = decoder
         .open(
             &fixture("corrupt-video.bin"),
-            DecodeOptions { hardware: false, max_height: 0 },
+            DecodeOptions {
+                hardware: false,
+                max_height: 0,
+            },
         )
         .expect_err("corrupt input should not open successfully");
     assert!(matches!(error, VideoError::Open { .. }));

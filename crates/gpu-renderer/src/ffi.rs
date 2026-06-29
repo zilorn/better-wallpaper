@@ -32,13 +32,19 @@ pub unsafe extern "C" fn kde_video_decoder_open(path: *const c_char) -> *mut Kde
     let mut decoder = FfmpegDecoder::new();
     if let Err(error) = decoder.open(
         std::path::Path::new(path),
-        DecodeOptions { hardware: false, max_height: 0 },
+        DecodeOptions {
+            hardware: false,
+            max_height: 0,
+        },
     ) {
         tracing::error!(%error, path, "KDE direct video decoder open failed");
         return std::ptr::null_mut();
     }
     tracing::info!(path, "KDE direct video decoder opened");
-    Box::into_raw(Box::new(KdeVideoDecoder { decoder, pixels: Vec::new() }))
+    Box::into_raw(Box::new(KdeVideoDecoder {
+        decoder,
+        pixels: Vec::new(),
+    }))
 }
 
 #[unsafe(no_mangle)]
@@ -82,7 +88,9 @@ pub unsafe extern "C" fn kde_video_decoder_seek_start(decoder: *mut KdeVideoDeco
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kde_video_decoder_destroy(decoder: *mut KdeVideoDecoder) {
     if !decoder.is_null() {
-        unsafe { drop(Box::from_raw(decoder)); }
+        unsafe {
+            drop(Box::from_raw(decoder));
+        }
     }
 }
 
@@ -159,11 +167,7 @@ pub unsafe extern "C" fn gpu_renderer_draw(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_renderer_resize(
-    renderer: *mut GpuRenderer,
-    width: u32,
-    height: u32,
-) {
+pub unsafe extern "C" fn gpu_renderer_resize(renderer: *mut GpuRenderer, width: u32, height: u32) {
     if renderer.is_null() {
         return;
     }

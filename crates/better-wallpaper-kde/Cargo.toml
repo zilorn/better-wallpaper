@@ -1,0 +1,9 @@
+[package]
+name = "better-wallpaper-kde"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+better-wallpaper-core = { path = "../better-wallpaper-core" }
+tracing.workspace = true

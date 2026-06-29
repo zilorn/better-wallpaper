@@ -1,16 +1,14 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
-use better_wallpaper_core::{DecodeOptions, VideoDecoder, VideoError, config::FillMode};
+use better_wallpaper_core::{
+    DecodeOptions, PlaybackControl, VideoDecoder, VideoError, config::FillMode,
+};
 use better_wallpaper_ffmpeg::{
     AudioInfo, FfmpegAudioDecoder, FfmpegDecoder, FrameDecision, PlaybackClock, frame_queue,
 };
@@ -23,16 +21,6 @@ const DROP_THRESHOLD: Duration = Duration::from_millis(100);
 const STATS_INTERVAL: u64 = 300;
 const REALTIME_STATS_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
-
-/// Keep the daemon-side Plasma control plane alive while Plasma owns media rendering.
-/// The loop exits on either process cancellation or a configuration reload request.
-pub fn run_kde_controlled(control: PlaybackControl) {
-    info!("Plasma playback control plane started without a configured video");
-    while !control.is_cancelled() {
-        thread::sleep(CONTROL_POLL_INTERVAL);
-    }
-    info!("Plasma playback control plane stopped");
-}
 
 struct AudioPlayback {
     _stream: OutputStream,
@@ -113,10 +101,9 @@ impl AudioPlayback {
         let stream = OutputStreamBuilder::open_default_stream()
             .context("failed to open default audio output")?;
         let sink = Sink::connect_new(stream.mixer());
-       let source = FfmpegAudioSource::open(path, loop_playback)
-           .with_context(|| format!("failed to decode audio source {}", path.display()))?
-            ;
-       sink.append(source);
+        let source = FfmpegAudioSource::open(path, loop_playback)
+            .with_context(|| format!("failed to decode audio source {}", path.display()))?;
+        sink.append(source);
         sink.pause();
         info!(path = %path.display(), loop_playback, "niri audio output initialized");
         Ok(Self {
@@ -135,59 +122,12 @@ impl AudioPlayback {
         } else {
             self.sink.play();
         }
-       self.paused = paused;
-       info!(paused, "niri audio pause state updated");
-   }
+        self.paused = paused;
+        info!(paused, "niri audio pause state updated");
+    }
 
     fn get_pos(&self) -> Duration {
         self.sink.get_pos()
-    }
-}
-
-/// 可跨线程复制的播放控制句柄。解码和消费端都定期检查取消状态，避免队列满时无法退出。
-#[derive(Clone, Debug, Default)]
-pub struct PlaybackControl {
-    paused: Arc<AtomicBool>,
-    cancelled: Arc<AtomicBool>,
-    reload_requested: Arc<AtomicBool>,
-    running: Arc<AtomicBool>,
-}
-
-impl PlaybackControl {
-    pub fn set_paused(&self, paused: bool) {
-        self.paused.store(paused, Ordering::Release);
-        info!(paused, "playback pause state updated");
-    }
-
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-        info!("playback cancel request received");
-    }
-
-    pub fn request_reload(&self) {
-        self.reload_requested.store(true, Ordering::Release);
-        info!("playback config reload request received");
-    }
-
-    pub fn take_reload_request(&self) -> bool {
-        self.reload_requested.swap(false, Ordering::AcqRel)
-    }
-
-    pub fn is_paused(&self) -> bool {
-        self.paused.load(Ordering::Acquire)
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire) || self.reload_requested.load(Ordering::Acquire)
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::Acquire)
-    }
-
-    pub fn set_running(&self, running: bool) {
-        self.running.store(running, Ordering::Release);
-        info!(running, "playback running state updated");
     }
 }
 
@@ -249,8 +189,20 @@ impl NiriPerformanceWindow {
 }
 
 /// 运行软件解码和 headless 帧消费闭环。同步队列会在消费者落后时对解码线程施加背压。
-pub fn run_headless(path: PathBuf, loop_playback: bool, hardware: bool, max_height: u32) -> Result<()> {
-    run_headless_controlled(path, loop_playback, hardware, max_height, PlaybackControl::default()).map(|_| ())
+pub fn run_headless(
+    path: PathBuf,
+    loop_playback: bool,
+    hardware: bool,
+    max_height: u32,
+) -> Result<()> {
+    run_headless_controlled(
+        path,
+        loop_playback,
+        hardware,
+        max_height,
+        PlaybackControl::default(),
+    )
+    .map(|_| ())
 }
 
 /// 在指定时间后通过正常取消路径结束播放，供稳定性测试和自动化验收使用。
@@ -341,7 +293,13 @@ pub fn run_niri_controlled(
         .name("niri-video-decoder".into())
         .spawn(move || {
             let mut decoder = FfmpegDecoder::new();
-            let media = match decoder.open(&decode_path, DecodeOptions { hardware, max_height }) {
+            let media = match decoder.open(
+                &decode_path,
+                DecodeOptions {
+                    hardware,
+                    max_height,
+                },
+            ) {
                 Ok(media) => media,
                 Err(error) => {
                     let message =
@@ -422,7 +380,7 @@ pub fn run_niri_controlled(
     let mut presented = 0_u64;
     let mut dropped = 0_u64;
     let mut loops = 0_u64;
-   let mut first_frame_presented = false;
+    let mut first_frame_presented = false;
     let mut perf = NiriPerformanceWindow::new();
 
     loop {
@@ -442,7 +400,7 @@ pub fn run_niri_controlled(
                     )
                 })?;
             }
-           clock = None;
+            clock = None;
             thread::sleep(CONTROL_POLL_INTERVAL);
             continue;
         }
@@ -461,7 +419,7 @@ pub fn run_niri_controlled(
                     }
                     Some(_) => {}
                 }
-               previous_pts = pts;
+                previous_pts = pts;
                 loop {
                     match clock
                         .as_ref()
@@ -507,9 +465,9 @@ pub fn run_niri_controlled(
                                     .expect("clock initialized")
                                     .reset(Instant::now(), pts);
                                 first_frame_presented = true;
-                               if let Some(audio) = audio.as_mut() {
-                                   audio.set_paused(false);
-                               }
+                                if let Some(audio) = audio.as_mut() {
+                                    audio.set_paused(false);
+                                }
                                 info!(
                                     present_ms = present_elapsed.as_millis(),
                                     "first frame submitted, playback clock excludes backend initialization time"
@@ -685,7 +643,13 @@ fn decode_frames(
 ) -> Result<()> {
     let mut decoder = FfmpegDecoder::new();
     let media = decoder
-        .open(&path, DecodeOptions { hardware, max_height })
+        .open(
+            &path,
+            DecodeOptions {
+                hardware,
+                max_height,
+            },
+        )
         .with_context(|| format!("failed to open video {}", path.display()))?;
     info!(path = %path.display(), width = media.width, height = media.height, duration_ms = ?media.duration.map(|value| value.as_millis()), frame_rate = ?media.frame_rate, queue_capacity = FRAME_QUEUE_CAPACITY, "headless decode started");
 
@@ -740,34 +704,5 @@ mod tests {
                 loops: 0
             }
         );
-    }
-
-    #[test]
-    fn playback_control_tracks_pause_and_cancel() {
-        let control = PlaybackControl::default();
-        let worker = control.clone();
-
-        control.set_paused(true);
-        assert!(worker.is_paused());
-        control.set_paused(false);
-        assert!(!worker.is_paused());
-
-        control.cancel();
-        assert!(worker.is_cancelled());
-
-        control.set_running(true);
-        assert!(worker.is_running());
-    }
-
-    #[test]
-    fn playback_control_consumes_reload_request_once() {
-        let control = PlaybackControl::default();
-
-        assert!(!control.take_reload_request());
-        control.request_reload();
-        assert!(control.is_cancelled());
-        assert!(control.take_reload_request());
-        assert!(!control.take_reload_request());
-        assert!(!control.is_cancelled());
     }
 }
