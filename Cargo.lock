@@ -700,6 +700,7 @@ name = "gpu-renderer"
 version = "0.1.0"
 dependencies = [
  "better-wallpaper-core",
+ "better-wallpaper-ffmpeg",
  "glow",
  "tracing",
 ]

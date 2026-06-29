@@ -6,7 +6,7 @@
 - M1：已完成配置创建/校验/原子写入、桌面检测、后端优先级及对应单元测试。
 - M2：已完成。已完成 FFmpeg 软件解码、NVIDIA CUDA/NVDEC 硬件解码及自动软解降级、RGBA 转换、PTS 时钟、有界帧队列、循环 seek，以及 daemon 的 headless 播放闭环、暂停/取消控制和统计日志；已加入 H.264/VP9/AV1、可变帧率、损坏输入、循环 seek、取消退出和定时验收测试，并提供 `--run-for-seconds` 长测入口、已执行 30 分钟稳定性实测和 NVIDIA 真机性能验收。
 - M3：已完成。已实现 niri 多输出 wlr layer-shell background 表面、共享解码帧分发、输出枚举、configure 生命周期、输出尺寸变化、wl_shm RGBA 提交及 cover/contain/stretch 缩放，并接入 FFmpeg PTS 播放；niri 已通过 Rodio/CPAL 接入系统默认音频设备，声音与首帧、暂停、恢复、循环和配置重载联动，失败时降级为无声视频；缩放模式已有自动化测试和无效尺寸保护；尚需真机验证多屏、分数缩放/旋转、热插拔、音画同步和 compositor 重连。
-- M4：进行中。Plasma 6 壁纸已切换为 Rust/FFmpeg 解码、共享内存三缓冲发布和原生 Qt Quick 纹理显示，循环 seek 不再触发 Qt Multimedia EOS 清屏。插件继续按屏幕名称同步启用状态、缩放和心跳，daemon 负责暂停、声音、循环与配置重载。静态构建和自动测试已完成，仍需 Plasma 真机验证循环、双屏、活动切换和 plasmashell 重启恢复。M6 未开始（NVIDIA 能力探测不代表 M6 完成）。
+- M4：进行中。Plasma 6 插件通过静态 Rust/FFmpeg 库直接解码并以原生 Qt Quick 纹理显示，音频由 Qt Multimedia 直通播放；daemon 只负责配置、控制和状态查询。静态构建和自动测试已完成，仍需 Plasma 真机验证循环、双屏、活动切换和 plasmashell 重启恢复。M6 未开始（NVIDIA 能力探测不代表 M6 完成）。
 - M5：已完成。daemon 已提供仅监听固定 loopback 地址 `127.0.0.1:43129` 的版本化状态/配置 API、播放暂停/恢复 API、WebSocket 状态推送、受限本地视频库扫描、支持 Range 的库内媒体预览和 Web 静态资源托管；SolidJS 前端已按 Waywallen 的信息架构加入 Router、响应式侧边栏以及壁纸、显示器、壁纸库、设置与诊断页面，可扫描、悬停预览并选择本地视频，也可编辑输出和运行设置，并在 WebSocket 断线后指数退避重连。配置更新由 Rust 校验并原子保存，保存后播放监督器会安全停止当前解码并用最新配置重建管线；请求、路由、连接、扫描、媒体读取、播放控制、配置重载与错误均有日志。安装包已包含 daemon、Web 资源、Plasma 6 壁纸插件和 systemd 用户服务，并提供 FFmpeg/Qt Multimedia 依赖说明；已加入并通过 release/Web 构建、staging 布局、systemd、动态依赖、QML 和卸载残留自动验收。
 
 ## 1. 项目目标
@@ -143,8 +143,8 @@ trait DesktopBackend {
 
 ### KDE Plasma
 
-- 提供 Plasma wallpaper plugin/package，由 Plasma 创建真正的桌面壁纸实例，Rust daemon 继续负责解码和状态管理。
-- daemon 与插件使用 Unix Domain Socket 传输控制消息；帧数据首版使用共享内存和 buffer id，插件消费完后回传 release。
+- 提供 Plasma wallpaper plugin/package，由 Plasma 创建真正的桌面壁纸实例；插件通过静态 Rust/FFmpeg 库直接解码视频，并由 Qt Multimedia 直接播放音频。
+- daemon 只提供配置、控制与状态查询，不在 KDE 路径传输音视频数据。
 - 插件需要支持 Plasma 提供的屏幕标识、尺寸变化、活动切换和壁纸实例重建，并将其映射到 daemon 的输出模型。
 - KDE 后端不存在或版本不兼容时，daemon 保持 UI 可用并提示安装插件，不能偷偷改用普通顶层窗口覆盖桌面。
 

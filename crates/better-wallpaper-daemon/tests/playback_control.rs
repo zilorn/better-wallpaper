@@ -23,7 +23,7 @@ fn paused_playback_can_be_cancelled_without_deadlock() {
     let (result_tx, result_rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let result = run_headless_controlled(fixture("h264.mp4"), true, false, worker_control);
+        let result = run_headless_controlled(fixture("h264.mp4"), true, false, 0, worker_control);
         let _ = result_tx.send(result);
     });
 
@@ -37,7 +37,7 @@ fn paused_playback_can_be_cancelled_without_deadlock() {
 
 #[test]
 fn deadline_stops_looping_playback_and_reports_stats() {
-    let stats = run_headless_for(fixture("h264.mp4"), true, false, Duration::from_millis(650))
+    let stats = run_headless_for(fixture("h264.mp4"), true, false, 0, Duration::from_millis(650))
         .expect("deadline should end looped playback normally");
 
     assert!(stats.presented >= 5);

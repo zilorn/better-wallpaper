@@ -23,7 +23,7 @@ log "构建 Web 静态资源"
     bun install --frozen-lockfile
     bun run build
 )
-log "构建 Plasma 共享帧插件"
+log "构建 Plasma 静态直通插件"
 cmake -S "$PROJECT_ROOT/kde/frame-plugin" -B "$PROJECT_ROOT/target/plasma-plugin" \
     -DCMAKE_BUILD_TYPE=Release
 cmake --build "$PROJECT_ROOT/target/plasma-plugin" --parallel

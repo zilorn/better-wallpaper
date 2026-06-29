@@ -259,27 +259,8 @@ fn run_playback(
             info!("restore_on_start=false, niri backend will not auto-play");
         }
     } else if backend == BackendKind::Kde {
-        if config.general.restore_on_start {
-            let frame_path = better_wallpaper_daemon::plasma_frames::frame_path(&config);
-            if let Some(video_path) = config.wallpaper.path {
-                playback::run_kde_frames_controlled(
-                    video_path,
-                    frame_path,
-                    config.wallpaper.loop_playback,
-                    !config.wallpaper.muted,
-                    matches!(
-                        config.decode.hardware,
-                        better_wallpaper_core::config::HardwareDecode::Auto
-                    ),
-                    max_height,
-                    control,
-                )?;
-            } else {
-                info!("wallpaper.path not configured, KDE backend idle");
-            }
-        } else {
-            info!("restore_on_start=false, KDE backend will not auto-play");
-        }
+        info!("KDE media rendering is owned by the Plasma plugin");
+        playback::run_kde_controlled(control);
     } else {
         warn!(backend = ?backend, "desktop backend is unavailable");
     }

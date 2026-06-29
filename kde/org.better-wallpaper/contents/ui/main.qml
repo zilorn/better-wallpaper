@@ -2,8 +2,8 @@
 
 import QtQuick
 import QtQuick.Window
+import QtMultimedia
 import org.kde.plasma.plasmoid
-import "BetterWallpaper"
 
 WallpaperItem {
     id: root
@@ -12,31 +12,39 @@ WallpaperItem {
     readonly property string outputName: Screen.name
     property bool wallpaperEnabled: false
     property bool wallpaperPaused: false
-    property string framePath: ""
+    property bool wallpaperMuted: true
+    property bool loopPlayback: true
+    property url mediaSource: ""
+    property string wallpaperFillMode: "cover"
     property string configRevision: ""
 
     Component.onCompleted: {
-        console.info("[Better Wallpaper] Plasma wallpaper instance created for output " + outputName)
-        if (visible)
-            refreshConfig()
+        console.info("[Better Wallpaper] Plasma direct-render instance created for output " + outputName)
+        if (visible) refreshConfig()
     }
-    Component.onDestruction: console.info("[Better Wallpaper] Plasma wallpaper instance destroyed")
-    onVisibleChanged: {
-        if (visible) {
-            console.info("[Better Wallpaper] Plasma wallpaper instance became visible")
-            refreshConfig()
-        } else {
-            console.info("[Better Wallpaper] Plasma wallpaper instance became hidden; pausing playback")
-            retryTimer.stop()
+    Component.onDestruction: console.info("[Better Wallpaper] Plasma direct-render instance destroyed")
+
+    function syncPlayback() {
+        if (wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
+            if (mediaPlayer.playbackState !== MediaPlayer.PlayingState) mediaPlayer.play()
+        } else if (mediaPlayer.playbackState === MediaPlayer.PlayingState) {
+            mediaPlayer.pause()
         }
     }
+
+    onVisibleChanged: {
+        if (visible) refreshConfig()
+        syncPlayback()
+    }
+    onWallpaperEnabledChanged: syncPlayback()
+    onWallpaperPausedChanged: syncPlayback()
+    onMediaSourceChanged: syncPlayback()
 
     function refreshConfig() {
         const request = new XMLHttpRequest()
         request.open("GET", daemonUrl + "/api/v1/plasma/config?output=" + encodeURIComponent(outputName))
         request.onreadystatechange = function() {
-            if (request.readyState !== XMLHttpRequest.DONE)
-                return
+            if (request.readyState !== XMLHttpRequest.DONE) return
             if (request.status !== 200) {
                 console.warn("[Better Wallpaper] Plasma config request failed with status " + request.status)
                 wallpaperEnabled = false
@@ -52,14 +60,17 @@ WallpaperItem {
             sendHeartbeat()
             wallpaperEnabled = config.enabled
             wallpaperPaused = config.paused
-            frameView.fillMode = config.fill_mode
-            if (wallpaperEnabled && (configRevision !== String(config.revision) || framePath === "")) {
+            wallpaperMuted = config.muted
+            loopPlayback = config.loop_playback
+            wallpaperFillMode = config.fill_mode
+            if (wallpaperEnabled && config.media_path && configRevision !== String(config.revision)) {
                 configRevision = String(config.revision)
-                framePath = config.frame_path
-                console.info("[Better Wallpaper] Plasma shared frame source configured: " + framePath)
-            } else if (!wallpaperEnabled) {
-                framePath = ""
+                mediaSource = daemonUrl + config.media_url + "?revision=" + config.revision
+                console.info("[Better Wallpaper] native media source configured: " + config.media_path)
+            } else if (!wallpaperEnabled || !config.media_path) {
+                mediaSource = ""
             }
+            syncPlayback()
         }
         request.send()
     }
@@ -71,26 +82,29 @@ WallpaperItem {
         request.send(JSON.stringify({ "output": outputName }))
     }
 
-    Rectangle {
+    Rectangle { anchors.fill: parent; color: "black" }
+
+    VideoOutput {
+        id: videoOutput
         anchors.fill: parent
-        color: "black"
+        fillMode: root.wallpaperFillMode === "contain"
+                  ? VideoOutput.PreserveAspectFit
+                  : VideoOutput.PreserveAspectCrop
     }
 
-    SharedFrameItem {
-        id: frameView
-        anchors.fill: parent
-        source: root.wallpaperEnabled ? root.framePath : ""
-        fillMode: "cover"
+    AudioOutput {
+        id: wallpaperAudio
+        muted: root.wallpaperMuted
     }
 
-    Timer {
-        id: retryTimer
-        interval: 3000
-        repeat: false
-        onTriggered: {
-            console.warn("[Better Wallpaper] Plasma retrying daemon connection")
-            root.refreshConfig()
-        }
+    MediaPlayer {
+        id: mediaPlayer
+        source: root.mediaSource
+        audioOutput: wallpaperAudio
+        videoOutput: videoOutput
+        loops: root.loopPlayback ? MediaPlayer.Infinite : 1
+        onErrorOccurred: (error, errorString) =>
+            console.error("[Better Wallpaper] native media playback failed: " + errorString)
     }
 
     Timer {

@@ -9,7 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::plasma_frames::PlasmaFramePublisher;
 use anyhow::{Context, Result, bail};
 use better_wallpaper_core::{DecodeOptions, VideoDecoder, VideoError, config::FillMode};
 use better_wallpaper_ffmpeg::{
@@ -33,112 +32,6 @@ pub fn run_kde_controlled(control: PlaybackControl) {
         thread::sleep(CONTROL_POLL_INTERVAL);
     }
     info!("Plasma playback control plane stopped");
-}
-
-pub fn run_kde_frames_controlled(
-    path: PathBuf,
-    frame_path: PathBuf,
-    loop_playback: bool,
-    _play_audio: bool,
-    hardware: bool,
-    max_height: u32,
-    control: PlaybackControl,
-) -> Result<()> {
-    let mut decoder = FfmpegDecoder::new();
-    let media = decoder
-        .open(&path, DecodeOptions { hardware, max_height })
-        .with_context(|| format!("failed to open Plasma video {}", path.display()))?;
-    let mut publisher: Option<PlasmaFramePublisher> = None;
-    let mut clock: Option<PlaybackClock> = None;
-    let mut previous_pts = Duration::ZERO;
-    let mut loops = 0_u64;
-    let mut presented = 0_u64;
-    let mut dropped = 0_u64;
-    info!(path = %path.display(), frame_path = %frame_path.display(), width = media.width, height = media.height, "Plasma Rust frame playback started (audio handled by plugin)");
-
-    while !control.is_cancelled() {
-        if control.is_paused() {
-            clock = None;
-            thread::sleep(CONTROL_POLL_INTERVAL);
-            continue;
-        }
-        match decoder.next_frame() {
-            Ok(frame) => {
-                let pts = frame.presentation_time();
-                if publisher.is_none() {
-                    publisher = Some(PlasmaFramePublisher::create(
-                        &frame_path,
-                        &path,
-                        frame.width,
-                        frame.height,
-                        frame.stride,
-                    )?);
-                }
-                match clock.as_mut() {
-                    None => {
-                        clock = Some(PlaybackClock::new(Instant::now(), pts, DROP_THRESHOLD));
-                    }
-                    Some(clock) if pts < previous_pts => clock.reset(Instant::now(), pts),
-                    Some(_) => {}
-                }
-                previous_pts = pts;
-                loop {
-                    match clock
-                        .as_ref()
-                        .expect("Plasma clock initialized")
-                        .decide(Instant::now(), pts)
-                    {
-                        FrameDecision::Wait(duration) => {
-                            thread::sleep(duration.min(CONTROL_POLL_INTERVAL));
-                            if control.is_cancelled() || control.is_paused() {
-                                break;
-                            }
-                        }
-                        FrameDecision::Present => {
-                            publisher
-                                .as_mut()
-                                .expect("Plasma publisher initialized")
-                                .publish(&frame)?;
-                            presented += 1;
-                            break;
-                        }
-                        FrameDecision::Drop => {
-                            dropped += 1;
-                            clock
-                                .as_mut()
-                                .expect("Plasma clock initialized")
-                                .reset(Instant::now(), pts);
-                            publisher
-                                .as_mut()
-                                .expect("Plasma publisher initialized")
-                                .publish(&frame)?;
-                            presented += 1;
-                            if dropped == 1 || dropped % STATS_INTERVAL == 0 {
-                                warn!(
-                                    dropped,
-                                    pts_ms = pts.as_millis(),
-                                    "Plasma playback clock resynchronized to a late frame"
-                                );
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            Err(VideoError::EndOfStream) if loop_playback => {
-                decoder
-                    .seek_start()
-                    .context("Plasma loop playback seek failed")?;
-                loops += 1;
-                clock = None;
-                info!(loops, "Plasma decoder started a seamless loop");
-            }
-            Err(VideoError::EndOfStream) => break,
-            Err(error) => bail!(error),
-        }
-    }
-    info!(path = %path.display(), presented, dropped, loops, "Plasma Rust frame playback stopped");
-    Ok(())
 }
 
 struct AudioPlayback {

@@ -1,7 +1,5 @@
 //! daemon 的可复用运行时组件。
 
-pub mod plasma_frames;
-pub mod plasma_audio;
 pub mod playback;
 pub mod server;
 pub mod tray;
@@ -101,4 +99,3 @@ fn strip_ansi_escapes(buf: &[u8]) -> String {
     }
     result
 }
-

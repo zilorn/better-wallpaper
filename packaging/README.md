@@ -1,6 +1,7 @@
 # 发布与安装
 
-`install.sh` 构建并安装 daemon、Web 静态资源、Plasma 6 壁纸插件和 systemd 用户服务。默认安装到
+`install.sh` 构建并安装支持 niri 与 KDE Plasma 6 的 daemon、Web 静态资源、Plasma 6
+壁纸插件和 systemd 用户服务。当前 niri 后端的播放性能优于 KDE 后端。默认安装到
 `~/.local`，服务文件写入 `~/.config/systemd/user`，不需要 root 权限：
 
 ```bash
@@ -49,9 +50,9 @@ CPU `wl_shm` 路径。
 niri 后端通过系统默认音频设备播放视频音轨；暂停、恢复、循环和配置重载会同步作用于音频。
 媒体没有可解码音轨或音频设备不可用时，daemon 会记录英文警告并继续无声播放视频。
 
-Plasma 插件构建依赖 CMake 以及 Qt 6 Core、Qml、Quick 开发包。安装后在桌面壁纸设置的
-“壁纸类型”中选择“Better Wallpaper 视频壁纸”；Rust daemon 通过共享内存三缓冲发布
-FFmpeg 解码帧，原生 Qt Quick 插件负责纹理显示。
+Plasma 插件构建依赖 CMake、FFmpeg 开发库以及 Qt 6 Core、Qml、Quick、Multimedia 开发包。
+安装后在桌面壁纸设置的“壁纸类型”中选择“Better Wallpaper 视频壁纸”；插件通过静态
+Rust/FFmpeg 库直接解码视频，并由 Qt Multimedia 直接播放音频。
 
 服务日志写入 systemd journal：
 

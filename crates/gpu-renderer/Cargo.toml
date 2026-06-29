@@ -10,5 +10,5 @@ crate-type = ["staticlib", "cdylib", "lib"]
 [dependencies]
 glow.workspace = true
 better-wallpaper-core = { path = "../better-wallpaper-core" }
+better-wallpaper-ffmpeg = { path = "../better-wallpaper-ffmpeg" }
 tracing.workspace = true
-

@@ -1,7 +1,8 @@
 # Better Wallpaper
 
-Linux 视频壁纸程序（开发中）。当前已实现配置管理、桌面环境检测、后端选择，以及
-基于 FFmpeg 的软件解码、RGBA 帧转换、PTS 调度和有界帧队列。
+Linux 视频壁纸程序（开发中），支持 niri 和 KDE Plasma 6。当前 niri 后端的播放性能和
+成熟度优于 KDE 后端。项目已实现配置管理、桌面环境检测、后端选择，以及基于 FFmpeg 的
+软件解码、RGBA 帧转换、PTS 调度和有界帧队列。
 
 ```bash
 cargo run -p better-wallpaper-daemon -- --backend headless --no-ui
@@ -25,9 +26,9 @@ cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
 `/api/v1/plasma/config` 按 Plasma 屏幕名同步启用状态和播放参数，再通过
-共享内存三缓冲接收 Rust/FFmpeg 已解码的 RGBA 帧。原生 Qt Quick 渲染项只上传完整发布的
-最新帧，因此循环 seek 期间会保留上一帧，不经过 Qt Multimedia 的 EOS 清屏；daemon 或
-plasmashell 重启后会自动重连恢复。
+静态链接的 Rust/FFmpeg C ABI 直接打开媒体并解码视频帧，音频由插件内 Qt Multimedia
+直接播放原媒体。daemon 不传输音视频数据，仅负责配置、控制和状态查询；daemon 或
+plasmashell 重启后插件会重新同步配置并恢复。
 插件实例会发送本机心跳，管理界面的诊断页可查看当前在线的 Plasma 屏幕实例。
 Plasma 在活动切换时隐藏壁纸实例后，视频会立即暂停并停止请求；实例重新可见时会同步最新配置并恢复。
 配置更新由 Rust 端校验并原子写入；保存成功后会安全停止当前解码并用新配置重建播放管线。
@@ -39,8 +40,8 @@ cargo run --release -p better-wallpaper-daemon -- \
   --backend headless --no-ui --run-for-seconds 1800
 ```
 
-构建解码模块需要系统提供 `libavformat`、`libavcodec`、`libavutil`、`libswscale`、
-`libswresample` 及 Clang。可使用解码探针验证本地视频、音频和循环 seek：
+构建解码模块需要系统提供 `libavdevice`、`libavformat`、`libavcodec`、`libavutil`、
+`libavfilter`、`libswscale`、`libswresample` 及 Clang。可使用解码探针验证本地视频、音频和循环 seek：
 
 ```bash
 cargo run -p better-wallpaper-ffmpeg --example decode_probe -- /path/to/video.mp4
@@ -53,20 +54,20 @@ cargo run -p better-wallpaper-ffmpeg --example audio_probe -- /path/to/video.mp4
 cargo run -p better-wallpaper-daemon -- --backend niri --require-nvidia --no-ui
 ```
 
-niri 后端现已支持单输出 wlr layer-shell background 表面和 `wl_shm` 软件帧提交。配置
+niri 后端现已支持多输出 wlr layer-shell background 表面和 `wl_shm` 软件帧提交。配置
 `wallpaper.path` 后可直接运行：
 
 ```bash
 cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui
 ```
 
-若配置中存在启用的 `[[outputs]]`，使用第一项匹配 Wayland 输出名称；否则使用 compositor
-报告的首个输出。当前阶段尚未完成多输出、热插拔和 compositor 断线重连。
+若配置中存在启用的 `[[outputs]]`，会为每个匹配的 Wayland 输出创建背景表面；否则自动选择
+compositor 输出。当前阶段仍需继续验证热插拔和 compositor 断线重连。
 
 ## 安装
 
-项目仅支持 Plasma 6。构建 Plasma 共享帧插件需要 CMake 以及 Qt 6 Core、Qml、Quick 开发包。
-运行时不再依赖 Qt Multimedia QML 模块。
+项目支持 niri 和 KDE Plasma 6。niri 后端不需要 Plasma 插件；如需构建 KDE Plasma 插件，
+还需要 CMake、FFmpeg 开发库以及 Qt 6 Core、Qml、Quick、Multimedia 开发包。
 
 ### 完整安装（推荐）
 

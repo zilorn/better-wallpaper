@@ -2,6 +2,7 @@
 #define GPU_RENDERER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -13,6 +14,15 @@ typedef void *(*GlLoaderFn)(const char *name);
 
 /* Opaque renderer handle. */
 typedef struct GpuRenderer GpuRenderer;
+typedef struct KdeVideoDecoder KdeVideoDecoder;
+typedef struct KdeVideoFrame {
+    const uint8_t *data;
+    size_t len;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint64_t pts_millis;
+} KdeVideoFrame;
 
 /* Create a renderer. Returns NULL on failure. */
 GpuRenderer *gpu_renderer_create(GlLoaderFn loader,
@@ -43,9 +53,13 @@ void gpu_renderer_resize(GpuRenderer *renderer,
                          uint32_t width,
                          uint32_t height);
 
+KdeVideoDecoder *kde_video_decoder_open(const char *path);
+int32_t kde_video_decoder_next(KdeVideoDecoder *decoder, KdeVideoFrame *output);
+bool kde_video_decoder_seek_start(KdeVideoDecoder *decoder);
+void kde_video_decoder_destroy(KdeVideoDecoder *decoder);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
 #endif /* GPU_RENDERER_H */
-
