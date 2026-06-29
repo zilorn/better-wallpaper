@@ -23,7 +23,9 @@ pub(crate) struct EglRenderer {
     surface: egl::Surface,
     context: egl::Context,
     window: *mut c_void,
-    renderer: GpuRenderer,
+    // Must be dropped while the EGL context is still current. Keeping this in an
+    // Option lets Drop enforce that ordering before destroying the context.
+    renderer: Option<GpuRenderer>,
     output_size: (u32, u32),
     perf_started: Instant,
     perf_frames: u64,
@@ -106,7 +108,7 @@ impl EglRenderer {
             surface,
             context,
             window,
-            renderer,
+            renderer: Some(renderer),
             output_size: (width, height),
             perf_started: Instant::now(),
             perf_frames: 0,
@@ -126,12 +128,17 @@ impl EglRenderer {
             unsafe {
                 wl_egl_window_resize(self.window, width as i32, height as i32, 0, 0);
             }
-            self.renderer.resize(width, height);
+            self.renderer
+                .as_mut()
+                .expect("renderer is available before EGL teardown")
+                .resize(width, height);
             self.output_size = (width, height);
         }
 
         let upload_started = Instant::now();
         self.renderer
+            .as_mut()
+            .expect("renderer is available before EGL teardown")
             .upload_frame(
                 &frame.pixels,
                 frame.width,
@@ -141,7 +148,10 @@ impl EglRenderer {
             .map_err(|msg| anyhow::anyhow!("gpu upload: {msg}"))?;
         self.perf_upload += upload_started.elapsed();
 
-        self.renderer.draw(width, height, mode);
+        self.renderer
+            .as_ref()
+            .expect("renderer is available before EGL teardown")
+            .draw(width, height, mode);
 
         let swap_started = Instant::now();
         self.egl.swap_buffers(self.display, self.surface)?;
@@ -167,6 +177,10 @@ impl EglRenderer {
 
 impl Drop for EglRenderer {
     fn drop(&mut self) {
+        // GpuRenderer::drop issues GL delete calls. It must run before the EGL
+        // context is detached or destroyed; doing it afterwards is undefined
+        // driver behaviour and can hang the compositor during hot reload.
+        drop(self.renderer.take());
         unsafe {
             let _ = self.egl.make_current(self.display, None, None, None);
             let _ = self.egl.destroy_context(self.display, self.context);

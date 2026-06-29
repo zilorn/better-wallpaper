@@ -3,6 +3,7 @@ use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    process::Command,
     sync::{Arc, Mutex, RwLock},
     thread,
     time::{Duration, Instant},
@@ -36,6 +37,7 @@ pub struct ApiState {
     playback: PlaybackControl,
     home: PathBuf,
     plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
+    thumbnail_generation: Arc<Mutex<()>>,
     pub log_store: LogStore,
 }
 
@@ -81,6 +83,7 @@ impl ApiState {
             playback,
             home,
             plasma_instances: Arc::new(Mutex::new(HashMap::new())),
+            thumbnail_generation: Arc::new(Mutex::new(())),
             log_store,
         }
     }
@@ -155,6 +158,13 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         let response = library_media_response(&request, &request_url, state);
         if let Err(error) = request.respond(response) {
             warn!(%error, %url, "failed to send library media response");
+        }
+        return;
+    }
+    if method == Method::Get && url == "/api/v1/library/thumbnail" {
+        let response = library_thumbnail_response(&request_url, state);
+        if let Err(error) = request.respond(response) {
+            warn!(%error, %url, "failed to send library thumbnail response");
         }
         return;
     }
@@ -350,6 +360,7 @@ fn config_revision(config: &AppConfig) -> u64 {
 struct LibraryEntry {
     name: String,
     path: PathBuf,
+    engine_mode: bool,
     size_bytes: u64,
     modified_unix_seconds: Option<u64>,
 }
@@ -363,9 +374,11 @@ struct LibraryPayload {
 
 fn library_response(state: &ApiState) -> Response<std::io::Cursor<Vec<u8>>> {
     let roots = library_roots(state);
-    let (entries, truncated) = scan_library(&roots);
+    let engine_roots = wallpaper_engine_roots(&state.home);
+    let (entries, truncated) = scan_library(&roots, &engine_roots);
     info!(
         roots = roots.len(),
+        engine_roots = engine_roots.len(),
         entries = entries.len(),
         truncated,
         "library scan complete"
@@ -381,15 +394,13 @@ fn library_response(state: &ApiState) -> Response<std::io::Cursor<Vec<u8>>> {
 }
 
 fn library_roots(state: &ApiState) -> Vec<PathBuf> {
-    let mut roots = vec![state.home.join("Videos")];
-    if let Ok(config) = state.config.read()
-        && let Some(parent) = config.wallpaper.path.as_deref().and_then(Path::parent)
-    {
-        roots.push(parent.to_path_buf());
+    match state.config.read() {
+        Ok(config) => config.library.paths.clone(),
+        Err(_) => {
+            warn!("Config lock poisoned while reading library paths");
+            Vec::new()
+        }
     }
-    roots.sort();
-    roots.dedup();
-    roots
 }
 
 fn library_media_response(request: &Request, request_url: &str, state: &ApiState) -> ResponseBox {
@@ -400,6 +411,123 @@ fn library_media_response(request: &Request, request_url: &str, state: &ApiState
         return error_response(StatusCode(400), "invalid media path parameter encoding").boxed();
     };
     media_response(request, path, state, true)
+}
+
+fn library_thumbnail_response(request_url: &str, state: &ApiState) -> ResponseBox {
+    let Some(encoded_path) = query_parameter(request_url, "path") else {
+        return error_response(StatusCode(400), "missing media path parameter").boxed();
+    };
+    let Some(path) = percent_decode(encoded_path).map(PathBuf::from) else {
+        return error_response(StatusCode(400), "invalid media path parameter encoding").boxed();
+    };
+    let canonical = match path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            warn!(path = %path.display(), %error, "thumbnail source does not exist");
+            return error_response(StatusCode(404), "media file does not exist").boxed();
+        }
+    };
+    let allowed = scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
+        .0
+        .iter()
+        .any(|entry| {
+            entry
+                .path
+                .canonicalize()
+                .is_ok_and(|path| path == canonical)
+        });
+    if !allowed {
+        warn!(path = %canonical.display(), "refusing to create thumbnail outside library");
+        return error_response(StatusCode(403), "media file is not in the library").boxed();
+    }
+    let metadata = match canonical.metadata() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            warn!(path = %canonical.display(), %error, "failed to read thumbnail source metadata");
+            return error_response(StatusCode(500), "cannot read media metadata").boxed();
+        }
+    };
+    let mut hasher = Sha1::new();
+    hasher.update(canonical.to_string_lossy().as_bytes());
+    hasher.update(metadata.len().to_le_bytes());
+    if let Ok(modified) = metadata.modified().and_then(|time| {
+        time.duration_since(std::time::UNIX_EPOCH)
+            .map_err(std::io::Error::other)
+    }) {
+        hasher.update(modified.as_nanos().to_le_bytes());
+    }
+    let cache_dir = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.home.join(".cache"))
+        .join("better-wallpaper/thumbnails");
+    let cache_path = cache_dir.join(format!("{:x}.jpg", hasher.finalize()));
+
+    let generation_guard = match state.thumbnail_generation.lock() {
+        Ok(guard) => guard,
+        Err(_) => return error_response(StatusCode(500), "thumbnail lock poisoned").boxed(),
+    };
+    if !cache_path.is_file() {
+        if let Err(error) = fs::create_dir_all(&cache_dir) {
+            warn!(path = %cache_dir.display(), %error, "failed to create thumbnail cache directory");
+            return error_response(StatusCode(500), "cannot create thumbnail cache").boxed();
+        }
+        let temporary = cache_path.with_extension("tmp.jpg");
+        info!(source = %canonical.display(), target = %cache_path.display(), "generating library thumbnail");
+        let result = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-y",
+                "-ss",
+                "1",
+                "-i",
+            ])
+            .arg(&canonical)
+            .args([
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:270:force_original_aspect_ratio=increase,crop=480:270",
+                "-q:v",
+                "6",
+            ])
+            .arg(&temporary)
+            .status();
+        match result {
+            Ok(status) if status.success() && temporary.is_file() => {
+                if let Err(error) = fs::rename(&temporary, &cache_path) {
+                    let _ = fs::remove_file(&temporary);
+                    warn!(%error, "failed to commit generated thumbnail");
+                    return error_response(StatusCode(500), "cannot store thumbnail").boxed();
+                }
+            }
+            Ok(status) => {
+                let _ = fs::remove_file(&temporary);
+                warn!(source = %canonical.display(), ?status, "FFmpeg failed to generate thumbnail");
+                return error_response(StatusCode(422), "cannot generate video thumbnail").boxed();
+            }
+            Err(error) => {
+                warn!(%error, "failed to start FFmpeg thumbnail generator");
+                return error_response(StatusCode(500), "FFmpeg is unavailable").boxed();
+            }
+        }
+    }
+    drop(generation_guard);
+    match File::open(&cache_path) {
+        Ok(file) => Response::from_file(file)
+            .with_header(header("Content-Type", "image/jpeg"))
+            .with_header(header(
+                "Cache-Control",
+                "public, max-age=31536000, immutable",
+            ))
+            .boxed(),
+        Err(error) => {
+            warn!(path = %cache_path.display(), %error, "failed to open cached thumbnail");
+            error_response(StatusCode(500), "cannot open thumbnail").boxed()
+        }
+    }
 }
 
 fn wallpaper_media_response(request: &Request, state: &ApiState) -> ResponseBox {
@@ -427,12 +555,15 @@ fn media_response(
         }
     };
     let allowed = !require_library_entry
-        || scan_library(&library_roots(state)).0.iter().any(|entry| {
-            entry
-                .path
-                .canonicalize()
-                .is_ok_and(|candidate| candidate == canonical)
-        });
+        || scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
+            .0
+            .iter()
+            .any(|entry| {
+                entry
+                    .path
+                    .canonicalize()
+                    .is_ok_and(|candidate| candidate == canonical)
+            });
     if !allowed {
         warn!(path = %canonical.display(), "refusing to read media file outside library");
         return error_response(StatusCode(403), "media file is not in the library").boxed();
@@ -542,7 +673,7 @@ fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name, value).expect("valid HTTP response header")
 }
 
-fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
+fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
     let mut entries = Vec::new();
     let mut visited = HashSet::new();
     let mut pending: Vec<_> = roots.iter().map(|path| (path.clone(), 0)).collect();
@@ -552,6 +683,9 @@ fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
             Ok(path) if visited.insert(path.clone()) => path,
             _ => continue,
         };
+        if engine_roots.iter().any(|root| canonical == *root) {
+            continue;
+        }
         let children = match fs::read_dir(&canonical) {
             Ok(children) => children,
             Err(error) => {
@@ -583,6 +717,7 @@ fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
                 entries.push(LibraryEntry {
                     name: child.file_name().to_string_lossy().into_owned(),
                     path,
+                    engine_mode: false,
                     size_bytes: metadata.len(),
                     modified_unix_seconds,
                 });
@@ -596,8 +731,136 @@ fn scan_library(roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
             break;
         }
     }
+    for root in engine_roots {
+        scan_wallpaper_engine_library(root, &mut entries, &mut truncated);
+        if truncated {
+            break;
+        }
+    }
     entries.sort_by_key(|entry| entry.name.to_lowercase());
     (entries, truncated)
+}
+
+fn wallpaper_engine_roots(home: &Path) -> Vec<PathBuf> {
+    let steam_roots = [
+        home.join(".local/share/Steam"),
+        home.join(".steam/steam"),
+        home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+    ];
+    let mut libraries = steam_roots.to_vec();
+    for steam_root in steam_roots {
+        let library_folders = steam_root.join("steamapps/libraryfolders.vdf");
+        let Ok(contents) = fs::read_to_string(&library_folders) else {
+            continue;
+        };
+        for line in contents.lines() {
+            let fields = line.split('"').collect::<Vec<_>>();
+            if fields.get(1).is_some_and(|field| field.trim() == "path") {
+                if let Some(path) = fields.get(3).filter(|path| !path.is_empty()) {
+                    libraries.push(PathBuf::from(path.replace("\\\\", "\\")));
+                }
+            }
+        }
+    }
+    let mut roots = libraries
+        .into_iter()
+        .map(|library| library.join("steamapps/workshop/content/431960"))
+        .filter(|path| path.is_dir())
+        .filter_map(|path| path.canonicalize().ok())
+        .collect::<Vec<_>>();
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+#[derive(Deserialize)]
+struct WallpaperEngineProject {
+    #[serde(rename = "type")]
+    kind: String,
+    file: Option<PathBuf>,
+    title: Option<String>,
+}
+
+fn scan_wallpaper_engine_library(
+    root: &Path,
+    entries: &mut Vec<LibraryEntry>,
+    truncated: &mut bool,
+) {
+    let projects = match fs::read_dir(root) {
+        Ok(projects) => projects,
+        Err(error) => {
+            warn!(path = %root.display(), %error, "skipping unreadable Wallpaper Engine workshop directory");
+            return;
+        }
+    };
+    for project_directory in projects
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+    {
+        let descriptor = project_directory.join("project.json");
+        let project: WallpaperEngineProject = match File::open(&descriptor)
+            .and_then(|file| serde_json::from_reader(file).map_err(std::io::Error::other))
+        {
+            Ok(project) => project,
+            Err(error) => {
+                warn!(path = %descriptor.display(), %error, "skipping invalid Wallpaper Engine project");
+                continue;
+            }
+        };
+        if project.kind != "video" {
+            info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
+            continue;
+        }
+        let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
+            warn!(path = %descriptor.display(), "skipping Wallpaper Engine video without a safe file path");
+            continue;
+        };
+        let media_path = project_directory.join(relative_file);
+        let canonical_project = match project_directory.canonicalize() {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        let media_path = match media_path.canonicalize() {
+            Ok(path) if path.starts_with(&canonical_project) => path,
+            _ => {
+                warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine video file path");
+                continue;
+            }
+        };
+        let metadata = match media_path.metadata() {
+            Ok(metadata) if metadata.is_file() => metadata,
+            Ok(_) => continue,
+            Err(error) => {
+                warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine video file");
+                continue;
+            }
+        };
+        entries.push(LibraryEntry {
+            name: project
+                .title
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or_else(|| {
+                    project_directory
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+            path: media_path,
+            engine_mode: true,
+            size_bytes: metadata.len(),
+            modified_unix_seconds: metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs()),
+        });
+        if entries.len() >= MAX_LIBRARY_ENTRIES {
+            *truncated = true;
+            break;
+        }
+    }
 }
 
 fn is_video_path(path: &Path) -> bool {
@@ -776,14 +1039,19 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         }
     };
     match state.config.write() {
-        Ok(mut current) => *current = config,
+        Ok(mut current) => *current = config.clone(),
         Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     }
     state.playback.request_reload();
     info!("management API config update complete, playback pipeline rebuild requested");
     json_response(
         StatusCode(200),
-        &serde_json::json!({ "saved": true, "restart_required": false, "reload_requested": true }),
+        &serde_json::json!({
+            "saved": true,
+            "restart_required": false,
+            "reload_requested": true,
+            "config": config,
+        }),
     )
 }
 
@@ -897,12 +1165,41 @@ mod tests {
         fs::write(directory.path().join("nested/clip.webm"), b"video2").unwrap();
         fs::write(directory.path().join("ignored.txt"), b"text").unwrap();
 
-        let (entries, truncated) = scan_library(&[directory.path().to_path_buf()]);
+        let (entries, truncated) = scan_library(&[directory.path().to_path_buf()], &[]);
 
         assert!(!truncated);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "clip.webm");
         assert_eq!(entries[1].name, "wallpaper.MP4");
+        assert!(entries.iter().all(|entry| !entry.engine_mode));
+    }
+
+    #[test]
+    fn scans_wallpaper_engine_projects_from_project_json_only() {
+        let directory = tempfile::tempdir().unwrap();
+        for (id, kind, file) in [
+            ("1", "video", "movie.mp4"),
+            ("2", "web", "index.html"),
+            ("3", "scene", "scene.pkg"),
+        ] {
+            let project = directory.path().join(id);
+            fs::create_dir(&project).unwrap();
+            fs::write(project.join(file), b"content").unwrap();
+            fs::write(
+                project.join("project.json"),
+                format!(r#"{{"type":"{kind}","file":"{file}","title":"Project {id}"}}"#),
+            )
+            .unwrap();
+        }
+        fs::write(directory.path().join("orphan.mp4"), b"video").unwrap();
+
+        let (entries, truncated) = scan_library(&[], &[directory.path().to_path_buf()]);
+
+        assert!(!truncated);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Project 1");
+        assert_eq!(entries[0].path, directory.path().join("1/movie.mp4"));
+        assert!(entries[0].engine_mode);
     }
 
     #[test]

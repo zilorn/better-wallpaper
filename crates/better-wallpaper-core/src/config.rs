@@ -71,6 +71,7 @@ pub struct AppConfig {
     pub version: u32,
     pub general: GeneralConfig,
     pub wallpaper: WallpaperConfig,
+    pub library: LibraryConfig,
     pub decode: DecodeConfig,
     pub outputs: Vec<OutputConfig>,
 }
@@ -81,8 +82,23 @@ impl Default for AppConfig {
             version: CURRENT_CONFIG_VERSION,
             general: GeneralConfig::default(),
             wallpaper: WallpaperConfig::default(),
+            library: LibraryConfig::default(),
             decode: DecodeConfig::default(),
             outputs: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct LibraryConfig {
+    pub paths: Vec<PathBuf>,
+}
+
+impl Default for LibraryConfig {
+    fn default() -> Self {
+        Self {
+            paths: vec![PathBuf::from("~/Videos")],
         }
     }
 }
@@ -109,6 +125,7 @@ impl Default for GeneralConfig {
 #[serde(default)]
 pub struct WallpaperConfig {
     pub path: Option<PathBuf>,
+    pub engine_mode: bool,
     pub loop_playback: bool,
     pub muted: bool,
     pub fill_mode: FillMode,
@@ -119,6 +136,7 @@ impl Default for WallpaperConfig {
     fn default() -> Self {
         Self {
             path: None,
+            engine_mode: false,
             loop_playback: true,
             muted: true,
             fill_mode: FillMode::Cover,
@@ -166,6 +184,15 @@ impl AppConfig {
         if let Some(path) = &self.wallpaper.path {
             self.wallpaper.path = Some(expand_path(path, home));
         }
+        self.library.paths = self
+            .library
+            .paths
+            .iter()
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| expand_path(path, home))
+            .collect();
+        self.library.paths.sort();
+        self.library.paths.dedup();
         Ok(())
     }
 }
@@ -271,6 +298,26 @@ mod tests {
         assert_eq!(
             config.wallpaper.path.unwrap(),
             Path::new("/home/test/Videos/a.mp4")
+        );
+        assert_eq!(
+            config.library.paths,
+            vec![PathBuf::from("/home/test/Videos")]
+        );
+    }
+
+    #[test]
+    fn normalizes_and_deduplicates_library_paths() {
+        let mut config = AppConfig::default();
+        config.library.paths = vec!["~/Videos".into(), "media".into(), "~/Videos".into()];
+        config
+            .validate_and_normalize(Path::new("/home/test"))
+            .unwrap();
+        assert_eq!(
+            config.library.paths,
+            vec![
+                PathBuf::from("/home/test/Videos"),
+                PathBuf::from("/home/test/media")
+            ]
         );
     }
 

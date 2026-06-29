@@ -29,15 +29,17 @@ type Config = {
   general: { backend: string; restore_on_start: boolean; log_level: string };
   wallpaper: {
     path: string | null;
+    engine_mode: boolean;
     loop_playback: boolean;
     muted: boolean;
     fill_mode: string;
     fps_limit: number;
   };
+  library: { paths: string[] };
   decode: { hardware: string; max_height: number };
   outputs: Output[];
 };
-type LibraryEntry = { name: string; path: string; size_bytes: number; modified_unix_seconds: number | null };
+type LibraryEntry = { name: string; path: string; engine_mode: boolean; size_bytes: number; modified_unix_seconds: number | null };
 type Library = { entries: LibraryEntry[]; roots: string[]; truncated: boolean };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -87,16 +89,18 @@ function createAppState() {
     if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
     socket?.close();
   });
-  const run = async (label: string, action: () => Promise<void>) => {
+  const run = async (label: string, action: () => Promise<void>): Promise<boolean> => {
     setBusy(true);
     setNotice("");
     console.info(`[Better Wallpaper] ${label}开始`);
     try {
       await action();
       console.info(`[Better Wallpaper] ${label}完成`);
+      return true;
     } catch (error) {
       console.error(`[Better Wallpaper] ${label}失败`, error);
       setNotice(error instanceof Error ? error.message : String(error));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -105,23 +109,26 @@ function createAppState() {
     const current = config();
     if (current) setConfig(update(current));
   };
-  const saveConfig = () => run("保存配置", async () => {
-    const current = config();
-    if (!current) return;
-    await requestJson("/api/v1/config", {
+  const persistConfig = (current: Config) => run("保存配置", async () => {
+    const result = await requestJson<{ config: Config }>("/api/v1/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
     });
-    setNotice("配置已保存；播放相关变更将在重启播放进程后生效。");
+    setConfig(result.config);
+    setNotice("配置已保存并已热重载。");
   });
+  const saveConfig = () => {
+    const current = config();
+    return current ? persistConfig(current) : Promise.resolve(false);
+  };
   const setPaused = (paused: boolean) => run(paused ? "暂停播放" : "恢复播放", async () => {
     await requestJson(`/api/v1/playback/${paused ? "pause" : "resume"}`, { method: "POST" });
     await refetchStatus();
     setNotice(paused ? "播放已暂停。" : "播放已恢复。");
   });
 
-  return { status, config, connected, busy, notice, updateConfig, saveConfig, setPaused };
+  return { status, config, connected, busy, notice, updateConfig, saveConfig, applyConfig: persistConfig, setPaused };
 }
 
 type AppState = ReturnType<typeof createAppState>;
@@ -168,7 +175,7 @@ function PageHeader(props: { title: string; description: string }) {
 function WallpapersPage() {
   const state = useApp();
   const updateWallpaper = (key: keyof Config["wallpaper"], value: string | boolean | number | null) =>
-    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value } }));
+    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value, ...(key === "path" ? { engine_mode: false } : {}) } }));
   return <><PageHeader title="壁纸" description="选择视频、调整画面方式并控制当前播放任务。" />
     <Show when={state.config()} fallback={<Loading />} >{(config) => <div class="settings-grid">
       <section class="page-panel preview-panel"><div class="video-preview"><span>VIDEO</span><strong>{fileName(config().wallpaper.path)}</strong></div><div class="playback-summary"><div><span>当前状态</span><strong>{playbackLabel(state.status()?.playback)}</strong></div><button class="command" disabled={state.busy() || !state.status()?.playback.running || state.status()?.playback.cancelled} onClick={() => state.setPaused(!state.status()?.playback.paused)}>{state.status()?.playback.paused ? "恢复播放" : "暂停播放"}</button></div></section>
@@ -193,19 +200,76 @@ function DisplaysPage() {
   </>}</Show></>;
 }
 
+function LibraryVideoPreview(props: { entry: LibraryEntry }) {
+  let video: HTMLVideoElement | undefined;
+
+  onMount(() => {
+    console.info(`[Better Wallpaper] Starting library preview: ${props.entry.path}`);
+    void video?.play().catch((error) => {
+      console.warn("[Better Wallpaper] Library preview playback was blocked", error);
+    });
+  });
+  onCleanup(() => {
+    if (!video) return;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    console.info(`[Better Wallpaper] Released library preview: ${props.entry.path}`);
+  });
+
+  return <video
+    ref={video}
+    src={`/api/v1/library/media?path=${encodeURIComponent(props.entry.path)}`}
+    muted
+    loop
+    playsinline
+    preload="metadata"
+  />;
+}
+
 function LibrariesPage() {
   const state = useApp();
+  const [newPath, setNewPath] = createSignal("");
+  const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [library, { refetch }] = createResource(() => requestJson<Library>("/api/v1/library"));
-  const select = (entry: LibraryEntry) => {
-    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, path: entry.path } }));
-    console.info(`[Better Wallpaper] 已从壁纸库选择：${entry.path}`);
+  const addPath = () => {
+    const path = newPath().trim();
+    if (!path) return;
+    state.updateConfig((current) => current.library.paths.includes(path) ? current : {
+      ...current,
+      library: { paths: [...current.library.paths, path] },
+    });
+    setNewPath("");
+  };
+  const removePath = (path: string) => state.updateConfig((current) => ({
+    ...current,
+    library: { paths: current.library.paths.filter((candidate) => candidate !== path) },
+  }));
+  const saveLibrary = async () => {
+    await state.saveConfig();
+    await refetch();
+  };
+  const select = async (entry: LibraryEntry) => {
+    const current = state.config();
+    if (!current) return;
+    const next = { ...current, wallpaper: { ...current.wallpaper, path: entry.path, engine_mode: entry.engine_mode } };
+    state.updateConfig(() => next);
+    console.info(`[Better Wallpaper] 正在应用壁纸：${entry.path}`);
+    const saved = await state.applyConfig(next);
+    if (!saved) state.updateConfig(() => current);
   };
   return <><PageHeader title="壁纸库" description="扫描本地视频集合，并选择要应用的壁纸。" />
-    <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个视频</strong><small>{library()?.roots.join("、") || "正在读取扫描目录…"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
+    <Show when={state.config()}>{(config) => <section class="page-panel library-paths">
+      <h3>扫描目录</h3>
+      <Show when={config().library.paths.length} fallback={<div class="empty compact">尚未添加扫描目录。</div>}>
+        <For each={config().library.paths}>{(path) => <div class="library-path"><span title={path}>{path}</span><button class="command secondary" disabled={state.busy()} onClick={() => removePath(path)}>移除</button></div>}</For>
+      </Show>
+      <div class="library-path-add"><input value={newPath()} onInput={(event) => setNewPath(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addPath(); }} placeholder="目录路径，例如 ~/Videos/Wallpapers" /><button class="command secondary" disabled={!newPath().trim() || state.busy()} onClick={addPath}>添加目录</button><button class="command" disabled={state.busy()} onClick={() => void saveLibrary()}>保存并扫描</button></div>
+    </section>}</Show>
+    <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个视频</strong><small>{library()?.roots.join("、") || "未配置扫描目录"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
     <Show when={library()} fallback={<Loading />}>{(result) => <>
       <Show when={result().truncated}><div class="notice">结果已达到 1000 个条目的扫描上限。</div></Show>
-      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的视频文件。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview"><video src={`/api/v1/library/media?path=${encodeURIComponent(entry.path)}`} muted loop preload="metadata" onMouseEnter={(event) => void event.currentTarget.play()} onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} /><span>悬停预览</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择"}</button></div></article>}</For></section>
-      <div class="page-actions library-actions"><span></span><button class="command" disabled={state.busy() || !state.config()} onClick={state.saveConfig}>保存所选壁纸</button></div>
+      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的视频文件。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview" onPointerEnter={() => setPreviewPath(entry.path)} onPointerLeave={() => setPreviewPath((current) => current === entry.path ? null : current)}><img src={`/api/v1/library/thumbnail?path=${encodeURIComponent(entry.path)}`} alt="" loading="lazy" decoding="async" /><Show when={previewPath() === entry.path}><LibraryVideoPreview entry={entry} /></Show><span>{entry.engine_mode ? "WALLPAPER ENGINE" : "悬停预览"}</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => void select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择并应用"}</button></div></article>}</For></section>
     </>}</Show>
   </>;
 }
