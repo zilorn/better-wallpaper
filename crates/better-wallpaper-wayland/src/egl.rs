@@ -31,6 +31,7 @@ pub(crate) struct EglRenderer {
     perf_frames: u64,
     perf_upload: Duration,
     perf_swap: Duration,
+    cuda_zero_copy_logged: bool,
 }
 
 impl EglRenderer {
@@ -114,6 +115,7 @@ impl EglRenderer {
             perf_frames: 0,
             perf_upload: Duration::ZERO,
             perf_swap: Duration::ZERO,
+            cuda_zero_copy_logged: false,
         })
     }
 
@@ -136,16 +138,30 @@ impl EglRenderer {
         }
 
         let upload_started = Instant::now();
-        self.renderer
+        let renderer = self
+            .renderer
             .as_mut()
-            .expect("renderer is available before EGL teardown")
-            .upload_frame(
+            .expect("renderer is available before EGL teardown");
+        if let Some(cuda) = frame.cuda.as_ref() {
+            let result = renderer.upload_cuda_frame(cuda, frame.width, frame.height);
+            if result.is_ok() && !self.cuda_zero_copy_logged {
+                info!(
+                    width = frame.width,
+                    height = frame.height,
+                    "CUDA OpenGL zero-copy rendering enabled"
+                );
+                self.cuda_zero_copy_logged = true;
+            }
+            result
+        } else {
+            renderer.upload_frame(
                 &frame.pixels,
                 frame.width,
                 frame.height,
                 frame.stride as u32,
             )
-            .map_err(|msg| anyhow::anyhow!("gpu upload: {msg}"))?;
+        }
+        .map_err(|msg| anyhow::anyhow!("gpu upload: {msg}"))?;
         self.perf_upload += upload_started.elapsed();
 
         self.renderer

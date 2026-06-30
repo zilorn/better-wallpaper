@@ -1,4 +1,4 @@
-use std::{path::Path, time::Duration};
+use std::{ffi::c_void, path::Path, time::Duration};
 
 use thiserror::Error;
 
@@ -48,9 +48,47 @@ pub struct ColorInfo {
     pub range: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CudaFrame {
+    pub planes: [usize; 2],
+    pub strides: [usize; 2],
+    owner: *mut c_void,
+    release: unsafe fn(*mut c_void),
+}
+unsafe impl Send for CudaFrame {}
+impl std::fmt::Debug for CudaFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaFrame")
+            .field("strides", &self.strides)
+            .finish()
+    }
+}
+impl Drop for CudaFrame {
+    fn drop(&mut self) {
+        unsafe { (self.release)(self.owner) }
+    }
+}
+impl CudaFrame {
+    /// # Safety
+    /// The owner and CUDA plane addresses must remain valid until `release` is called.
+    pub unsafe fn new(
+        planes: [usize; 2],
+        strides: [usize; 2],
+        owner: *mut c_void,
+        release: unsafe fn(*mut c_void),
+    ) -> Self {
+        Self {
+            planes,
+            strides,
+            owner,
+            release,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct DecodedFrame {
     pub pixels: Vec<u8>,
+    pub cuda: Option<CudaFrame>,
     pub format: PixelFormat,
     pub width: u32,
     pub height: u32,

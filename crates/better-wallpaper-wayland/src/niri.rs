@@ -187,6 +187,10 @@ impl NiriBackend {
                     });
                 }
                 Err(error) => {
+                    if frame.cuda.is_some() {
+                        return Err(error)
+                            .context("CUDA OpenGL interop failed for a hardware-decoded frame");
+                    }
                     warn!(output=%self.output_name,%error,"EGL GPU 呈现失败，回退 wl_shm");
                     self.egl = None;
                     self.state.frame_ready = true;
@@ -546,6 +550,7 @@ mod tests {
         }
         DecodedFrame {
             pixels,
+            cuda: None,
             format: PixelFormat::Rgba,
             width,
             height,

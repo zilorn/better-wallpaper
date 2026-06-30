@@ -4,11 +4,16 @@ use std::{
 };
 
 use better_wallpaper_core::video::{
-    ColorInfo, DecodeOptions, DecodedFrame, MediaInfo, PixelFormat, Rational, VideoDecoder,
-    VideoError,
+    ColorInfo, CudaFrame, DecodeOptions, DecodedFrame, MediaInfo, PixelFormat, Rational,
+    VideoDecoder, VideoError,
 };
 use ffmpeg_next as ffmpeg;
 use tracing::{debug, info, warn};
+
+unsafe fn release_cuda_frame(owner: *mut std::ffi::c_void) {
+    let mut frame = owner.cast::<ffmpeg::ffi::AVFrame>();
+    unsafe { ffmpeg::ffi::av_frame_free(&mut frame) };
+}
 
 /// FFmpeg 在打开解码器时调用此函数协商输出格式。CUDA 不可用时保留列表中的
 /// 第一个软件格式，使同一个解码器可以自动降级。
@@ -140,6 +145,38 @@ impl FfmpegDecoder {
                 );
             }
         }
+        if hardware_frame {
+            let frames = unsafe {
+                (*(*source.as_ptr()).hw_frames_ctx)
+                    .data
+                    .cast::<ffmpeg::ffi::AVHWFramesContext>()
+            };
+            if unsafe { (*frames).sw_format } == ffmpeg::ffi::AVPixelFormat::AV_PIX_FMT_NV12 {
+                let raw = unsafe { ffmpeg::ffi::av_frame_clone(source.as_ptr()) };
+                if raw.is_null() {
+                    return Err(VideoError::Decode("Failed to retain CUDA frame".into()));
+                }
+                let cuda = unsafe {
+                    CudaFrame::new(
+                        [(*raw).data[0] as usize, (*raw).data[1] as usize],
+                        [(*raw).linesize[0] as usize, (*raw).linesize[1] as usize],
+                        raw.cast(),
+                        release_cuda_frame,
+                    )
+                };
+                return Ok(Some(DecodedFrame {
+                    pixels: Vec::new(),
+                    cuda: Some(cuda),
+                    format: PixelFormat::Rgba,
+                    width: source.width(),
+                    height: source.height(),
+                    stride: 0,
+                    pts,
+                    time_base: self.time_base,
+                    color,
+                }));
+            }
+        }
         let mut software_frame = ffmpeg::util::frame::Video::empty();
         let source = if hardware_frame {
             let transfer_started = Instant::now();
@@ -242,6 +279,7 @@ impl FfmpegDecoder {
         }
         Ok(Some(DecodedFrame {
             pixels,
+            cuda: None,
             format: PixelFormat::Rgba,
             width,
             height,
@@ -277,6 +315,10 @@ impl VideoDecoder for FfmpegDecoder {
         let duration = (stream.duration() > 0).then(|| time_base.duration(stream.duration()));
         let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
             .map_err(|error| VideoError::Decode(error.to_string()))?;
+        context.set_threading(ffmpeg::codec::threading::Config {
+            kind: ffmpeg::codec::threading::Type::Frame,
+            count: 0,
+        });
         if options.hardware {
             match enable_cuda(&mut context) {
                 Ok(()) => info!(

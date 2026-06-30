@@ -17,7 +17,7 @@ use rodio::{OutputStream, OutputStreamBuilder, Sink, Source};
 use tracing::{debug, info, warn};
 
 const FRAME_QUEUE_CAPACITY: usize = 3;
-const DROP_THRESHOLD: Duration = Duration::from_millis(100);
+const DROP_THRESHOLD: Duration = Duration::from_millis(50);
 const STATS_INTERVAL: u64 = 300;
 const REALTIME_STATS_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -26,24 +26,23 @@ struct AudioPlayback {
     _stream: OutputStream,
     sink: Sink,
     paused: bool,
+    path: PathBuf,
 }
 
 struct FfmpegAudioSource {
     decoder: FfmpegAudioDecoder,
     info: AudioInfo,
     pending: std::vec::IntoIter<f32>,
-    loop_playback: bool,
     failed: bool,
 }
 
 impl FfmpegAudioSource {
-    fn open(path: &Path, loop_playback: bool) -> Result<Self> {
+    fn open(path: &Path) -> Result<Self> {
         let (decoder, info) = FfmpegAudioDecoder::open(path)?;
         Ok(Self {
             decoder,
             info,
             pending: Vec::new().into_iter(),
-            loop_playback,
             failed: false,
         })
     }
@@ -62,12 +61,6 @@ impl Iterator for FfmpegAudioSource {
             }
             match self.decoder.next_samples() {
                 Ok(samples) => self.pending = samples.into_iter(),
-                Err(VideoError::EndOfStream) if self.loop_playback => {
-                    if let Err(error) = self.decoder.seek_start() {
-                        warn!(%error, "niri audio loop seek failed");
-                        self.failed = true;
-                    }
-                }
                 Err(VideoError::EndOfStream) => return None,
                 Err(error) => {
                     warn!(%error, "niri audio decoding stopped");
@@ -97,19 +90,20 @@ impl Source for FfmpegAudioSource {
 }
 
 impl AudioPlayback {
-    fn open(path: &Path, loop_playback: bool) -> Result<Self> {
+    fn open(path: &Path) -> Result<Self> {
         let stream = OutputStreamBuilder::open_default_stream()
             .context("failed to open default audio output")?;
         let sink = Sink::connect_new(stream.mixer());
-        let source = FfmpegAudioSource::open(path, loop_playback)
+        let source = FfmpegAudioSource::open(path)
             .with_context(|| format!("failed to decode audio source {}", path.display()))?;
         sink.append(source);
         sink.pause();
-        info!(path = %path.display(), loop_playback, "niri audio output initialized");
+        info!(path = %path.display(), "niri audio output initialized for video-controlled looping");
         Ok(Self {
             _stream: stream,
             sink,
             paused: true,
+            path: path.to_path_buf(),
         })
     }
 
@@ -126,8 +120,15 @@ impl AudioPlayback {
         info!(paused, "niri audio pause state updated");
     }
 
-    fn get_pos(&self) -> Duration {
-        self.sink.get_pos()
+    fn restart_for_video_loop(&mut self) -> Result<()> {
+        let source = FfmpegAudioSource::open(&self.path)
+            .with_context(|| format!("failed to restart audio source {}", self.path.display()))?;
+        self.sink.clear();
+        self.sink.append(source);
+        self.sink.play();
+        self.paused = false;
+        info!(path = %self.path.display(), "audio restarted at video loop boundary");
+        Ok(())
     }
 }
 
@@ -353,7 +354,7 @@ pub fn run_niri_controlled(
         .context("niri decode thread did not return media info")?
         .map_err(anyhow::Error::msg)?;
     let mut audio = if play_audio {
-        match AudioPlayback::open(&path, loop_playback) {
+        match AudioPlayback::open(&path) {
             Ok(audio) => Some(audio),
             Err(error) => {
                 warn!(%error, path = %path.display(), "niri audio unavailable; continuing with video only");
@@ -411,21 +412,25 @@ pub fn run_niri_controlled(
             Ok(frame) => {
                 perf.decoded += 1;
                 let pts = frame.presentation_time();
-                match clock.as_mut() {
-                    None => clock = Some(PlaybackClock::new(Instant::now(), pts, DROP_THRESHOLD)),
-                    Some(clock) if pts < previous_pts => {
-                        loops += 1;
+                if pts < previous_pts {
+                    loops += 1;
+                    if let Some(clock) = clock.as_mut() {
                         clock.reset(Instant::now(), pts);
                     }
-                    Some(_) => {}
+                    if let Some(audio) = audio.as_mut() {
+                        audio.restart_for_video_loop()?;
+                    }
+                }
+                if clock.is_none() {
+                    clock = Some(PlaybackClock::new(Instant::now(), pts, DROP_THRESHOLD));
                 }
                 previous_pts = pts;
                 loop {
-                    match clock
+                    let decision = clock
                         .as_ref()
                         .expect("clock initialized")
-                        .decide(Instant::now(), pts)
-                    {
+                        .decide(Instant::now(), pts);
+                    match decision {
                         FrameDecision::Wait(duration) => {
                             thread::sleep(duration.min(CONTROL_POLL_INTERVAL));
                             for backend in &mut backends {
@@ -485,31 +490,9 @@ pub fn run_niri_controlled(
                         FrameDecision::Drop => {
                             dropped += 1;
                             perf.dropped += 1;
-                            clock
-                                .as_mut()
-                                .expect("clock initialized")
-                                .reset(Instant::now(), pts);
-                            let present_started = Instant::now();
-                            for backend in &mut backends {
-                                let metrics =
-                                    backend.present(&frame, fill_mode).with_context(|| {
-                                        format!(
-                                            "failed to submit overload recovery frame to niri output {}",
-                                            backend.output_name()
-                                        )
-                                    })?;
-                                perf.callback_wait += metrics.frame_callback_wait;
-                                perf.buffer_allocate += metrics.buffer_allocate;
-                                perf.scale += metrics.scale;
-                                perf.submit += metrics.submit;
-                            }
-                            presented += 1;
-                            perf.presented += 1;
-                            perf.present_time += present_started.elapsed();
                             debug!(
                                 pts_ms = pts.as_millis(),
-                                dropped,
-                                "niri decode overload, submitting current frame and rebuilding clock"
+                                dropped, "niri video frame exceeded the video timeline tolerance"
                             );
                             break;
                         }

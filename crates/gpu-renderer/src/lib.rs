@@ -1,3 +1,4 @@
+mod cuda_gl;
 mod ffi;
 
 use std::ffi::c_char;
@@ -10,6 +11,7 @@ use tracing::debug;
 const VERTEX_SHADER: &str =
     "attribute vec2 p;attribute vec2 t;varying vec2 u;void main(){gl_Position=vec4(p,0.,1.);u=t;}";
 const FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;uniform sampler2D v;void main(){gl_FragColor=texture2D(v,u);}";
+const YUV_FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;uniform sampler2D y_tex;uniform sampler2D uv_tex;void main(){float y=1.1643*(texture2D(y_tex,u).r-.0625);vec2 c=texture2D(uv_tex,u).rg-vec2(.5);gl_FragColor=vec4(y+1.7927*c.y,y-.2132*c.x-.5329*c.y,y+2.1124*c.x,1.);}";
 const PBO_RING_SIZE: usize = 3;
 
 pub type GlLoaderFn = Option<unsafe extern "C" fn(name: *const c_char) -> *const std::ffi::c_void>;
@@ -25,18 +27,22 @@ struct GlStateGuard {
 pub struct GpuRenderer {
     gl: glow::Context,
     program: glow::Program,
+    yuv_program: glow::Program,
     vbo: glow::Buffer,
     texture: glow::Texture,
     pbo_ring: Vec<glow::Buffer>,
     pbo_index: usize,
     texture_size: (u32, u32),
     output_size: (u32, u32),
+    cuda: Option<cuda_gl::CudaGl>,
+    cuda_textures: Option<(glow::Texture, glow::Texture)>,
 }
 
 impl GpuRenderer {
     pub fn new(gl: glow::Context, output_width: u32, output_height: u32) -> Result<Self, String> {
         unsafe {
             let program = compile_program(&gl)?;
+            let yuv_program = compile_program_with_fragment(&gl, YUV_FRAGMENT_SHADER)?;
             let vbo = gl
                 .create_buffer()
                 .map_err(|msg| format!("VBO allocate: {msg}"))?;
@@ -60,15 +66,19 @@ impl GpuRenderer {
                         .map_err(|msg| format!("PBO allocate: {msg}"))
                 })
                 .collect::<Result<_, _>>()?;
+            let cuda = cuda_gl::CudaGl::new(&gl).ok();
             Ok(Self {
                 gl,
                 program,
+                yuv_program,
                 vbo,
                 texture,
                 pbo_ring,
                 pbo_index: 0,
                 texture_size: (0, 0),
                 output_size: (output_width, output_height),
+                cuda,
+                cuda_textures: None,
             })
         }
     }
@@ -109,6 +119,7 @@ impl GpuRenderer {
             ));
         }
         let guard = GlStateGuard::capture(&self.gl);
+        self.cuda_textures = None;
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
             if self.texture_size != (width, height) {
@@ -154,6 +165,21 @@ impl GpuRenderer {
         Ok(())
     }
 
+    pub fn upload_cuda_frame(
+        &mut self,
+        frame: &better_wallpaper_core::CudaFrame,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
+        let cuda = self
+            .cuda
+            .as_mut()
+            .ok_or("CUDA OpenGL interop unavailable")?;
+        self.cuda_textures = Some(unsafe { cuda.upload(&self.gl, frame, width, height)? });
+        self.texture_size = (width, height);
+        Ok(())
+    }
+
     pub fn draw(&self, output_width: u32, output_height: u32, fill: FillMode) {
         let vertices = fill_vertices(
             self.texture_size.0,
@@ -168,7 +194,12 @@ impl GpuRenderer {
                 vertices.as_ptr().cast::<u8>(),
                 vertices.len() * std::mem::size_of::<f32>(),
             );
-            self.gl.use_program(Some(self.program));
+            let program = if self.cuda_textures.is_some() {
+                self.yuv_program
+            } else {
+                self.program
+            };
+            self.gl.use_program(Some(program));
             self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
             self.gl
                 .buffer_data_u8_slice(glow::ARRAY_BUFFER, vertex_bytes, glow::DYNAMIC_DRAW);
@@ -177,7 +208,20 @@ impl GpuRenderer {
                 self.gl
                     .vertex_attrib_pointer_f32(index, 2, glow::FLOAT, false, 16, offset);
             }
-            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
+            if let Some((y, uv)) = self.cuda_textures {
+                self.gl.active_texture(glow::TEXTURE0);
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(y));
+                if let Some(location) = self.gl.get_uniform_location(program, "y_tex") {
+                    self.gl.uniform_1_i32(Some(&location), 0);
+                }
+                self.gl.active_texture(glow::TEXTURE1);
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(uv));
+                if let Some(location) = self.gl.get_uniform_location(program, "uv_tex") {
+                    self.gl.uniform_1_i32(Some(&location), 1);
+                }
+            } else {
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
+            }
             self.gl
                 .viewport(0, 0, output_width as i32, output_height as i32);
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
@@ -195,12 +239,16 @@ impl GpuRenderer {
 impl Drop for GpuRenderer {
     fn drop(&mut self) {
         unsafe {
+            if let Some(cuda) = self.cuda.as_mut() {
+                cuda.destroy(&self.gl);
+            }
             self.gl.delete_texture(self.texture);
             for pbo in self.pbo_ring.drain(..) {
                 self.gl.delete_buffer(pbo);
             }
             self.gl.delete_buffer(self.vbo);
             self.gl.delete_program(self.program);
+            self.gl.delete_program(self.yuv_program);
         }
         debug!("gpu renderer resources released");
     }
@@ -238,6 +286,13 @@ impl GlStateGuard {
 }
 
 unsafe fn compile_program(gl: &glow::Context) -> Result<glow::Program, String> {
+    unsafe { compile_program_with_fragment(gl, FRAGMENT_SHADER) }
+}
+
+unsafe fn compile_program_with_fragment(
+    gl: &glow::Context,
+    fragment: &str,
+) -> Result<glow::Program, String> {
     unsafe {
         let program = gl
             .create_program()
@@ -248,7 +303,7 @@ unsafe fn compile_program(gl: &glow::Context) -> Result<glow::Program, String> {
         let frag = gl
             .create_shader(glow::FRAGMENT_SHADER)
             .map_err(|msg| format!("fragment shader create: {msg}"))?;
-        for (shader, source) in [(vert, VERTEX_SHADER), (frag, FRAGMENT_SHADER)] {
+        for (shader, source) in [(vert, VERTEX_SHADER), (frag, fragment)] {
             gl.shader_source(shader, source);
             gl.compile_shader(shader);
             if !gl.get_shader_compile_status(shader) {

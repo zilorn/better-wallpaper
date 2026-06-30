@@ -20,6 +20,7 @@ mod tests {
     fn frame(pts: i64) -> DecodedFrame {
         DecodedFrame {
             pixels: vec![0; 4],
+            cuda: None,
             format: PixelFormat::Rgba,
             width: 1,
             height: 1,
