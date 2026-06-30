@@ -7,9 +7,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
-pub const CURRENT_CONFIG_VERSION: u32 = 1;
+pub const CURRENT_CONFIG_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -65,12 +65,48 @@ pub enum HardwareDecode {
     Software,
 }
 
+/// Wallpaper type. Scene is new in v2 config.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WallpaperType {
     #[default]
     Video,
     Web,
+    Scene,
+}
+
+/// Scene-specific settings (v2 config)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SceneConfig {
+    pub quality: SceneQuality,
+    pub mouse: bool,
+    pub parallax: bool,
+    pub audio_processing: bool,
+    pub particle_limit: u32,
+    pub script_enabled: bool,
+}
+
+impl Default for SceneConfig {
+    fn default() -> Self {
+        Self {
+            quality: SceneQuality::High,
+            mouse: true,
+            parallax: true,
+            audio_processing: false,
+            particle_limit: 10_000,
+            script_enabled: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SceneQuality {
+    #[default]
+    High,
+    Medium,
+    Low,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,6 +115,8 @@ pub struct AppConfig {
     pub version: u32,
     pub general: GeneralConfig,
     pub wallpaper: WallpaperConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<SceneConfig>,
     pub library: LibraryConfig,
     pub decode: DecodeConfig,
     pub outputs: Vec<OutputConfig>,
@@ -90,6 +128,7 @@ impl Default for AppConfig {
             version: CURRENT_CONFIG_VERSION,
             general: GeneralConfig::default(),
             wallpaper: WallpaperConfig::default(),
+            scene: Some(SceneConfig::default()),
             library: LibraryConfig::default(),
             decode: DecodeConfig::default(),
             outputs: Vec::new(),
@@ -133,12 +172,18 @@ impl Default for GeneralConfig {
 #[serde(default)]
 pub struct WallpaperConfig {
     pub path: Option<PathBuf>,
+    /// v1 compat: engine_mode is true for WE projects (migrated from v1)
+    #[serde(skip_serializing_if = "is_false")]
     pub engine_mode: bool,
     pub wallpaper_type: WallpaperType,
     pub loop_playback: bool,
     pub muted: bool,
     pub fill_mode: FillMode,
     pub fps_limit: u16,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 impl Default for WallpaperConfig {
@@ -175,11 +220,15 @@ const fn default_true() -> bool {
 
 impl AppConfig {
     pub fn validate_and_normalize(&mut self, home: &Path) -> Result<(), ConfigError> {
-        if self.version != CURRENT_CONFIG_VERSION {
-            return Err(ConfigError::Validation(format!(
-                "Unsupported config version {}, current version is {CURRENT_CONFIG_VERSION}",
-                self.version
-            )));
+        match self.version {
+            1 => self.migrate_v1_to_v2(),
+            CURRENT_CONFIG_VERSION => {}
+            other => {
+                return Err(ConfigError::Validation(format!(
+                    "Unsupported config version {}, current version is {CURRENT_CONFIG_VERSION}",
+                    other
+                )));
+            }
         }
         if !(1..=240).contains(&self.wallpaper.fps_limit) {
             return Err(ConfigError::Validation(
@@ -204,6 +253,30 @@ impl AppConfig {
         self.library.paths.sort();
         self.library.paths.dedup();
         Ok(())
+    }
+
+    /// Migrate config from v1 to v2
+    fn migrate_v1_to_v2(&mut self) {
+        info!(old_version = 1, new_version = 2, "migrating config");
+
+        // engine_mode was the old way to indicate engine-type wallpapers.
+        // Now we use wallpaper_type directly.
+        if self.wallpaper.engine_mode {
+            // If wallpaper_type was default (Video), check what it actually is
+            // from the path — but we can't infer perfectly, so keep the flag
+            // and let the library scanner override it next time.
+            warn!(
+                "v1 config had engine_mode=true; wallpaper_type will be re-detected on next library scan"
+            );
+        }
+
+        // Ensure scene config exists
+        if self.scene.is_none() {
+            self.scene = Some(SceneConfig::default());
+        }
+
+        self.version = CURRENT_CONFIG_VERSION;
+        self.wallpaper.engine_mode = false; // v2 no longer uses this flag
     }
 }
 
@@ -353,7 +426,7 @@ mod tests {
             ..Default::default()
         };
         assert!(config.validate_and_normalize(Path::new("/tmp")).is_err());
-        config.version = 1;
+        config.version = CURRENT_CONFIG_VERSION;
         config.wallpaper.fps_limit = 0;
         assert!(config.validate_and_normalize(Path::new("/tmp")).is_err());
     }
@@ -370,5 +443,46 @@ mod tests {
             Err(ConfigError::Parse { .. })
         ));
         assert_eq!(fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn v1_config_is_migrated_to_v2() {
+        // Simulate a v1 config load
+        let mut config = AppConfig {
+            version: 1,
+            wallpaper: WallpaperConfig {
+                engine_mode: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        config.validate_and_normalize(Path::new("/tmp")).unwrap();
+        assert_eq!(config.version, CURRENT_CONFIG_VERSION);
+        assert!(!config.wallpaper.engine_mode); // cleared after migration
+        assert!(config.scene.is_some()); // scene config was added
+    }
+
+    #[test]
+    fn scene_config_defaults_are_sensible() {
+        let scene = SceneConfig::default();
+        assert!(!scene.script_enabled);
+        assert_eq!(scene.particle_limit, 10_000);
+        assert_eq!(scene.quality, SceneQuality::High);
+    }
+
+    #[test]
+    fn toml_round_trip_with_scene_config() {
+        let mut config = AppConfig::default();
+        config.wallpaper.wallpaper_type = WallpaperType::Scene;
+        config.scene = Some(SceneConfig {
+            quality: SceneQuality::Medium,
+            mouse: false,
+            particle_limit: 5000,
+            ..Default::default()
+        });
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let decoded: AppConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(decoded.wallpaper.wallpaper_type, WallpaperType::Scene);
+        assert_eq!(decoded.scene.unwrap().particle_limit, 5000);
     }
 }

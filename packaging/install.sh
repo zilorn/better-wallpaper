@@ -27,12 +27,22 @@ if [ "$SKIP_BUILD" != "1" ]; then
 fi
 
 DAEMON_SOURCE="$PROJECT_ROOT/target/release/better-wallpaper-daemon"
+SCENE_INSPECT_SOURCE="$PROJECT_ROOT/target/release/scene-inspect"
+SCENE_VALIDATE_SOURCE="$PROJECT_ROOT/target/release/scene-validate"
 WEB_SOURCE="$PROJECT_ROOT/web/dist/index.html"
 PLASMA_SOURCE="$PROJECT_ROOT/kde/org.better-wallpaper/contents/ui/main.qml"
 PLASMA_PLUGIN_SOURCE="$PROJECT_ROOT/target/plasma-plugin/libbetterwallpaperplugin.so"
 
 test -x "$DAEMON_SOURCE" || {
     printf '%s\n' "错误：daemon 构建产物不存在：$DAEMON_SOURCE" >&2
+    exit 1
+}
+test -x "$SCENE_INSPECT_SOURCE" || {
+    printf '%s\n' "错误：scene-inspect 构建产物不存在：$SCENE_INSPECT_SOURCE" >&2
+    exit 1
+}
+test -x "$SCENE_VALIDATE_SOURCE" || {
+    printf '%s\n' "错误：scene-validate 构建产物不存在：$SCENE_VALIDATE_SOURCE" >&2
     exit 1
 }
 test -f "$WEB_SOURCE" || {
@@ -80,6 +90,8 @@ atomic_install \
     "$DAEMON_SOURCE" \
     "$DESTDIR$PREFIX/bin/better-wallpaper-daemon" \
     755
+atomic_install "$SCENE_INSPECT_SOURCE" "$DESTDIR$PREFIX/bin/scene-inspect" 755
+atomic_install "$SCENE_VALIDATE_SOURCE" "$DESTDIR$PREFIX/bin/scene-validate" 755
 install -d "$DESTDIR$PREFIX/share/better-wallpaper/web"
 cp -R "$PROJECT_ROOT/web/dist/." "$DESTDIR$PREFIX/share/better-wallpaper/web/"
 install -d "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper"
@@ -94,6 +106,8 @@ sed "s|@PREFIX@|$PREFIX|g" \
     > "$DESTDIR$SYSTEMD_USER_UNIT_DIR/better-wallpaper.service"
 
 test -x "$DESTDIR$PREFIX/bin/better-wallpaper-daemon"
+test -x "$DESTDIR$PREFIX/bin/scene-inspect"
+test -x "$DESTDIR$PREFIX/bin/scene-validate"
 test -f "$DESTDIR$PREFIX/share/better-wallpaper/web/index.html"
 test -f "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/metadata.json"
 test -f "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/contents/ui/main.qml"

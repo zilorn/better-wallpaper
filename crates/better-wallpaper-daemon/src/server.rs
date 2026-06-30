@@ -16,6 +16,9 @@ use better_wallpaper_core::{
     AppConfig, BackendKind, ConfigStore, DesktopDetection, PlaybackControl,
     config::{FillMode, WallpaperType},
 };
+use better_wallpaper_scene_format::{
+    CompatibilityLevel, PkgReader, analyse_scene, compute_compatibility,
+};
 use ksni::blocking::TrayMethods;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -378,6 +381,16 @@ struct LibraryEntry {
     preview_path: Option<PathBuf>,
     size_bytes: u64,
     modified_unix_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scene_compatibility: Option<CompatibilityPayload>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct CompatibilityPayload {
+    level: u32,
+    level_name: String,
+    unsupported_features: Vec<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -819,6 +832,7 @@ fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntr
                     preview_path: None,
                     size_bytes: metadata.len(),
                     modified_unix_seconds,
+                    scene_compatibility: None,
                 });
                 if entries.len() >= MAX_LIBRARY_ENTRIES {
                     truncated = true;
@@ -881,6 +895,33 @@ struct WallpaperEngineProject {
     preview: Option<PathBuf>,
 }
 
+/// Analyse a scene.pkg for compatibility information.
+/// Returns None if the pkg is missing or unreadable.
+fn analyse_scene_pkg(project_dir: &Path) -> Option<CompatibilityPayload> {
+    let pkg_path = project_dir.join("scene.pkg");
+    let data = fs::read(&pkg_path).ok()?;
+    let pkg = PkgReader::parse(data).ok()?;
+
+    // Try to find and parse scene.json from the package
+    let scene_entry = pkg.find("scene.json")?;
+    let scene_json = pkg.read_entry_string(scene_entry).ok()?;
+    let meta = analyse_scene(&scene_json).ok()?;
+    let compat = compute_compatibility(&meta);
+
+    Some(CompatibilityPayload {
+        level: compat.level as u32,
+        level_name: match compat.level {
+            CompatibilityLevel::L0 => "L0".into(),
+            CompatibilityLevel::L1 => "L1".into(),
+            CompatibilityLevel::L2 => "L2".into(),
+            CompatibilityLevel::L3 => "L3".into(),
+            CompatibilityLevel::L4 => "L4".into(),
+        },
+        unsupported_features: compat.unsupported_features,
+        warnings: compat.warnings,
+    })
+}
+
 fn scan_wallpaper_engine_library(
     root: &Path,
     entries: &mut Vec<LibraryEntry>,
@@ -911,45 +952,80 @@ fn scan_wallpaper_engine_library(
         let wallpaper_type = match project.kind.as_str() {
             "video" => WallpaperType::Video,
             "web" => WallpaperType::Web,
+            "scene" => WallpaperType::Scene,
             _ => {
                 info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
                 continue;
             }
         };
-        let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
-            warn!(path = %descriptor.display(), "skipping Wallpaper Engine project without a safe entry path");
-            continue;
-        };
-        let media_path = project_directory.join(relative_file);
-        let canonical_project = match project_directory.canonicalize() {
-            Ok(path) => path,
-            Err(_) => continue,
-        };
-        let media_path = match media_path.canonicalize() {
-            Ok(path) if path.starts_with(&canonical_project) => path,
+
+        let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
+            WallpaperType::Scene => {
+                // Scene wallpapers: the entry path is the project directory itself.
+                let canonical_project = match project_directory.canonicalize() {
+                    Ok(path) => path,
+                    Err(_) => continue,
+                };
+                let preview = project.preview.and_then(|relative| {
+                    if relative.is_absolute() {
+                        return None;
+                    }
+                    project_directory
+                        .join(relative)
+                        .canonicalize()
+                        .ok()
+                        .filter(|path| path.starts_with(&canonical_project) && path.is_file())
+                });
+                // Analyse scene.pkg for compatibility
+                let compatibility = analyse_scene_pkg(&canonical_project);
+                (canonical_project, preview, compatibility)
+            }
             _ => {
-                warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine entry path");
-                continue;
+                let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
+                    warn!(path = %descriptor.display(), "skipping Wallpaper Engine project without a safe entry path");
+                    continue;
+                };
+                let media_path = project_directory.join(relative_file);
+                let canonical_project = match project_directory.canonicalize() {
+                    Ok(path) => path,
+                    Err(_) => continue,
+                };
+                let media_path = match media_path.canonicalize() {
+                    Ok(path) if path.starts_with(&canonical_project) => path,
+                    _ => {
+                        warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine entry path");
+                        continue;
+                    }
+                };
+                let _ = match media_path.metadata() {
+                    Ok(md) if md.is_file() => md,
+                    Ok(_) => continue,
+                    Err(error) => {
+                        warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine entry file");
+                        continue;
+                    }
+                };
+                let preview = project.preview.and_then(|relative| {
+                    if relative.is_absolute() {
+                        return None;
+                    }
+                    project_directory
+                        .join(relative)
+                        .canonicalize()
+                        .ok()
+                        .filter(|path| path.starts_with(&canonical_project) && path.is_file())
+                });
+                (media_path, preview, None)
             }
         };
+
         let metadata = match media_path.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata,
-            Ok(_) => continue,
+            Ok(metadata) => metadata,
             Err(error) => {
-                warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine entry file");
+                warn!(path = %media_path.display(), %error, "skipping unreadable project metadata");
                 continue;
             }
         };
-        let preview_path = project.preview.and_then(|relative| {
-            if relative.is_absolute() {
-                return None;
-            }
-            project_directory
-                .join(relative)
-                .canonicalize()
-                .ok()
-                .filter(|path| path.starts_with(&canonical_project) && path.is_file())
-        });
         entries.push(LibraryEntry {
             name: project
                 .title
@@ -971,6 +1047,7 @@ fn scan_wallpaper_engine_library(
                 .ok()
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|duration| duration.as_secs()),
+            scene_compatibility,
         });
         if entries.len() >= MAX_LIBRARY_ENTRIES {
             *truncated = true;
@@ -1358,7 +1435,7 @@ mod tests {
         let (entries, truncated) = scan_library(&[], &[directory.path().to_path_buf()]);
 
         assert!(!truncated);
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].name, "Project 1");
         assert_eq!(entries[0].path, directory.path().join("1/movie.mp4"));
         assert!(entries[0].engine_mode);
@@ -1369,6 +1446,12 @@ mod tests {
             entries[1].preview_path,
             Some(directory.path().join("2/preview.jpg"))
         );
+        assert_eq!(entries[1].path, directory.path().join("2/index.html"));
+        // Scene type: path is the project directory, scene_compatibility is None (invalid pkg)
+        assert_eq!(entries[2].name, "Project 3");
+        assert_eq!(entries[2].wallpaper_type, WallpaperType::Scene);
+        assert!(entries[2].scene_compatibility.is_none());
+        assert!(entries[2].path.is_dir());
         assert_eq!(
             wallpaper_engine_web_root(&entries[1].path),
             directory.path().join("2").canonicalize().ok()

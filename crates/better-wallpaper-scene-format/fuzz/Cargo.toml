@@ -1,0 +1,50 @@
+[package]
+name = "better-wallpaper-scene-format-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[workspace]
+members = ["."]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+better-wallpaper-scene-format = { path = ".." }
+
+[[bin]]
+name = "pkg_header"
+path = "fuzz_targets/pkg_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pkg_index"
+path = "fuzz_targets/pkg_index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pkg_string"
+path = "fuzz_targets/pkg_string.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "texture"
+path = "fuzz_targets/texture.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scene"
+path = "fuzz_targets/scene.rs"
+test = false
+doc = false
+bench = false

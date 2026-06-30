@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+better-wallpaper-scene-format = { path = "../better-wallpaper-scene-format" }
 serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true

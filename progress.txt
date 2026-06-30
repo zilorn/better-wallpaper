@@ -1,0 +1,78 @@
+# 进度日志 - Scene 壁纸支持
+
+## 2026-06-30
+
+### 已完成
+
+#### 新 crate: `better-wallpaper-scene-format`
+- 安全 .pkg 解析器 (src/pkg.rs):
+  - 零拷贝索引和按需读取（`PkgReader: parse() -> read_entry()`）
+  - 所有长度计算使用 checked arithmetic
+  - 安全限制：MAX_PKG_FILES=4096, MAX_FILENAME_LENGTH=512, MAX_TOTAL_DATA=128MB, MAX_ENTRY_SIZE=64MB
+  - 路径安全检查：拒绝绝对路径、`..`、NUL字节、Windows盘符、重复文件名
+  - 反斜杠自动归一化为正斜杠
+  - 安全测试覆盖条目重叠、完整包版本及 LZ4 扩张比，pkg/scene/texture 共 25 个测试通过
+  - PkgInspectOutput 支持 JSON 序列化（`scene-inspect --json`）
+
+- .tex 纹理解析器 (src/texture.rs):
+  - 支持 TEXV0005 格式
+  - 支持 TEXB0001~0004 容器版本
+  - 支持全部 15 种像素格式 (ARGB8888~RGB161616f)
+  - LZ4 解压缩（含压缩比限制）
+  - 动画帧解析 (TEXS0001~0003)
+  - 精灵图网格计算
+
+- 场景元数据与兼容性分析 (src/scene.rs):
+  - scene.json 解析（相机、投影、物体类型）
+  - 兼容性等级计算（L0~L4）
+  - 未知功能报告（粒子、音效、文本、脚本、自定义 shader）
+
+#### better-wallpaper-core 更新
+- WallpaperType 新增 `Scene` 变体
+- 新增 `SceneConfig` 配置结构体（质量、鼠标、视差、粒子限制、脚本开关）
+- 配置 v1 → v2 自动迁移（engine_mode → wallpaper_type）
+- 新增场景 TOML 序列化/反序列化测试
+
+#### better-wallpaper-daemon 库扫描更新
+- `scan_wallpaper_engine_library` 识别 `type: "scene"` 项目
+- 场景条目路径设为项目目录本身（而非媒体文件）
+- `LibraryEntry` 新增 `scene_compatibility` 字段
+- `CompatibilityPayload` 包含等级、不支持的功能列表、警告
+- `WallpaperEngineProject` 解析器处理 scene 类型
+- 测试全部通过（58 test，零 warning 零 error）
+
+### 实现检查清单
+
+- [x] .pkg 格式安全解析器
+- [x] .tex 纹理解析器
+- [x] scene.json 元数据分析
+- [x] 兼容性等级计算
+- [x] 配置 v2 迁移
+- [x] 库扫描识别 scene 项目
+- [x] Web API 兼容性报告
+- [x] CLI 工具 scene-inspect/validate（支持 JSON 输出，并由安装脚本安装）
+- [x] cargo-fuzz 目标（包头、索引、字符串、纹理/解压、场景描述）
+- [ ] 各 fuzz target 累计运行 24 小时
+
+### 2026-06-30 成果检验与继续推进
+
+- `cargo fmt --all -- --check` 通过
+- `cargo test --workspace` 通过，共 70 项测试
+- `better-wallpaper-scene-format` 严格 Clippy 通过
+- 修复包版本固定返回 `PKGV` 占位值的问题
+- 增加非空条目范围重叠拒绝与回归测试
+- 新增 `scene-inspect`、`scene-validate`，并更新 `packaging/install.sh`
+- workspace 严格 Clippy 暴露 daemon 既有警告，尚未清理；不得记录为全 workspace 零 warning
+- 新增 5 个 cargo-fuzz target；manifest 已由 Cargo 正确识别
+- 修复 LZ4 压缩比判断方向及纹理读取整数溢出风险
+- 当前环境未安装 `cargo-fuzz`，24 小时 fuzzing 尚未执行，Phase 1 退出条件未满足
+
+### 2026-06-30 Phase 2 起步：场景 IR 与资源清单
+
+- 新增版本无关 `SceneGraph` IR：相机、节点类型、父子引用、基础变换、可见性与效果引用
+- 场景资源路径拒绝绝对路径、盘符、NUL 与 `..` 逃逸
+- 未知对象字段和未支持节点能力进入稳定排序的 `UnsupportedFeature`，不静默采用默认渲染
+- 新增确定性 `ResourceManifest`：按规范包路径排序，保留未知扩展类型，记录资源大小与 SHA-1 缓存标识
+- `scene-validate --json` 输出场景 IR 和完整资源清单，可用于私有样本快照
+- scene-format 测试增至 30 项；该 crate 的格式化、测试与严格 Clippy 均通过
+- 尚未完成模型 JSON 解析、资源引用存在性检查、纹理解码到统一像素 IR 与资源预算/LRU

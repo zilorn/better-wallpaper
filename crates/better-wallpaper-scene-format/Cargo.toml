@@ -1,0 +1,26 @@
+[package]
+name = "better-wallpaper-scene-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Safe parser for Wallpaper Engine scene.pkg and .tex formats"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zerocopy.workspace = true
+
+lz4_flex = "0.11"
+
+[[bin]]
+name = "scene-inspect"
+path = "src/bin/scene-inspect.rs"
+
+[[bin]]
+name = "scene-validate"
+path = "src/bin/scene-validate.rs"
