@@ -3,6 +3,8 @@ pub mod desktop;
 pub mod playback;
 pub mod video;
 
+pub use config::WallpaperType;
+
 pub use config::{AppConfig, BackendKind, ConfigError, ConfigStore};
 pub use desktop::{DesktopDetection, DesktopKind, detect_desktop, select_backend};
 pub use playback::PlaybackControl;

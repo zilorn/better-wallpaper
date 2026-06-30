@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use better_wallpaper_core::{
-    BackendKind, ConfigStore, PlaybackControl,
+    BackendKind, ConfigStore, PlaybackControl, WallpaperType,
     desktop::{ProcessEnvironment, detect_desktop, select_backend},
 };
 use better_wallpaper_daemon::{LogStore, playback, server};
@@ -201,6 +201,13 @@ fn run_playback(
     control: PlaybackControl,
 ) -> Result<()> {
     let max_height = config.decode.max_height;
+    if config.wallpaper.wallpaper_type == WallpaperType::Web && backend != BackendKind::Kde {
+        warn!(
+            ?backend,
+            "web wallpaper rendering is currently available through the Plasma wallpaper plugin only"
+        );
+        return Ok(());
+    }
     if backend == BackendKind::Headless {
         if config.general.restore_on_start {
             if let Some(video_path) = config.wallpaper.path {

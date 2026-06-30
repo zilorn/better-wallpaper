@@ -13,7 +13,8 @@ use crate::{LogStore, tray::WallpaperTray};
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use better_wallpaper_core::{
-    AppConfig, BackendKind, ConfigStore, DesktopDetection, PlaybackControl, config::FillMode,
+    AppConfig, BackendKind, ConfigStore, DesktopDetection, PlaybackControl,
+    config::{FillMode, WallpaperType},
 };
 use ksni::blocking::TrayMethods;
 use serde::{Deserialize, Serialize};
@@ -175,6 +176,13 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         }
         return;
     }
+    if method == Method::Get && url.starts_with("/api/v1/wallpaper/web/") {
+        let response = wallpaper_web_response(&url, state);
+        if let Err(error) = request.respond(response) {
+            warn!(%error, %url, "failed to send web wallpaper asset response");
+        }
+        return;
+    }
     if method == Method::Get && url == "/api/v1/plasma/config" {
         let response = plasma_config_response(&request_url, state);
         if let Err(error) = request.respond(response) {
@@ -298,6 +306,8 @@ struct PlasmaConfigPayload {
     enabled: bool,
     media_url: &'static str,
     media_path: Option<PathBuf>,
+    wallpaper_type: WallpaperType,
+    web_url: Option<&'static str>,
     fill_mode: FillMode,
     muted: bool,
     paused: bool,
@@ -326,6 +336,9 @@ fn plasma_config_response(
             enabled,
             media_url: "/api/v1/wallpaper/media",
             media_path: config.wallpaper.path.clone(),
+            wallpaper_type: config.wallpaper.wallpaper_type,
+            web_url: (config.wallpaper.wallpaper_type == WallpaperType::Web)
+                .then_some("/api/v1/wallpaper/web/"),
             fill_mode: config.wallpaper.fill_mode,
             muted: config.wallpaper.muted,
             paused: state.playback.is_paused(),
@@ -361,6 +374,8 @@ struct LibraryEntry {
     name: String,
     path: PathBuf,
     engine_mode: bool,
+    wallpaper_type: WallpaperType,
+    preview_path: Option<PathBuf>,
     size_bytes: u64,
     modified_unix_seconds: Option<u64>,
 }
@@ -369,6 +384,7 @@ struct LibraryEntry {
 struct LibraryPayload {
     entries: Vec<LibraryEntry>,
     roots: Vec<PathBuf>,
+    engine_roots: Vec<PathBuf>,
     truncated: bool,
 }
 
@@ -388,6 +404,7 @@ fn library_response(state: &ApiState) -> Response<std::io::Cursor<Vec<u8>>> {
         &LibraryPayload {
             entries,
             roots,
+            engine_roots,
             truncated,
         },
     )
@@ -420,22 +437,27 @@ fn library_thumbnail_response(request_url: &str, state: &ApiState) -> ResponseBo
     let Some(path) = percent_decode(encoded_path).map(PathBuf::from) else {
         return error_response(StatusCode(400), "invalid media path parameter encoding").boxed();
     };
-    let canonical = match path.canonicalize() {
+    let requested = scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
+        .0
+        .into_iter()
+        .find(|entry| entry.path == path);
+    if requested.as_ref().is_some_and(|entry| {
+        entry.wallpaper_type == WallpaperType::Web && entry.preview_path.is_none()
+    }) {
+        return error_response(StatusCode(404), "web wallpaper has no preview image").boxed();
+    }
+    let thumbnail_path = requested
+        .as_ref()
+        .and_then(|entry| entry.preview_path.as_ref())
+        .unwrap_or(&path);
+    let canonical = match thumbnail_path.canonicalize() {
         Ok(path) => path,
         Err(error) => {
             warn!(path = %path.display(), %error, "thumbnail source does not exist");
             return error_response(StatusCode(404), "media file does not exist").boxed();
         }
     };
-    let allowed = scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
-        .0
-        .iter()
-        .any(|entry| {
-            entry
-                .path
-                .canonicalize()
-                .is_ok_and(|path| path == canonical)
-        });
+    let allowed = requested.is_some();
     if !allowed {
         warn!(path = %canonical.display(), "refusing to create thumbnail outside library");
         return error_response(StatusCode(403), "media file is not in the library").boxed();
@@ -447,6 +469,21 @@ fn library_thumbnail_response(request_url: &str, state: &ApiState) -> ResponseBo
             return error_response(StatusCode(500), "cannot read media metadata").boxed();
         }
     };
+    if requested
+        .as_ref()
+        .is_some_and(|entry| entry.wallpaper_type == WallpaperType::Web)
+    {
+        return match File::open(&canonical) {
+            Ok(file) => Response::from_file(file)
+                .with_header(header("Content-Type", image_content_type(&canonical)))
+                .with_header(header("Cache-Control", "public, max-age=3600"))
+                .boxed(),
+            Err(error) => {
+                warn!(path = %canonical.display(), %error, "failed to open web wallpaper preview");
+                error_response(StatusCode(404), "cannot open preview image").boxed()
+            }
+        };
+    }
     let mut hasher = Sha1::new();
     hasher.update(canonical.to_string_lossy().as_bytes());
     hasher.update(metadata.len().to_le_bytes());
@@ -539,6 +576,66 @@ fn wallpaper_media_response(request: &Request, state: &ApiState) -> ResponseBox 
         return error_response(StatusCode(404), "no current wallpaper configured").boxed();
     };
     media_response(request, path, state, false)
+}
+
+fn wallpaper_web_response(url: &str, state: &ApiState) -> ResponseBox {
+    let entry = match state.config.read() {
+        Ok(config) if config.wallpaper.wallpaper_type == WallpaperType::Web => {
+            config.wallpaper.path.clone()
+        }
+        Ok(_) => {
+            return error_response(StatusCode(404), "current wallpaper is not web content").boxed();
+        }
+        Err(_) => return error_response(StatusCode(500), "config lock poisoned").boxed(),
+    };
+    let Some(entry) = entry else {
+        return error_response(StatusCode(404), "no current wallpaper configured").boxed();
+    };
+    let Some(project_root) = wallpaper_engine_web_root(&entry) else {
+        return error_response(StatusCode(404), "web wallpaper directory does not exist").boxed();
+    };
+    let relative = url
+        .strip_prefix("/api/v1/wallpaper/web/")
+        .unwrap_or_default();
+    let relative = percent_decode(relative)
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let candidate = if relative.as_os_str().is_empty() {
+        entry
+    } else {
+        project_root.join(relative)
+    };
+    let canonical = match candidate.canonicalize() {
+        Ok(path) if path.starts_with(&project_root) && path.is_file() => path,
+        _ => return error_response(StatusCode(404), "web wallpaper asset does not exist").boxed(),
+    };
+    info!(path = %canonical.display(), "serving web wallpaper asset");
+    match File::open(&canonical) {
+        Ok(file) => Response::from_file(file)
+            .with_header(header("Content-Type", asset_content_type(&canonical)))
+            .with_header(header("Cache-Control", "no-cache"))
+            .boxed(),
+        Err(_) => error_response(StatusCode(404), "cannot open web wallpaper asset").boxed(),
+    }
+}
+
+fn wallpaper_engine_web_root(entry: &Path) -> Option<PathBuf> {
+    let canonical_entry = entry.canonicalize().ok()?;
+    for directory in canonical_entry.ancestors().skip(1) {
+        let descriptor = directory.join("project.json");
+        let Ok(file) = File::open(descriptor) else {
+            continue;
+        };
+        let project: WallpaperEngineProject = serde_json::from_reader(file).ok()?;
+        if project.kind != "web" {
+            return None;
+        }
+        let relative = project.file.filter(|path| !path.is_absolute())?;
+        let root = directory.canonicalize().ok()?;
+        let configured_entry = root.join(relative).canonicalize().ok()?;
+        return (configured_entry == canonical_entry).then_some(root);
+    }
+    None
 }
 
 fn media_response(
@@ -718,6 +815,8 @@ fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntr
                     name: child.file_name().to_string_lossy().into_owned(),
                     path,
                     engine_mode: false,
+                    wallpaper_type: WallpaperType::Video,
+                    preview_path: None,
                     size_bytes: metadata.len(),
                     modified_unix_seconds,
                 });
@@ -779,6 +878,7 @@ struct WallpaperEngineProject {
     kind: String,
     file: Option<PathBuf>,
     title: Option<String>,
+    preview: Option<PathBuf>,
 }
 
 fn scan_wallpaper_engine_library(
@@ -808,12 +908,16 @@ fn scan_wallpaper_engine_library(
                 continue;
             }
         };
-        if project.kind != "video" {
-            info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
-            continue;
-        }
+        let wallpaper_type = match project.kind.as_str() {
+            "video" => WallpaperType::Video,
+            "web" => WallpaperType::Web,
+            _ => {
+                info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
+                continue;
+            }
+        };
         let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
-            warn!(path = %descriptor.display(), "skipping Wallpaper Engine video without a safe file path");
+            warn!(path = %descriptor.display(), "skipping Wallpaper Engine project without a safe entry path");
             continue;
         };
         let media_path = project_directory.join(relative_file);
@@ -824,7 +928,7 @@ fn scan_wallpaper_engine_library(
         let media_path = match media_path.canonicalize() {
             Ok(path) if path.starts_with(&canonical_project) => path,
             _ => {
-                warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine video file path");
+                warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine entry path");
                 continue;
             }
         };
@@ -832,10 +936,20 @@ fn scan_wallpaper_engine_library(
             Ok(metadata) if metadata.is_file() => metadata,
             Ok(_) => continue,
             Err(error) => {
-                warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine video file");
+                warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine entry file");
                 continue;
             }
         };
+        let preview_path = project.preview.and_then(|relative| {
+            if relative.is_absolute() {
+                return None;
+            }
+            project_directory
+                .join(relative)
+                .canonicalize()
+                .ok()
+                .filter(|path| path.starts_with(&canonical_project) && path.is_file())
+        });
         entries.push(LibraryEntry {
             name: project
                 .title
@@ -849,6 +963,8 @@ fn scan_wallpaper_engine_library(
                 }),
             path: media_path,
             engine_mode: true,
+            wallpaper_type,
+            preview_path,
             size_bytes: metadata.len(),
             modified_unix_seconds: metadata
                 .modified()
@@ -885,6 +1001,43 @@ fn video_content_type(path: &Path) -> &'static str {
         Some("avi") => "video/x-msvideo",
         Some("mkv") => "video/x-matroska",
         _ => "video/mp4",
+    }
+}
+
+fn image_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        _ => "image/jpeg",
+    }
+}
+
+fn asset_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json") => "application/json",
+        Some("png" | "jpg" | "jpeg" | "webp" | "gif") => image_content_type(path),
+        Some("svg") => "image/svg+xml",
+        Some("mp3") => "audio/mpeg",
+        Some("ogg") => "audio/ogg",
+        Some("wav") => "audio/wav",
+        Some("mp4" | "webm") => video_content_type(path),
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
     }
 }
 
@@ -1071,7 +1224,15 @@ fn static_response(web_root: &Path, url: &str) -> Response<std::io::Cursor<Vec<u
         web_root.join("index.html")
     };
     match fs::read(&path) {
-        Ok(body) => response(StatusCode(200), content_type(&path), body),
+        Ok(body) => {
+            let cache_control = if path.extension().is_some_and(|value| value == "html") {
+                "no-cache, no-store, must-revalidate"
+            } else {
+                "public, max-age=31536000, immutable"
+            };
+            response(StatusCode(200), content_type(&path), body)
+                .with_header(header("Cache-Control", cache_control))
+        }
         Err(error) => {
             warn!(path = %path.display(), %error, "failed to read Web static asset");
             error_response(StatusCode(404), "Web UI not built, run bun run build")
@@ -1132,9 +1293,9 @@ mod tests {
 
     use super::{
         config_revision, output_enabled, parse_byte_range, percent_decode, scan_library,
-        websocket_accept, write_websocket_text,
+        wallpaper_engine_web_root, websocket_accept, write_websocket_text,
     };
-    use better_wallpaper_core::{AppConfig, config::OutputConfig};
+    use better_wallpaper_core::{AppConfig, WallpaperType, config::OutputConfig};
 
     #[test]
     fn computes_websocket_accept_from_rfc_example() {
@@ -1187,19 +1348,31 @@ mod tests {
             fs::write(project.join(file), b"content").unwrap();
             fs::write(
                 project.join("project.json"),
-                format!(r#"{{"type":"{kind}","file":"{file}","title":"Project {id}"}}"#),
+                format!(r#"{{"type":"{kind}","file":"{file}","title":"Project {id}","preview":"preview.jpg"}}"#),
             )
             .unwrap();
+            fs::write(project.join("preview.jpg"), b"preview").unwrap();
         }
         fs::write(directory.path().join("orphan.mp4"), b"video").unwrap();
 
         let (entries, truncated) = scan_library(&[], &[directory.path().to_path_buf()]);
 
         assert!(!truncated);
-        assert_eq!(entries.len(), 1);
+        assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "Project 1");
         assert_eq!(entries[0].path, directory.path().join("1/movie.mp4"));
         assert!(entries[0].engine_mode);
+        assert_eq!(entries[0].wallpaper_type, WallpaperType::Video);
+        assert_eq!(entries[1].name, "Project 2");
+        assert_eq!(entries[1].wallpaper_type, WallpaperType::Web);
+        assert_eq!(
+            entries[1].preview_path,
+            Some(directory.path().join("2/preview.jpg"))
+        );
+        assert_eq!(
+            wallpaper_engine_web_root(&entries[1].path),
+            directory.path().join("2").canonicalize().ok()
+        );
     }
 
     #[test]

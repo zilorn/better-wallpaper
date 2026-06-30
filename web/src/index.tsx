@@ -30,6 +30,7 @@ type Config = {
   wallpaper: {
     path: string | null;
     engine_mode: boolean;
+    wallpaper_type: "video" | "web";
     loop_playback: boolean;
     muted: boolean;
     fill_mode: string;
@@ -39,8 +40,8 @@ type Config = {
   decode: { hardware: string; max_height: number };
   outputs: Output[];
 };
-type LibraryEntry = { name: string; path: string; engine_mode: boolean; size_bytes: number; modified_unix_seconds: number | null };
-type Library = { entries: LibraryEntry[]; roots: string[]; truncated: boolean };
+type LibraryEntry = { name: string; path: string; engine_mode: boolean; wallpaper_type: "video" | "web"; preview_path: string | null; size_bytes: number; modified_unix_seconds: number | null };
+type Library = { entries: LibraryEntry[]; roots: string[]; engine_roots: string[]; truncated: boolean };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -175,10 +176,10 @@ function PageHeader(props: { title: string; description: string }) {
 function WallpapersPage() {
   const state = useApp();
   const updateWallpaper = (key: keyof Config["wallpaper"], value: string | boolean | number | null) =>
-    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value, ...(key === "path" ? { engine_mode: false } : {}) } }));
-  return <><PageHeader title="壁纸" description="选择视频、调整画面方式并控制当前播放任务。" />
+    state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value, ...(key === "path" ? { engine_mode: false, wallpaper_type: "video" as const } : {}) } }));
+  return <><PageHeader title="壁纸" description="选择视频或网页壁纸，并控制当前播放任务。" />
     <Show when={state.config()} fallback={<Loading />} >{(config) => <div class="settings-grid">
-      <section class="page-panel preview-panel"><div class="video-preview"><span>VIDEO</span><strong>{fileName(config().wallpaper.path)}</strong></div><div class="playback-summary"><div><span>当前状态</span><strong>{playbackLabel(state.status()?.playback)}</strong></div><button class="command" disabled={state.busy() || !state.status()?.playback.running || state.status()?.playback.cancelled} onClick={() => state.setPaused(!state.status()?.playback.paused)}>{state.status()?.playback.paused ? "恢复播放" : "暂停播放"}</button></div></section>
+      <section class="page-panel preview-panel"><div class="video-preview"><span>{config().wallpaper.wallpaper_type === "web" ? "WEB" : "VIDEO"}</span><strong>{fileName(config().wallpaper.path)}</strong></div><div class="playback-summary"><div><span>当前状态</span><strong>{playbackLabel(state.status()?.playback)}</strong></div><button class="command" disabled={state.busy() || !state.status()?.playback.running || state.status()?.playback.cancelled} onClick={() => state.setPaused(!state.status()?.playback.paused)}>{state.status()?.playback.paused ? "恢复播放" : "暂停播放"}</button></div></section>
       <section class="page-panel"><h3>视频配置</h3><label>视频路径<input value={config().wallpaper.path ?? ""} onInput={(event) => updateWallpaper("path", event.currentTarget.value || null)} placeholder="/home/user/Videos/wallpaper.mp4" /></label><label>缩放方式<select value={config().wallpaper.fill_mode} onChange={(event) => updateWallpaper("fill_mode", event.currentTarget.value)}><option value="cover">裁切铺满</option><option value="contain">完整显示</option><option value="stretch">拉伸</option></select></label><label class="check"><input type="checkbox" checked={config().wallpaper.loop_playback} onChange={(event) => updateWallpaper("loop_playback", event.currentTarget.checked)} />循环播放</label><label class="check"><input type="checkbox" checked={!config().wallpaper.muted} onChange={(event) => updateWallpaper("muted", !event.currentTarget.checked)} />播放声音</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存配置</button></section>
     </div>}</Show>
   </>;
@@ -252,13 +253,13 @@ function LibrariesPage() {
   const select = async (entry: LibraryEntry) => {
     const current = state.config();
     if (!current) return;
-    const next = { ...current, wallpaper: { ...current.wallpaper, path: entry.path, engine_mode: entry.engine_mode } };
+    const next = { ...current, wallpaper: { ...current.wallpaper, path: entry.path, engine_mode: entry.engine_mode, wallpaper_type: entry.wallpaper_type } };
     state.updateConfig(() => next);
     console.info(`[Better Wallpaper] 正在应用壁纸：${entry.path}`);
     const saved = await state.applyConfig(next);
     if (!saved) state.updateConfig(() => current);
   };
-  return <><PageHeader title="壁纸库" description="扫描本地视频集合，并选择要应用的壁纸。" />
+  return <><PageHeader title="壁纸库" description="扫描本地壁纸，并自动发现 Steam 中的 Wallpaper Engine 项目。" />
     <Show when={state.config()}>{(config) => <section class="page-panel library-paths">
       <h3>扫描目录</h3>
       <Show when={config().library.paths.length} fallback={<div class="empty compact">尚未添加扫描目录。</div>}>
@@ -266,10 +267,10 @@ function LibrariesPage() {
       </Show>
       <div class="library-path-add"><input value={newPath()} onInput={(event) => setNewPath(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") addPath(); }} placeholder="目录路径，例如 ~/Videos/Wallpapers" /><button class="command secondary" disabled={!newPath().trim() || state.busy()} onClick={addPath}>添加目录</button><button class="command" disabled={state.busy()} onClick={() => void saveLibrary()}>保存并扫描</button></div>
     </section>}</Show>
-    <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个视频</strong><small>{library()?.roots.join("、") || "未配置扫描目录"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
+    <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个壁纸</strong><small>{[...(library()?.roots ?? []), ...(library()?.engine_roots ?? [])].join("、") || "未找到扫描目录"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
     <Show when={library()} fallback={<Loading />}>{(result) => <>
       <Show when={result().truncated}><div class="notice">结果已达到 1000 个条目的扫描上限。</div></Show>
-      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的视频文件。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview" onPointerEnter={() => setPreviewPath(entry.path)} onPointerLeave={() => setPreviewPath((current) => current === entry.path ? null : current)}><img src={`/api/v1/library/thumbnail?path=${encodeURIComponent(entry.path)}`} alt="" loading="lazy" decoding="async" /><Show when={previewPath() === entry.path}><LibraryVideoPreview entry={entry} /></Show><span>{entry.engine_mode ? "WALLPAPER ENGINE" : "悬停预览"}</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => void select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择并应用"}</button></div></article>}</For></section>
+      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的壁纸。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview" onPointerEnter={() => { if (entry.wallpaper_type === "video") setPreviewPath(entry.path); }} onPointerLeave={() => setPreviewPath((current) => current === entry.path ? null : current)}><img src={`/api/v1/library/thumbnail?path=${encodeURIComponent(entry.path)}`} alt="" loading="lazy" decoding="async" /><Show when={entry.wallpaper_type === "video" && previewPath() === entry.path}><LibraryVideoPreview entry={entry} /></Show><span>{entry.wallpaper_type === "web" ? "网页壁纸" : entry.engine_mode ? "视频壁纸 · WALLPAPER ENGINE" : "视频壁纸 · 悬停预览"}</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => void select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择并应用"}</button></div></article>}</For></section>
     </>}</Show>
   </>;
 }

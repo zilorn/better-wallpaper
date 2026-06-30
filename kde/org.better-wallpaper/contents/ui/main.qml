@@ -3,6 +3,7 @@
 import QtQuick
 import QtQuick.Window
 import QtMultimedia
+import QtWebEngine
 import org.kde.plasma.plasmoid
 
 WallpaperItem {
@@ -17,6 +18,8 @@ WallpaperItem {
     property url mediaSource: ""
     property string wallpaperFillMode: "cover"
     property string configRevision: ""
+    property string wallpaperType: "video"
+    property url webSource: ""
 
     Component.onCompleted: {
         console.info("[Better Wallpaper] Plasma direct-render instance created for output " + outputName)
@@ -25,7 +28,7 @@ WallpaperItem {
     Component.onDestruction: console.info("[Better Wallpaper] Plasma direct-render instance destroyed")
 
     function syncPlayback() {
-        if (wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
+        if (wallpaperType === "video" && wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
             if (mediaPlayer.playbackState !== MediaPlayer.PlayingState) mediaPlayer.play()
         } else if (mediaPlayer.playbackState === MediaPlayer.PlayingState) {
             mediaPlayer.pause()
@@ -63,12 +66,21 @@ WallpaperItem {
             wallpaperMuted = config.muted
             loopPlayback = config.loop_playback
             wallpaperFillMode = config.fill_mode
+            wallpaperType = config.wallpaper_type || "video"
             if (wallpaperEnabled && config.media_path && configRevision !== String(config.revision)) {
                 configRevision = String(config.revision)
-                mediaSource = daemonUrl + config.media_url + "?revision=" + config.revision
-                console.info("[Better Wallpaper] native media source configured: " + config.media_path)
+                if (wallpaperType === "web") {
+                    mediaSource = ""
+                    webSource = daemonUrl + config.web_url + "?revision=" + config.revision
+                    console.info("[Better Wallpaper] web wallpaper source configured: " + config.media_path)
+                } else {
+                    webSource = ""
+                    mediaSource = daemonUrl + config.media_url + "?revision=" + config.revision
+                    console.info("[Better Wallpaper] native media source configured: " + config.media_path)
+                }
             } else if (!wallpaperEnabled || !config.media_path) {
                 mediaSource = ""
+                webSource = ""
             }
             syncPlayback()
         }
@@ -90,6 +102,19 @@ WallpaperItem {
         fillMode: root.wallpaperFillMode === "contain"
                   ? VideoOutput.PreserveAspectFit
                   : VideoOutput.PreserveAspectCrop
+        visible: root.wallpaperType === "video"
+    }
+
+    WebEngineView {
+        anchors.fill: parent
+        visible: root.wallpaperType === "web" && root.wallpaperEnabled
+        url: root.webSource
+        audioMuted: root.wallpaperMuted || root.wallpaperPaused
+        settings.localContentCanAccessRemoteUrls: true
+        onLoadingChanged: (loadRequest) => {
+            if (loadRequest.status === WebEngineView.LoadFailedStatus)
+                console.error("[Better Wallpaper] web wallpaper load failed: " + loadRequest.errorString)
+        }
     }
 
     AudioOutput {

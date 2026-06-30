@@ -65,6 +65,14 @@ pub enum HardwareDecode {
     Software,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WallpaperType {
+    #[default]
+    Video,
+    Web,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppConfig {
@@ -126,6 +134,7 @@ impl Default for GeneralConfig {
 pub struct WallpaperConfig {
     pub path: Option<PathBuf>,
     pub engine_mode: bool,
+    pub wallpaper_type: WallpaperType,
     pub loop_playback: bool,
     pub muted: bool,
     pub fill_mode: FillMode,
@@ -137,6 +146,7 @@ impl Default for WallpaperConfig {
         Self {
             path: None,
             engine_mode: false,
+            wallpaper_type: WallpaperType::Video,
             loop_playback: true,
             muted: true,
             fill_mode: FillMode::Cover,
