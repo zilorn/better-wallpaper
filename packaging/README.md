@@ -29,16 +29,17 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 
 ## 构建依赖
 
-- Rust stable、Cargo、Clang 和 `pkg-config`
+- Rust stable、Cargo、C/C++ 工具链、Clang、CMake 和 `pkg-config`
 - Bun（只用于构建 Web UI）
-- FFmpeg 开发库：`libavformat`、`libavcodec`、`libavutil`、`libswscale`、`libswresample`
+- FFmpeg 命令行程序，以及开发库：`libavdevice`、`libavfilter`、`libavformat`、
+  `libavcodec`、`libavutil`、`libswscale`、`libswresample`
 - ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
 - Wayland 客户端开发文件
+- Qt 6.6+ Core、Network、Qml、Quick、OpenGL、Multimedia 开发文件
 
-Debian/Ubuntu 的 FFmpeg 开发包通常为 `libavformat-dev libavcodec-dev libavutil-dev
-libswscale-dev libswresample-dev`，ALSA 开发包为 `libasound2-dev`；Fedora 通常由启用的 FFmpeg 仓库提供对应
-`ffmpeg-free-devel` 或 `ffmpeg-devel` 包，ALSA 开发包为 `alsa-lib-devel`。包名随发行版和仓库
-变化，构建时以 `pkg-config` 检测结果为准。
+Debian/Ubuntu 和 Fedora 的完整安装命令见项目根目录的
+[`README.md`](../README.md#依赖)。包名随发行版和仓库变化，构建时以 CMake 和
+`pkg-config` 的检测结果为准。
 
 ## 运行时依赖
 

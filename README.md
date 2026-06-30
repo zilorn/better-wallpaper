@@ -69,6 +69,38 @@ compositor 输出。当前阶段仍需继续验证热插拔和 compositor 断线
 项目支持 niri 和 KDE Plasma 6。niri 后端不需要 Plasma 插件；如需构建 KDE Plasma 插件，
 还需要 CMake、FFmpeg 开发库以及 Qt 6 Core、Qml、Quick、Multimedia 开发包。
 
+### 依赖
+
+完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、CMake、`pkg-config`，以及
+ALSA、FFmpeg、Wayland 和 Qt 6 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）；
+Plasma 6 插件要求 Qt 6.6 或更高版本。
+
+Debian/Ubuntu：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential clang cmake pkg-config ffmpeg \
+  libasound2-dev libwayland-dev \
+  libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
+  libavutil-dev libswresample-dev libswscale-dev \
+  qt6-base-dev qt6-declarative-dev qt6-multimedia-dev
+```
+
+Fedora（FFmpeg 开发包要求系统已启用提供完整 FFmpeg 的仓库）：
+
+```bash
+sudo dnf install \
+  @development-tools clang cmake pkgconf-pkg-config ffmpeg ffmpeg-devel \
+  alsa-lib-devel wayland-devel \
+  qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel
+```
+
+Rust 和 Bun 建议使用各自的官方安装方式；完成安装后确认 `cargo`、`rustc` 和 `bun` 位于
+`PATH` 中。仅构建 daemon/Web UI 时可以省略 CMake 和 Qt 6 开发包；执行 `./install.sh`
+会同时构建 Plasma 插件，因此需要上面的完整依赖。Ubuntu 24.04 仓库中的 Qt 6.4 不满足
+版本要求；请使用提供 Qt 6.6+ 的发行版，或单独安装较新 Qt 并设置 `CMAKE_PREFIX_PATH`。
+
 ### 完整安装（推荐）
 
 在项目根目录运行：
