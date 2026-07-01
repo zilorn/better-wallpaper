@@ -376,3 +376,10 @@ Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
 - 递归资源校验现覆盖 scene → model → material → texture，并按样本确认纹理逻辑名相对 `materials/` 资源根解析。
 - `scene-validate --json` 增加确定性材质 IR；137 对象真实样本的图片材质与纹理引用全部解析成功，剩余缺失项仅为待实现的内置虚拟模型。
 - scene-format 单元测试增至 50 项，workspace 共 102 项测试通过；Phase 3 下一步为纹理解码上传与实际 GPU draw submission。
+
+### 已完成 — niri / Plasma 场景能力边界接入 (2026-07-01)
+
+- daemon 在两种桌面后端启动场景前统一执行安全包解析、Scene IR 解析和共享 `Scene2dPlan` 构建，不再把场景项目目录错误交给 FFmpeg。
+- niri 在实际纹理提交完成前保持现有桌面 surface 不变，并输出英语能力日志；Plasma 控制平面保持在线，插件显示明确的场景未就绪状态。
+- Plasma 配置 API 增加 `scene_rendering_available` 能力字段，QML 仅对 `video` 设置媒体源，避免将场景目录作为视频播放。
+- Web 当前壁纸类型标识补齐 `SCENE`。下一步仍是纹理解码、实际 draw submission 以及将能力字段切换为可用。

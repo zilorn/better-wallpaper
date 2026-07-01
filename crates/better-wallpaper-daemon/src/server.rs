@@ -316,6 +316,7 @@ struct PlasmaConfigPayload {
     paused: bool,
     loop_playback: bool,
     revision: u64,
+    scene_rendering_available: bool,
 }
 
 fn plasma_config_response(
@@ -347,6 +348,7 @@ fn plasma_config_response(
             paused: state.playback.is_paused(),
             loop_playback: config.wallpaper.loop_playback,
             revision: config_revision(&config),
+            scene_rendering_available: false,
         },
     )
 }

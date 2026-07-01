@@ -20,6 +20,7 @@ WallpaperItem {
     property string configRevision: ""
     property string wallpaperType: "video"
     property url webSource: ""
+    property bool sceneRenderingAvailable: false
 
     Component.onCompleted: {
         console.info("[Better Wallpaper] Plasma direct-render instance created for output " + outputName)
@@ -67,16 +68,21 @@ WallpaperItem {
             loopPlayback = config.loop_playback
             wallpaperFillMode = config.fill_mode
             wallpaperType = config.wallpaper_type || "video"
+            sceneRenderingAvailable = config.scene_rendering_available === true
             if (wallpaperEnabled && config.media_path && configRevision !== String(config.revision)) {
                 configRevision = String(config.revision)
                 if (wallpaperType === "web") {
                     mediaSource = ""
                     webSource = daemonUrl + config.web_url + "?revision=" + config.revision
                     console.info("[Better Wallpaper] web wallpaper source configured: " + config.media_path)
-                } else {
+                } else if (wallpaperType === "video") {
                     webSource = ""
                     mediaSource = daemonUrl + config.media_url + "?revision=" + config.revision
                     console.info("[Better Wallpaper] native media source configured: " + config.media_path)
+                } else {
+                    webSource = ""
+                    mediaSource = ""
+                    console.warn("[Better Wallpaper] scene rendering is not available in this build")
                 }
             } else if (!wallpaperEnabled || !config.media_path) {
                 mediaSource = ""
@@ -114,6 +120,26 @@ WallpaperItem {
         onLoadingChanged: (loadRequest) => {
             if (loadRequest.status === WebEngineView.LoadFailedStatus)
                 console.error("[Better Wallpaper] web wallpaper load failed: " + loadRequest.errorString)
+        }
+    }
+
+    Column {
+        anchors.centerIn: parent
+        spacing: 8
+        visible: root.wallpaperType === "scene" && root.wallpaperEnabled
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: "white"
+            font.pixelSize: 20
+            text: "Better Wallpaper Scene"
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: "#b8b8b8"
+            text: root.sceneRenderingAvailable
+                  ? "Loading scene…"
+                  : "Scene texture rendering is not available yet"
         }
     }
 

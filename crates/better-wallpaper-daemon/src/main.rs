@@ -12,7 +12,8 @@ use better_wallpaper_core::{
 };
 use better_wallpaper_daemon::{LogStore, playback, server};
 use better_wallpaper_kde::run_kde_controlled;
-use better_wallpaper_renderer::NvidiaVulkanContext;
+use better_wallpaper_renderer::{NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan};
+use better_wallpaper_scene_format::{PkgReader, parse_scene_graph};
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -201,6 +202,27 @@ fn run_playback(
     control: PlaybackControl,
 ) -> Result<()> {
     let max_height = config.decode.max_height;
+    if config.wallpaper.wallpaper_type == WallpaperType::Scene {
+        let Some(project_dir) = config.wallpaper.path.as_deref() else {
+            info!("scene wallpaper path not configured, backend idle");
+            return Ok(());
+        };
+        let plan = prepare_scene(project_dir)?;
+        info!(
+            ?backend,
+            draw_count = plan.quads.len(),
+            skipped_nodes = plan.skipped_nodes,
+            "scene wallpaper validated with shared 2D render semantics"
+        );
+        warn!(
+            ?backend,
+            "scene texture submission is not available yet; keeping the current desktop surface unchanged"
+        );
+        if backend == BackendKind::Kde {
+            run_kde_controlled(control);
+        }
+        return Ok(());
+    }
     if config.wallpaper.wallpaper_type == WallpaperType::Web && backend != BackendKind::Kde {
         warn!(
             ?backend,
@@ -273,6 +295,35 @@ fn run_playback(
         warn!(backend = ?backend, "desktop backend is unavailable");
     }
     Ok(())
+}
+
+fn prepare_scene(project_dir: &std::path::Path) -> Result<better_wallpaper_renderer::Scene2dPlan> {
+    if !project_dir.is_dir() {
+        anyhow::bail!(
+            "scene wallpaper source is not a project directory: {}",
+            project_dir.display()
+        );
+    }
+    let package_path = project_dir.join("scene.pkg");
+    let package_bytes = std::fs::read(&package_path)
+        .with_context(|| format!("failed to read scene package: {}", package_path.display()))?;
+    let package = PkgReader::parse(package_bytes)
+        .with_context(|| format!("failed to parse scene package: {}", package_path.display()))?;
+    let scene_entry = package
+        .find("scene.json")
+        .context("scene package does not contain scene.json")?;
+    let scene_json = package
+        .read_entry_string(scene_entry)
+        .context("failed to read scene.json")?;
+    let graph = parse_scene_graph(&scene_json).context("failed to parse scene graph")?;
+    build_scene_2d_plan(
+        &graph,
+        Scene2dOptions {
+            viewport_width: 1920,
+            viewport_height: 1080,
+        },
+    )
+    .context("failed to build shared scene draw plan")
 }
 
 #[cfg(test)]
