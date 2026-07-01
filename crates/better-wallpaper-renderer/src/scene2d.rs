@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use better_wallpaper_scene_format::{SceneGraph, SceneNodeKind};
+use better_wallpaper_scene_format::{
+    BlendMode, MaterialManifest, ModelManifest, PkgReader, SceneGraph, SceneNodeKind, TexTexture,
+    TextureImage, resolve_texture_path,
+};
 use thiserror::Error;
 
 /// Column-major affine 2D matrix. Points are multiplied as `matrix * [x, y, 1]`.
@@ -69,6 +72,22 @@ pub struct Scene2dPlan {
     pub skipped_nodes: usize,
 }
 
+/// A draw whose model/material/texture dependency chain has been fully resolved.
+/// This is the shared CPU-side submission boundary used by niri and Plasma.
+#[derive(Debug, Clone)]
+pub struct Scene2dDraw {
+    pub quad: Scene2dQuad,
+    pub blend_mode: BlendMode,
+    pub texture_path: String,
+    pub texture: TextureImage,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scene2dAssets {
+    pub draws: Vec<Scene2dDraw>,
+    pub skipped_nodes: usize,
+}
+
 #[derive(Debug, Error, PartialEq)]
 pub enum Scene2dError {
     #[error("scene viewport must be non-zero")]
@@ -83,6 +102,94 @@ pub enum Scene2dError {
     ParentCycle(String),
     #[error("scene node {0} has an invalid opacity")]
     InvalidOpacity(String),
+    #[error("scene image node {node} references unknown model {model}")]
+    MissingModel { node: String, model: String },
+    #[error("scene model {model} references unknown material {material}")]
+    MissingMaterial { model: String, material: String },
+    #[error("scene material {0} has no render pass")]
+    MissingMaterialPass(String),
+    #[error("scene material {0} uses an unsupported blend mode")]
+    UnsupportedBlendMode(String),
+    #[error("scene material {0} does not reference exactly one texture")]
+    UnsupportedTextureCount(String),
+    #[error("scene texture is missing from package: {0}")]
+    MissingTexture(String),
+    #[error("scene texture {path} is invalid: {detail}")]
+    InvalidTexture { path: String, detail: String },
+    #[error("scene asset manifest is invalid: {0}")]
+    InvalidAssetManifest(String),
+}
+
+/// Resolves a validated draw plan into immutable texture payloads without
+/// creating GPU objects. Desktop backends can upload this data in their own GL
+/// context while retaining identical scene semantics.
+pub fn resolve_scene_2d_assets(
+    package: &PkgReader,
+    plan: Scene2dPlan,
+) -> Result<Scene2dAssets, Scene2dError> {
+    let models = ModelManifest::from_package(package)
+        .map_err(|error| Scene2dError::InvalidAssetManifest(error.to_string()))?;
+    let materials = MaterialManifest::from_package(package, &models)
+        .map_err(|error| Scene2dError::InvalidAssetManifest(error.to_string()))?;
+    let model_by_path = models
+        .models
+        .iter()
+        .map(|model| (model.path.as_str(), model))
+        .collect::<HashMap<_, _>>();
+    let material_by_path = materials
+        .materials
+        .iter()
+        .map(|material| (material.path.as_str(), material))
+        .collect::<HashMap<_, _>>();
+
+    let mut draws = Vec::with_capacity(plan.quads.len());
+    for quad in plan.quads {
+        let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
+            Scene2dError::MissingModel {
+                node: quad.node_id.clone(),
+                model: quad.resource.clone(),
+            }
+        })?;
+        let material_path = &model.definition.material;
+        let material = material_by_path
+            .get(material_path.as_str())
+            .ok_or_else(|| Scene2dError::MissingMaterial {
+                model: model.path.clone(),
+                material: material_path.clone(),
+            })?;
+        let pass = material
+            .definition
+            .passes
+            .first()
+            .ok_or_else(|| Scene2dError::MissingMaterialPass(material.path.clone()))?;
+        if matches!(pass.blend_mode, BlendMode::Unknown(_)) {
+            return Err(Scene2dError::UnsupportedBlendMode(material.path.clone()));
+        }
+        let [texture_name] = pass.textures.as_slice() else {
+            return Err(Scene2dError::UnsupportedTextureCount(material.path.clone()));
+        };
+        let texture_path = resolve_texture_path(&material.path, texture_name);
+        let entry = package
+            .find(&texture_path)
+            .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
+        let bytes = package.read_entry(entry);
+        let texture = TexTexture::parse(bytes)
+            .and_then(|texture| texture.to_texture_image())
+            .map_err(|error| Scene2dError::InvalidTexture {
+                path: texture_path.clone(),
+                detail: error.to_string(),
+            })?;
+        draws.push(Scene2dDraw {
+            quad,
+            blend_mode: pass.blend_mode.clone(),
+            texture_path,
+            texture,
+        });
+    }
+    Ok(Scene2dAssets {
+        draws,
+        skipped_nodes: plan.skipped_nodes,
+    })
 }
 
 /// Builds a deterministic backend-independent list of 2D draws from validated scene IR.
@@ -254,6 +361,43 @@ mod tests {
         )
     }
 
+    fn sized_string(value: &str) -> Vec<u8> {
+        let mut bytes = (value.len() as u32).to_le_bytes().to_vec();
+        bytes.extend_from_slice(value.as_bytes());
+        bytes
+    }
+
+    fn package(entries: &[(&str, Vec<u8>)]) -> PkgReader {
+        let mut bytes = sized_string("PKGV0001");
+        bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        let mut offset = 0u32;
+        for (name, data) in entries {
+            bytes.extend_from_slice(&sized_string(name));
+            bytes.extend_from_slice(&offset.to_le_bytes());
+            bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            offset += data.len() as u32;
+        }
+        for (_, data) in entries {
+            bytes.extend_from_slice(data);
+        }
+        PkgReader::parse(bytes).unwrap()
+    }
+
+    fn rgba_tex(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = b"TEXV0005\0TEXI0001\0".to_vec();
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        for value in [width, height, width, height, 0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend_from_slice(b"TEXB0003\0");
+        for value in [13u32, 1, 1, width, height, 0, 0, width * height * 4] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.resize(bytes.len() + (width * height * 4) as usize, 255);
+        bytes
+    }
+
     #[test]
     fn builds_centered_quad_in_source_order() {
         let result = plan(
@@ -307,5 +451,28 @@ mod tests {
             plan(r#"{"objects":[{"id":1,"image":"a","size":"1 1","alpha":2}]}"#),
             Err(Scene2dError::InvalidOpacity(_))
         ));
+    }
+
+    #[test]
+    fn resolves_shared_model_material_texture_submission() {
+        let package = package(&[
+            (
+                "models/bg.json",
+                br#"{"material":"materials/bg.json"}"#.to_vec(),
+            ),
+            (
+                "materials/bg.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["bg"]}]}"#.to_vec(),
+            ),
+            ("materials/bg.tex", rgba_tex(2, 2)),
+        ]);
+        let plan =
+            plan(r#"{"objects":[{"id":"bg","image":"models/bg.json","size":"100 100"}]}"#).unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(assets.draws.len(), 1);
+        assert_eq!(assets.draws[0].texture_path, "materials/bg.tex");
+        assert_eq!(assets.draws[0].blend_mode, BlendMode::Translucent);
+        assert_eq!(assets.draws[0].texture.levels[0].data.len(), 16);
     }
 }

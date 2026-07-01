@@ -128,3 +128,12 @@
 - 资源依赖校验扩展为 scene → model → material → texture；真实样本纹理引用全部解析
 - `scene-validate --json` 输出材质 IR；剩余缺失资源仅为引擎内置虚拟模型
 - scene-format 50 项、workspace 102 项测试通过；下一步为纹理解码上传和 GPU draw submission
+
+## 2026-07-01 Phase 3：共享场景资产提交 IR
+
+- renderer 新增 `Scene2dAssets` / `Scene2dDraw`，统一解析 scene → model → material → texture 依赖链
+- draw 携带共享几何、透明度、混合模式、规范纹理路径及已校验 `TextureImage`
+- niri EGL 与 Plasma QSG 将消费同一提交 IR，不在各后端重复解释场景格式
+- daemon 对两个桌面后端统一执行资产预检，并使用英语日志报告可提交 draw 数或降级原因
+- 新增完整最小包解析测试；workspace 103 项测试通过
+- 实际 GL 多纹理提交尚未实现，Plasma `scene_rendering_available` 仍为 false

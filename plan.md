@@ -383,3 +383,13 @@ Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
 - niri 在实际纹理提交完成前保持现有桌面 surface 不变，并输出英语能力日志；Plasma 控制平面保持在线，插件显示明确的场景未就绪状态。
 - Plasma 配置 API 增加 `scene_rendering_available` 能力字段，QML 仅对 `video` 设置媒体源，避免将场景目录作为视频播放。
 - Web 当前壁纸类型标识补齐 `SCENE`。下一步仍是纹理解码、实际 draw submission 以及将能力字段切换为可用。
+
+### 已完成 — Phase 3：共享场景资产提交 IR (2026-07-01)
+
+- 新增后端无关 `Scene2dAssets` / `Scene2dDraw`，将绘制四边形沿 `scene → model → material → texture` 完整解析为同一份 CPU 提交数据。
+- 每个 draw 携带 NDC 顶点、透明度、规范纹理路径、混合模式及已通过尺寸/格式校验的 mipmap；niri EGL 与 Plasma QSG 后续不再各自解释私有格式。
+- 材质纹理路径解析规则从格式 crate 统一导出，避免桌面后端出现路径语义分叉。
+- 当前最小提交范围严格限定为单 pass、单纹理和已知混合模式；未知混合、多纹理、缺失模型/材质/纹理均返回稳定错误，不静默错误渲染。
+- daemon 的 niri / Plasma 场景预检现同时执行共享资产解析，并以英语日志记录可提交 draw 数或精确降级原因。
+- 新增完整最小包测试，覆盖模型、材质、半透明混合、TEX 解析到提交 IR；workspace 共 103 项测试通过。
+- 仍未完成实际 GL 多纹理上传与 draw submission，因此 Plasma 能力字段继续保持 false，niri 也不会覆盖当前 surface。

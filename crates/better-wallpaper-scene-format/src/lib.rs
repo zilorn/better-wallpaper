@@ -31,7 +31,7 @@ pub use pkg::{PkgEntry, PkgReader};
 pub use resource::{
     MAX_RESOURCE_CACHE_BYTES, MaterialManifest, MaterialResource, ModelManifest, ModelResource,
     ResourceCache, ResourceCacheError, ResourceCacheKey, ResourceDescriptor, ResourceKind,
-    ResourceManifest, ResourceReference, ResourceValidationReport,
+    ResourceManifest, ResourceReference, ResourceValidationReport, resolve_texture_path,
 };
 pub use scene::{
     CompatibilityLevel, CompatibilityReport, PropertyType, PropertyValue, SceneMetadata,

@@ -403,7 +403,11 @@ impl MaterialManifest {
     }
 }
 
-fn resolve_texture_path(_material_path: &str, texture: &str) -> String {
+/// Resolves the texture naming convention observed in image material passes.
+///
+/// Kept in the format crate so every desktop renderer uses the same canonical
+/// package path instead of duplicating Wallpaper Engine-specific rules.
+pub fn resolve_texture_path(_material_path: &str, texture: &str) -> String {
     let extension = texture.rsplit_once('.').map(|(_, extension)| extension);
     let texture = if matches!(
         extension,

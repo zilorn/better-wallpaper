@@ -12,7 +12,9 @@ use better_wallpaper_core::{
 };
 use better_wallpaper_daemon::{LogStore, playback, server};
 use better_wallpaper_kde::run_kde_controlled;
-use better_wallpaper_renderer::{NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan};
+use better_wallpaper_renderer::{
+    NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan, resolve_scene_2d_assets,
+};
 use better_wallpaper_scene_format::{PkgReader, parse_scene_graph};
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
@@ -207,13 +209,17 @@ fn run_playback(
             info!("scene wallpaper path not configured, backend idle");
             return Ok(());
         };
-        let plan = prepare_scene(project_dir)?;
+        let prepared = prepare_scene(project_dir)?;
         info!(
             ?backend,
-            draw_count = plan.quads.len(),
-            skipped_nodes = plan.skipped_nodes,
+            draw_count = prepared.plan.quads.len(),
+            resolved_draw_count = prepared.resolved_draw_count,
+            skipped_nodes = prepared.plan.skipped_nodes,
             "scene wallpaper validated with shared 2D render semantics"
         );
+        if let Some(error) = prepared.asset_error {
+            warn!(?backend, %error, "scene assets are not ready for GPU submission");
+        }
         warn!(
             ?backend,
             "scene texture submission is not available yet; keeping the current desktop surface unchanged"
@@ -297,7 +303,13 @@ fn run_playback(
     Ok(())
 }
 
-fn prepare_scene(project_dir: &std::path::Path) -> Result<better_wallpaper_renderer::Scene2dPlan> {
+struct PreparedScene {
+    plan: better_wallpaper_renderer::Scene2dPlan,
+    resolved_draw_count: usize,
+    asset_error: Option<String>,
+}
+
+fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
     if !project_dir.is_dir() {
         anyhow::bail!(
             "scene wallpaper source is not a project directory: {}",
@@ -316,14 +328,23 @@ fn prepare_scene(project_dir: &std::path::Path) -> Result<better_wallpaper_rende
         .read_entry_string(scene_entry)
         .context("failed to read scene.json")?;
     let graph = parse_scene_graph(&scene_json).context("failed to parse scene graph")?;
-    build_scene_2d_plan(
+    let plan = build_scene_2d_plan(
         &graph,
         Scene2dOptions {
             viewport_width: 1920,
             viewport_height: 1080,
         },
     )
-    .context("failed to build shared scene draw plan")
+    .context("failed to build shared scene draw plan")?;
+    let (resolved_draw_count, asset_error) = match resolve_scene_2d_assets(&package, plan.clone()) {
+        Ok(assets) => (assets.draws.len(), None),
+        Err(error) => (0, Some(error.to_string())),
+    };
+    Ok(PreparedScene {
+        plan,
+        resolved_draw_count,
+        asset_error,
+    })
 }
 
 #[cfg(test)]
