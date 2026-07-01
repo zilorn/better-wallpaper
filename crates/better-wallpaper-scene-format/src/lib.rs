@@ -30,8 +30,8 @@ pub use resource::{
     ResourceValidationReport,
 };
 pub use scene::{
-    CompatibilityLevel, CompatibilityReport, SceneMetadata, SceneProject, analyse_scene,
-    compute_compatibility,
+    CompatibilityLevel, CompatibilityReport, PropertyType, PropertyValue, SceneMetadata,
+    SceneProject, UserProperty, analyse_scene, compute_compatibility, parse_project_properties,
 };
 pub use texture::{
     AnimationFrame, FreeImageFormat, Mipmap, TexFormat, TexTexture, TextureAlphaMode,

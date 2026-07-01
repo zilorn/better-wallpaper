@@ -62,14 +62,180 @@ pub struct SceneMetadata {
     pub object_types: Vec<String>,
 }
 
+/// User-adjustable property definition from project.json's general.properties
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserProperty {
+    /// Property key (used in conditions and value references)
+    pub key: String,
+    /// Display label
+    pub text: String,
+    /// Property type
+    pub prop_type: PropertyType,
+    /// Default value
+    pub value: PropertyValue,
+    /// Optional condition expression (e.g. "mouseactions.value == true")
+    pub condition: Option<String>,
+    /// UI sorting order
+    pub order: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PropertyType {
+    Slider {
+        min: f64,
+        max: f64,
+        step: Option<f64>,
+        fraction: bool,
+    },
+    Bool,
+    Combo {
+        options: Vec<(String, String)>, // (label, value)
+    },
+    Color,
+    File,
+    TextInput,
+    Text,
+    Group,
+    Unknown(String),
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum PropertyValue {
+    Number(f64),
+    Bool(bool),
+    String(String),
+    None,
+}
+
+impl Default for PropertyValue {
+    fn default() -> Self {
+        PropertyValue::None
+    }
+}
+
+/// Parse user-adjustable properties from a project.json string.
+///
+/// Returns a Vec of (key, property) pairs in their original JSON order (keys in a
+/// JSON object have no guaranteed order, but we preserve as-read order).
+pub fn parse_project_properties(
+    project_json: &str,
+) -> Result<Vec<(String, UserProperty)>, SceneParseError> {
+    let json: serde_json::Value =
+        serde_json::from_str(project_json).map_err(SceneParseError::Json)?;
+    let props = json
+        .pointer("/general/properties")
+        .and_then(|v| v.as_object());
+
+    let Some(props) = props else {
+        return Ok(Vec::new());
+    };
+
+    let mut result = Vec::with_capacity(props.len());
+    for (key, prop) in props {
+        let prop = prop
+            .as_object()
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("general.properties.{key}"),
+                detail: "expected an object".into(),
+            })?;
+
+        let text = prop
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let condition = prop
+            .get("condition")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let order = prop.get("order").and_then(|v| v.as_u64()).map(|v| v as u32);
+
+        let type_str = prop.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let prop_type = match type_str {
+            "slider" => PropertyType::Slider {
+                min: prop.get("min").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                max: prop.get("max").and_then(|v| v.as_f64()).unwrap_or(100.0),
+                step: prop.get("step").and_then(|v| v.as_f64()),
+                fraction: prop
+                    .get("fraction")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            },
+            "bool" => PropertyType::Bool,
+            "combo" | "color" => {
+                if type_str == "combo" {
+                    let options = prop
+                        .get("options")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|opt| {
+                                    let obj = opt.as_object()?;
+                                    Some((
+                                        obj.get("label")?.as_str()?.to_string(),
+                                        obj.get("value")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    ))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    PropertyType::Combo { options }
+                } else {
+                    PropertyType::Color
+                }
+            }
+            "file" => PropertyType::File,
+            "textinput" => PropertyType::TextInput,
+            "text" => PropertyType::Text,
+            "group" => PropertyType::Group,
+            other => PropertyType::Unknown(other.to_string()),
+        };
+
+        let value = match &prop_type {
+            PropertyType::Slider { .. } => prop
+                .get("value")
+                .and_then(|v| v.as_f64())
+                .map(PropertyValue::Number)
+                .unwrap_or(PropertyValue::None),
+            PropertyType::Bool => prop
+                .get("value")
+                .and_then(|v| v.as_bool())
+                .map(PropertyValue::Bool)
+                .unwrap_or(PropertyValue::None),
+            _ => prop
+                .get("value")
+                .and_then(|v| v.as_str())
+                .map(|s| PropertyValue::String(s.to_string()))
+                .unwrap_or(PropertyValue::None),
+        };
+
+        result.push((
+            key.clone(),
+            UserProperty {
+                key: key.clone(),
+                text,
+                prop_type,
+                value,
+                condition,
+                order,
+            },
+        ));
+    }
+
+    Ok(result)
+}
+
 /// Parse and analyse a scene.json file
 pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError> {
     let json: serde_json::Value =
         serde_json::from_str(scene_json).map_err(SceneParseError::Json)?;
 
     let mut meta = SceneMetadata::default();
-
-    // Camera
     if let Some(camera) = json.get("camera") {
         meta.camera_eye = camera
             .get("eye")
@@ -314,5 +480,114 @@ mod tests {
         }"#;
         let meta = analyse_scene(scene).unwrap();
         assert!(meta.has_sounds);
+    }
+
+    // ── project.json property parsing ─────────────────────────────────
+
+    #[test]
+    fn parse_slider_property() {
+        let json = r#"{
+            "general": {
+                "properties": {
+                    "scale": {
+                        "fraction": true,
+                        "max": 2,
+                        "min": 0.7,
+                        "order": 100,
+                        "step": 0.01,
+                        "text": "Scale",
+                        "type": "slider",
+                        "value": 0.8
+                    }
+                }
+            }
+        }"#;
+        let props = parse_project_properties(json).unwrap();
+        assert_eq!(props.len(), 1);
+        assert_eq!(props[0].0, "scale");
+        match &props[0].1.prop_type {
+            PropertyType::Slider { min, max, .. } => {
+                assert_eq!(*min, 0.7);
+                assert_eq!(*max, 2.0);
+            }
+            _ => panic!("expected slider"),
+        }
+    }
+
+    #[test]
+    fn parse_bool_property() {
+        let json = r#"{
+            "general": {
+                "properties": {
+                    "show": {
+                        "order": 101,
+                        "text": "Show",
+                        "type": "bool",
+                        "value": true
+                    }
+                }
+            }
+        }"#;
+        let props = parse_project_properties(json).unwrap();
+        match &props[0].1.value {
+            PropertyValue::Bool(true) => {}
+            _ => panic!("expected bool true"),
+        }
+    }
+
+    #[test]
+    fn parse_combo_property() {
+        let json = r#"{
+            "general": {
+                "properties": {
+                    "bgm": {
+                        "options": [
+                            {"label": "Theme 1", "value": "1"},
+                            {"label": "Theme 2", "value": "2"}
+                        ],
+                        "order": 103,
+                        "text": "BGM",
+                        "type": "combo",
+                        "value": "1"
+                    }
+                }
+            }
+        }"#;
+        let props = parse_project_properties(json).unwrap();
+        match &props[0].1.prop_type {
+            PropertyType::Combo { options } => {
+                assert_eq!(options.len(), 2);
+                assert_eq!(options[0].0, "Theme 1");
+            }
+            _ => panic!("expected combo"),
+        }
+    }
+
+    #[test]
+    fn no_properties_returns_empty() {
+        let props = parse_project_properties(r#"{"title": "test", "type": "scene"}"#).unwrap();
+        assert!(props.is_empty());
+    }
+
+    #[test]
+    fn parses_condition_field() {
+        let json = r#"{
+            "general": {
+                "properties": {
+                    "sub": {
+                        "condition": "parent.value == true",
+                        "order": 105,
+                        "text": "Sub",
+                        "type": "bool",
+                        "value": false
+                    }
+                }
+            }
+        }"#;
+        let props = parse_project_properties(json).unwrap();
+        assert_eq!(
+            props[0].1.condition.as_deref(),
+            Some("parent.value == true")
+        );
     }
 }

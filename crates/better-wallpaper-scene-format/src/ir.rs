@@ -51,9 +51,11 @@ pub struct SceneNode {
 #[serde(tag = "kind", content = "resource", rename_all = "snake_case")]
 pub enum SceneNodeKind {
     Image(String),
+    Model(String),
     Sound(String),
     Particle(String),
     Text,
+    Container,
     Unknown,
 }
 
@@ -156,18 +158,29 @@ fn parse_node(
     const KNOWN_FIELDS: &[&str] = &[
         "alpha",
         "angles",
+        "animationlayers",
+        "attachment",
+        "bone_animations",
+        "bones",
+        "castshadow",
+        "collision",
+        "color",
+        "colorBlendMode",
+        "container",
         "effects",
         "id",
         "image",
         "instanceoverride",
         "name",
         "origin",
+        "parallaxDepth",
         "parent",
         "particle",
         "scale",
         "size",
         "sound",
         "text",
+        "transform",
         "visible",
     ];
     let path = format!("objects[{index}]");
@@ -189,6 +202,12 @@ fn parse_node(
     } else if object.contains_key("instanceoverride") {
         mark(unsupported, &path, "particle instance override");
         SceneNodeKind::Particle(String::new())
+    } else if object.contains_key("container") {
+        let is_array = object.get("container").and_then(Value::as_array).is_some();
+        if is_array {
+            mark(unsupported, &path, "container group (child nodes)");
+        }
+        SceneNodeKind::Container
     } else if let Some(resource) = string_resource(object, "sound", &path)? {
         mark(unsupported, &path, "sound object");
         SceneNodeKind::Sound(resource)
@@ -196,7 +215,17 @@ fn parse_node(
         mark(unsupported, &path, "text object");
         SceneNodeKind::Text
     } else if let Some(resource) = string_resource(object, "image", &path)? {
-        SceneNodeKind::Image(resource)
+        if resource.ends_with(".mdl") {
+            mark(unsupported, &path, &format!("Spriter model: {resource}"));
+            SceneNodeKind::Model(resource)
+        } else {
+            SceneNodeKind::Image(resource)
+        }
+    } else if (object.contains_key("bones") || object.contains_key("bone_animations"))
+        && !object.contains_key("image")
+    {
+        mark(unsupported, &path, "3D model / bone animation");
+        SceneNodeKind::Model(String::new())
     } else {
         mark(unsupported, &path, "unknown object type");
         SceneNodeKind::Unknown
@@ -242,13 +271,19 @@ fn parse_node(
             .unwrap_or(true),
         kind,
         transform: SceneTransform {
-            origin: optional_vec3(object, "origin", &path)?,
+            origin: object
+                .get("origin")
+                .map(|value| parse_vec3_lenient(&format!("{path}.origin"), value))
+                .transpose()?,
             size: optional_vec2(object, "size", &path)?,
             scale: optional_vec3(object, "scale", &path)?,
             angles: optional_vec3(object, "angles", &path)?,
             opacity: object
                 .get("alpha")
-                .map(|value| number_value(&format!("{path}.alpha"), value))
+                .map(|value| {
+                    let value = unwrap_script_value(value);
+                    number_value(&format!("{path}.alpha"), value)
+                })
                 .transpose()?,
         },
         effects,
@@ -269,9 +304,19 @@ fn string_resource(
     }
     let value = value
         .as_str()
+        .or_else(|| {
+            // Handle array-of-one-string: ["resource/path"]
+            value.as_array().and_then(|arr| {
+                if arr.len() == 1 {
+                    arr[0].as_str()
+                } else {
+                    None
+                }
+            })
+        })
         .ok_or_else(|| SceneParseError::InvalidValue {
             field: format!("{path}.{field}"),
-            detail: "expected a resource path string".into(),
+            detail: "expected a resource path string or single-element array".into(),
         })?;
     if value.is_empty() {
         return Ok(None);
@@ -317,6 +362,7 @@ fn optional_vec2(
 }
 
 fn parse_vec3(field: &str, value: &Value) -> Result<Vec3, SceneParseError> {
+    let value = unwrap_script_value(value);
     let values = vector_values(field, value, 3)?;
     Ok(Vec3 {
         x: values[0],
@@ -325,12 +371,39 @@ fn parse_vec3(field: &str, value: &Value) -> Result<Vec3, SceneParseError> {
     })
 }
 
+/// Parse a vector that may have 2 or 3 components, or be a script-driven object.
+/// Common for `origin` fields in 2D-orthographic scenes.
+fn parse_vec3_lenient(field: &str, value: &Value) -> Result<Vec3, SceneParseError> {
+    let value = unwrap_script_value(value);
+    let values = vector_values(field, value, 3).or_else(|_| {
+        let values = vector_values(field, value, 2)?;
+        Ok::<_, SceneParseError>(vec![values[0], values[1], 0.0])
+    })?;
+    Ok(Vec3 {
+        x: values[0],
+        y: values[1],
+        z: values[2],
+    })
+}
+
 fn parse_vec2(field: &str, value: &Value) -> Result<Vec2, SceneParseError> {
+    let value = unwrap_script_value(value);
     let values = vector_values(field, value, 2)?;
     Ok(Vec2 {
         x: values[0],
         y: values[1],
     })
+}
+
+/// Unwrap a script-driven or property-bound value.
+/// Handles: `{"script": "...","value":"x y z"}`, `{"user":"prop","value":1.0}`, etc.
+/// Falls back to the original value if not an object with a `.value` field.
+fn unwrap_script_value(value: &Value) -> &Value {
+    if let Some(inner) = value.as_object().and_then(|obj| obj.get("value")) {
+        inner
+    } else {
+        value
+    }
 }
 
 fn vector_values(field: &str, value: &Value, expected: usize) -> Result<Vec<f32>, SceneParseError> {
@@ -459,5 +532,56 @@ mod tests {
         .unwrap();
         assert_eq!(graph.unsupported_features[0].path, "objects[0]");
         assert_eq!(graph.unsupported_features[1].path, "objects[1]");
+    }
+
+    #[test]
+    fn parses_2_component_origin_as_z_zero() {
+        let graph = parse_scene_graph(
+            r#"{
+                "general":{"orthogonalprojection":{"width":1920,"height":1080}},
+                "objects":[{"image":"bg.json","origin":"960 540"}]
+            }"#,
+        )
+        .unwrap();
+        let origin = graph.nodes[0].transform.origin.unwrap();
+        assert_eq!(origin.x, 960.0);
+        assert_eq!(origin.y, 540.0);
+        assert_eq!(origin.z, 0.0);
+    }
+
+    #[test]
+    fn parses_script_driven_origin() {
+        let graph = parse_scene_graph(
+            r#"{
+                "general":{"orthogonalprojection":{"width":1920,"height":1080}},
+                "objects":[{
+                    "id":1,"name":"scripted",
+                    "image":"bg.json",
+                    "origin":{"script":"// update()","value":"1920 1080 0"}
+                }]
+            }"#,
+        )
+        .unwrap();
+        let origin = graph.nodes[0].transform.origin.unwrap();
+        assert_eq!(origin.x, 1920.0);
+        assert_eq!(origin.y, 1080.0);
+        assert_eq!(origin.z, 0.0);
+    }
+
+    #[test]
+    fn detects_container_and_model_nodes() {
+        let graph = parse_scene_graph(
+            r#"{
+                "objects":[
+                    {"id":1,"container":[]},
+                    {"id":2,"image":"model.mdl"},
+                    {"id":3,"bones":[{"name":"root"}],"bone_animations":[]}
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert!(matches!(graph.nodes[0].kind, SceneNodeKind::Container));
+        assert!(matches!(graph.nodes[1].kind, SceneNodeKind::Model(_)));
+        assert!(matches!(graph.nodes[2].kind, SceneNodeKind::Model(_)));
     }
 }

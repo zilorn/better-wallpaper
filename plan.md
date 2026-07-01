@@ -299,3 +299,52 @@ L0～L2 预计需要约 8～12 个工程周；L3 额外约 3～5 周；L4 无法
 - 新增 CPU 资源缓存：规范路径与内容哈希组成缓存键，预算硬上限为 512 MiB，支持精确字节记账、最近最少使用驱逐和超大单资源拒绝。
 - 新增 renderer 侧 GPU 资源缓存：显存预算硬上限为 2 GiB，按规范路径与内容哈希标识资源，支持精确记账、确定性 LRU、替换/移除/清空，并通过所有权保证驱逐时释放后端句柄。
 - Phase 2 尚未完成：模型 JSON 解析仍待合法样本证据，避免在未知格式上猜测字段语义。
+
+### 已完成 — 格式发现与解析器增强 (2026-07-01)
+
+基于真实 Workshop 场景 `431960`（60+ 子项目）的深入分析，发现并适配了以下格式细节：
+
+#### Wallpaper Engine 场景项目结构
+
+- 每个 Workshop 子项目是独立目录，含 `project.json` + 入口文件
+- 壁纸类型三种：`video`（MP4）、`Web`/`web`（index.html）、`scene`（scene.pkg）
+- `scene.pkg` 是 PKGVxxxx 二进制包，内部包含完整的文件树
+
+#### 场景对象字段发现
+
+通过实际 137 对象的复杂场景（`3492627662`），确认了以下对象字段：
+- 基础字段：`id`, `name`, `parent`, `visible`, `origin`, `size`, `scale`, `angles`, `alpha`
+- 图层/渲染：`image`, `effects`, `castshadow`, `color`, `colorBlendMode`, `parallaxDepth`
+- 动画/模型：`animationlayers`, `attachment`, `bones`, `bone_animations`, `transform`
+- 其它：`container`, `collision`, `particle`, `sound`, `text`, `instanceoverride`
+
+#### 属性绑定与脚本驱动值
+
+Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
+
+```json
+// SceneScript 驱动：运行时求值
+{"script": "// update(value) { ... }", "value": "1920 1080 0"}
+
+// 用户属性绑定：连到 UI 控件
+{"user": "propertyKey", "value": 1.0}
+```
+
+解析器现在对所有向量/标量字段（origin, size, scale, angles, alpha）自动解包 `.value`。
+
+#### 资源引用格式
+
+- 标准格式：`"image": "models/bg.json"`（字符串）
+- 数组格式：`"sound": ["sounds/bgm.mp3"]`（单元素数组，已适配）
+
+#### 代码改进
+
+- `SceneNodeKind` 新增 `Model`、`Container` 变体
+- `KNOWN_FIELDS` 从 15 扩展到 25 个字段（animationlayers, attachment, castshadow, collision, color, colorBlendMode, parallaxDepth, transform 等）
+- `parse_vec3_lenient` 支持 2 分量 origin（2D 场景常见，z 补 0）
+- `unwrap_script_value` 统一处理脚本/属性绑定对象
+- `string_resource` 支持单元素数组格式
+- `parse_project_properties` 新增 project.json 用户属性解析（slider/bool/combo/color/file/textinput/text/group）
+- 单元测试从 33 增至 43 项（含 2D origin、脚本驱动值、容器/模型检测）
+- `scene-validate` 成功通过 137 对象 / 144 文件 / 38MB 真实场景完整解析
+
