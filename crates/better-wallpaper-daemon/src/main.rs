@@ -219,15 +219,31 @@ fn run_playback(
         );
         if let Some(error) = prepared.asset_error {
             warn!(?backend, %error, "scene assets are not ready for GPU submission");
+            if backend == BackendKind::Kde {
+                run_kde_controlled(control.clone());
+            }
+            return Ok(());
         }
-        warn!(
-            ?backend,
-            "scene texture submission is not available yet; keeping the current desktop surface unchanged"
-        );
-        if backend == BackendKind::Kde {
-            run_kde_controlled(control);
+        let assets = prepared.assets.expect("assets were validated above");
+        match backend {
+            BackendKind::Niri => {
+                let output_names: Vec<_> = config.outputs.iter()
+                    .filter(|o| o.enabled)
+                    .map(|o| o.name.clone())
+                    .collect();
+                run_niri_scene(assets, &output_names, control.clone())?;
+            }
+            BackendKind::Kde => {
+                warn!("KDE Plasma scene rendering is not yet implemented through the GPU path");
+                run_kde_controlled(control.clone());
+            }
+            BackendKind::Headless => {
+                info!(draw_count = assets.draws.len(), "headless scene validated");
+            }
+            _ => {
+                warn!(?backend, "scene rendering is not supported on this backend");
+            }
         }
-        return Ok(());
     }
     if config.wallpaper.wallpaper_type == WallpaperType::Web && backend != BackendKind::Kde {
         warn!(
@@ -306,9 +322,56 @@ fn run_playback(
 struct PreparedScene {
     plan: better_wallpaper_renderer::Scene2dPlan,
     resolved_draw_count: usize,
+    assets: Option<better_wallpaper_renderer::Scene2dAssets>,
     asset_error: Option<String>,
 }
 
+
+fn run_niri_scene(
+    assets: better_wallpaper_renderer::Scene2dAssets,
+    output_names: &[String],
+    control: PlaybackControl,
+) -> Result<()> {
+    use std::time::Duration;
+
+    let mut backends = if output_names.is_empty() {
+        vec![better_wallpaper_wayland::NiriBackend::connect(None)
+            .context("failed to auto-select niri output for scene")?]
+    } else {
+        output_names.iter()
+            .map(|name| {
+                better_wallpaper_wayland::NiriBackend::connect(Some(name))
+                    .with_context(|| format!("failed to initialize niri output {name} for scene"))
+            })
+            .collect::<Result<Vec<_>>>()?
+    };
+
+    for backend in &mut backends {
+        backend.load_scene_assets(assets.clone())
+            .with_context(|| format!("failed to load scene assets for niri output {}", backend.output_name()))?;
+    }
+    info!(
+        output_count = backends.len(),
+        draw_count = assets.draws.len(),
+        "scene assets uploaded to niri GPU"
+    );
+
+    let fps_limit = 60_u64;
+    let frame_interval = Duration::from_secs_f64(1.0 / fps_limit as f64);
+    while !control.is_cancelled() {
+        let frame_start = std::time::Instant::now();
+        for backend in &mut backends {
+            backend.present_scene()
+                .with_context(|| format!("failed to present scene frame to niri output {}", backend.output_name()))?;
+        }
+        let elapsed = frame_start.elapsed();
+        if elapsed < frame_interval {
+            std::thread::sleep(frame_interval - elapsed);
+        }
+    }
+    info!("niri scene rendering stopped");
+    Ok(())
+}
 fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
     if !project_dir.is_dir() {
         anyhow::bail!(
@@ -336,14 +399,15 @@ fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
         },
     )
     .context("failed to build shared scene draw plan")?;
-    let (resolved_draw_count, asset_error) = match resolve_scene_2d_assets(&package, plan.clone()) {
-        Ok(assets) => (assets.draws.len(), None),
-        Err(error) => (0, Some(error.to_string())),
+    let (resolved_draw_count, asset_error, assets) = match resolve_scene_2d_assets(&package, plan.clone()) {
+        Ok(assets) => (assets.draws.len(), None, Some(assets)),
+        Err(error) => (0, Some(error.to_string()), None),
     };
     Ok(PreparedScene {
         plan,
         resolved_draw_count,
         asset_error,
+        assets,
     })
 }
 

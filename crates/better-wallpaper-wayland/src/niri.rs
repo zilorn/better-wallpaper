@@ -1,6 +1,7 @@
 use crate::egl::EglRenderer;
 use anyhow::{Context, Result, anyhow, bail};
 use better_wallpaper_core::{DecodedFrame, config::FillMode};
+use better_wallpaper_renderer::Scene2dAssets;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
@@ -158,6 +159,28 @@ impl NiriBackend {
     pub fn size(&self) -> (u32, u32) {
         self.state.configured_size.unwrap_or((1, 1))
     }
+    pub fn load_scene_assets(&mut self, assets: Scene2dAssets) -> anyhow::Result<()> {
+        let egl = self.egl.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("EGL not available, cannot load scene textures")
+        })?;
+        egl.set_scene_assets(assets)?;
+        Ok(())
+    }
+
+    pub fn present_scene(&mut self) -> anyhow::Result<()> {
+        self.dispatch_pending()?;
+        let (width, height) = self.size();
+        let egl = self.egl.as_mut().ok_or_else(|| {
+            anyhow::anyhow!("EGL GPU backend unavailable, scene rendering not supported")
+        })?;
+        self.state.frame_ready = false;
+        self.layer
+            .wl_surface()
+            .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
+        egl.render_scene(width, height)?;
+        Ok(())
+    }
+
 
     pub fn present(&mut self, frame: &DecodedFrame, fill_mode: FillMode) -> Result<PresentMetrics> {
         self.dispatch_pending()?;

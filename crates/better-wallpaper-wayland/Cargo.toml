@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 better-wallpaper-core = { path = "../better-wallpaper-core" }
 gpu-renderer = { path = "../gpu-renderer" }
+better-wallpaper-renderer = { path = "../better-wallpaper-renderer" }
 smithay-client-toolkit.workspace = true
 tracing.workspace = true
 wayland-client.workspace = true

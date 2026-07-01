@@ -1,5 +1,6 @@
 mod cuda_gl;
 mod ffi;
+mod scene_renderer;
 
 use std::ffi::c_char;
 use std::num::NonZeroU32;
@@ -13,6 +14,8 @@ const VERTEX_SHADER: &str =
 const FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;uniform sampler2D v;void main(){gl_FragColor=texture2D(v,u);}";
 const YUV_FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;uniform sampler2D y_tex;uniform sampler2D uv_tex;void main(){float y=1.1643*(texture2D(y_tex,u).r-.0625);vec2 c=texture2D(uv_tex,u).rg-vec2(.5);gl_FragColor=vec4(y+1.7927*c.y,y-.2132*c.x-.5329*c.y,y+2.1124*c.x,1.);}";
 const PBO_RING_SIZE: usize = 3;
+
+pub use scene_renderer::SceneGpuRenderer;
 
 pub type GlLoaderFn = Option<unsafe extern "C" fn(name: *const c_char) -> *const std::ffi::c_void>;
 

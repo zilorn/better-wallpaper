@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
 use better_wallpaper_core::{DecodedFrame, config::FillMode};
 use glow::HasContext;
-use gpu_renderer::GpuRenderer;
+use gpu_renderer::{GpuRenderer, SceneGpuRenderer};
+use better_wallpaper_renderer::Scene2dAssets;
 use khronos_egl as egl;
 use std::{
     ffi::c_void,
@@ -32,6 +33,8 @@ pub(crate) struct EglRenderer {
     perf_upload: Duration,
     perf_swap: Duration,
     cuda_zero_copy_logged: bool,
+    scene_renderer: Option<SceneGpuRenderer>,
+    scene_assets: Option<Scene2dAssets>,
 }
 
 impl EglRenderer {
@@ -116,7 +119,44 @@ impl EglRenderer {
             perf_upload: Duration::ZERO,
             perf_swap: Duration::ZERO,
             cuda_zero_copy_logged: false,
+            scene_renderer: None,
+            scene_assets: None,
         })
+    }
+
+    pub(crate) fn set_scene_assets(&mut self, assets: Scene2dAssets) -> Result<()> {
+        let gl = unsafe {
+            glow::Context::from_loader_function(|name| {
+                self.egl.get_proc_address(name)
+                    .map_or(ptr::null(), |p| p as *const _)
+            })
+        };
+        let mut scene = SceneGpuRenderer::new(gl, self.output_size.0, self.output_size.1)
+            .map_err(|msg| anyhow::anyhow!("scene GPU renderer: {msg}"))?;
+        scene.upload_scene_textures(&assets)
+            .map_err(|msg| anyhow::anyhow!("scene texture upload: {msg}"))?;
+        info!(draw_count = assets.draws.len(), "scene textures uploaded to GPU");
+        self.scene_renderer = Some(scene);
+        self.scene_assets = Some(assets);
+        Ok(())
+    }
+
+    pub(crate) fn render_scene(&mut self, width: u32, height: u32) -> Result<()> {
+        let renderer = self.scene_renderer.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("SceneGpuRenderer not initialized")
+        })?;
+        let assets = self.scene_assets.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Scene2dAssets not loaded")
+        })?;
+        if self.output_size != (width, height) {
+            unsafe {
+                wl_egl_window_resize(self.window, width as i32, height as i32, 0, 0);
+            }
+            self.output_size = (width, height);
+        }
+        renderer.draw_scene(assets);
+        self.egl.swap_buffers(self.display, self.surface)?;
+        Ok(())
     }
 
     pub(crate) fn render(
@@ -197,6 +237,7 @@ impl Drop for EglRenderer {
         // context is detached or destroyed; doing it afterwards is undefined
         // driver behaviour and can hang the compositor during hot reload.
         drop(self.renderer.take());
+        drop(self.scene_renderer.take());
         unsafe {
             let _ = self.egl.make_current(self.display, None, None, None);
             let _ = self.egl.destroy_context(self.display, self.context);
