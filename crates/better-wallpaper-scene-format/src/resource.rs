@@ -8,6 +8,7 @@ use std::{
 use crate::{
     SceneParseError,
     ir::{SceneGraph, SceneNodeKind},
+    material::{MaterialDefinition, parse_material_definition},
     model::{ModelDefinition, parse_model_definition},
     pkg::PkgReader,
 };
@@ -68,6 +69,17 @@ pub struct ModelResource {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModelManifest {
     pub models: Vec<ModelResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MaterialResource {
+    pub path: String,
+    pub definition: MaterialDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MaterialManifest {
+    pub materials: Vec<MaterialResource>,
 }
 
 /// Hard upper bound for a CPU-side cache, independent of user quality settings.
@@ -288,6 +300,39 @@ impl ResourceManifest {
             missing,
         }
     }
+
+    pub fn validate_scene_graph_with_dependencies(
+        &self,
+        graph: &SceneGraph,
+        models: &ModelManifest,
+        materials: &MaterialManifest,
+    ) -> ResourceValidationReport {
+        let base = self.validate_scene_graph_with_models(graph, Some(models));
+        let mut references = base.references.into_iter().collect::<BTreeSet<_>>();
+        for material in &materials.materials {
+            for (pass_index, pass) in material.definition.passes.iter().enumerate() {
+                for (texture_index, texture) in pass.textures.iter().enumerate() {
+                    references.insert(ResourceReference {
+                        path: resolve_texture_path(&material.path, texture),
+                        source: format!(
+                            "{}.passes[{pass_index}].textures[{texture_index}]",
+                            material.path
+                        ),
+                    });
+                }
+            }
+        }
+        let references = references.into_iter().collect::<Vec<_>>();
+        let missing = references
+            .iter()
+            .filter(|reference| self.find(&reference.path).is_none())
+            .cloned()
+            .collect();
+        ResourceValidationReport {
+            references,
+            missing,
+        }
+    }
 }
 
 impl ModelManifest {
@@ -317,6 +362,61 @@ impl ModelManifest {
             .collect::<Result<Vec<_>, SceneParseError>>()?;
         models.sort_by(|left, right| left.path.cmp(&right.path));
         Ok(Self { models })
+    }
+}
+
+impl MaterialManifest {
+    pub fn from_package(
+        package: &PkgReader,
+        models: &ModelManifest,
+    ) -> Result<Self, SceneParseError> {
+        let referenced = models
+            .models
+            .iter()
+            .map(|model| model.definition.material.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut materials = package
+            .entries()
+            .iter()
+            .filter(|entry| referenced.contains(entry.filename.as_str()))
+            .map(|entry| {
+                let json = package.read_entry_string(entry).map_err(|error| {
+                    SceneParseError::InvalidValue {
+                        field: entry.filename.clone(),
+                        detail: error.to_string(),
+                    }
+                })?;
+                let definition = parse_material_definition(&json).map_err(|error| {
+                    SceneParseError::InvalidValue {
+                        field: entry.filename.clone(),
+                        detail: error.to_string(),
+                    }
+                })?;
+                Ok(MaterialResource {
+                    path: entry.filename.clone(),
+                    definition,
+                })
+            })
+            .collect::<Result<Vec<_>, SceneParseError>>()?;
+        materials.sort_by(|left, right| left.path.cmp(&right.path));
+        Ok(Self { materials })
+    }
+}
+
+fn resolve_texture_path(_material_path: &str, texture: &str) -> String {
+    let extension = texture.rsplit_once('.').map(|(_, extension)| extension);
+    let texture = if matches!(
+        extension,
+        Some("tex" | "dds" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tga")
+    ) {
+        texture.to_owned()
+    } else {
+        format!("{texture}.tex")
+    };
+    if texture.starts_with("materials/") {
+        texture
+    } else {
+        format!("materials/{texture}")
     }
 }
 
@@ -376,6 +476,25 @@ mod tests {
             bytes.extend_from_slice(data);
         }
         PkgReader::parse(bytes).unwrap()
+    }
+
+    #[test]
+    fn resolves_observed_material_texture_names() {
+        assert_eq!(
+            resolve_texture_path("materials/subject.json", "subject"),
+            "materials/subject.tex"
+        );
+        assert_eq!(
+            resolve_texture_path(
+                "materials/workshop/42/image.json",
+                "workshop/42/image.with.dots"
+            ),
+            "materials/workshop/42/image.with.dots.tex"
+        );
+        assert_eq!(
+            resolve_texture_path("materials/subject.json", "materials/shared/a.png"),
+            "materials/shared/a.png"
+        );
     }
 
     #[test]

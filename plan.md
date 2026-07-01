@@ -357,3 +357,22 @@ Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
 - 修正 JSON 资源分类：`models/*.json` 与 `materials/*.json` 分开标识，其它未知 JSON 不再误报为模型。
 - scene-format 单元测试增至 47 项，严格 Clippy 通过；137 对象真实样本中的 23 个模型 JSON 全部解析成功。
 - Phase 2 的格式与资源 IR 范围完成；下一步进入 Phase 3 的最小 2D 渲染路径。内置引擎虚拟资源（如 `models/util/solidlayer.json`）仍需在渲染阶段提供受控实现。
+
+### 已完成 — Phase 3 起步：共享 2D 绘制计划 (2026-07-01)
+
+- `better-wallpaper-renderer` 新增后端无关 `Scene2dPlan`，把场景 IR 确定性转换为按源顺序排列的 NDC 四边形；niri 与 Plasma 后续共享该语义。
+- 实现正交相机中心/投影尺寸、节点平移、Z 旋转、XY 缩放、父子变换、继承可见性与透明度。
+- 严格拒绝重复节点 ID、缺失父节点、父子环、非法投影与越界透明度；非图片节点和缺少尺寸的图片显式计入跳过统计。
+- 当前 IR 尚无经过样本验证的锚点字段，因此暂用“尺寸以节点局部原点为中心”的明确语义，后续按合法样本补充，不猜测字段。
+- Web 库类型补齐 `scene`，场景卡片显示兼容等级、不支持功能数与解析警告数，且不启用视频悬停预览。
+- renderer 单元测试增至 10 项，严格 Clippy 通过；workspace 共 99 项测试通过。Web 构建因当前环境未安装 `bun` 未执行。
+- Phase 3 尚未完成：材质/纹理解码到 GPU 纹理、混合与实际 draw submission、离屏 golden、niri/Plasma surface 接入仍待实现。
+
+### 已完成 — Phase 3：基础材质 IR 与纹理依赖 (2026-07-01)
+
+- 基于合法本地样本实现图片模型实际引用的材质 IR，覆盖 pass、opaque/translucent/additive 混合、shader 标识和纹理逻辑名。
+- 未知混合模式与材质/pass 字段被显式保留为不支持语义；纹理引用继续拒绝绝对路径、盘符、NUL 与 `..`。
+- 材质解析范围严格限定为模型实际引用的 JSON，避免把 `materials/` 下的特效和粒子预设误判为图片材质。
+- 递归资源校验现覆盖 scene → model → material → texture，并按样本确认纹理逻辑名相对 `materials/` 资源根解析。
+- `scene-validate --json` 增加确定性材质 IR；137 对象真实样本的图片材质与纹理引用全部解析成功，剩余缺失项仅为待实现的内置虚拟模型。
+- scene-format 单元测试增至 50 项，workspace 共 102 项测试通过；Phase 3 下一步为纹理解码上传与实际 GPU draw submission。

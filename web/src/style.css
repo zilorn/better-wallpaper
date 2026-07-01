@@ -64,6 +64,7 @@ input:focus, select:focus { border-color: #357a52; box-shadow: 0 0 0 3px rgba(53
 .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
 .library-card { display: grid; gap: 12px; border: 1px solid #d8ded8; border-radius: 10px; background: #fbfcfa; padding: 12px; }
 .library-card.selected { border-color: #357a52; box-shadow: 0 0 0 2px rgba(53, 122, 82, .12); }
+.library-compatibility { display: flex; flex-wrap: wrap; gap: 6px 12px; color: #68726b; }
 .library-preview { position: relative; display: grid; min-height: 145px; overflow: hidden; border-radius: 7px; background: linear-gradient(145deg, #17231d, #426b57); color: white; padding: 14px; place-content: end start; }
 .library-preview img, .library-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .72; }
 .library-preview video { z-index: 1; }

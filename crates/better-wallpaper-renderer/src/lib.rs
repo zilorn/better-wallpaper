@@ -2,6 +2,10 @@
 
 mod cache;
 mod nvidia;
+mod scene2d;
 
 pub use cache::{GpuCacheError, GpuResourceCache, GpuResourceKey, MAX_GPU_CACHE_BUDGET_BYTES};
 pub use nvidia::{NvidiaDeviceInfo, NvidiaVulkanContext, NvidiaVulkanError};
+pub use scene2d::{
+    Mat3, Scene2dError, Scene2dOptions, Scene2dPlan, Scene2dQuad, build_scene_2d_plan,
+};

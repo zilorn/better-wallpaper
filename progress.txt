@@ -108,3 +108,23 @@
 - 修正 models/materials/其它 JSON 的资源分类
 - scene-format 共 47 项测试，严格 Clippy 通过
 - Phase 2 格式与资源 IR 范围完成；下一步为 Phase 3 最小 2D 渲染路径
+
+## 2026-07-01 Phase 3：共享 2D 绘制计划
+
+- renderer 新增 `Scene2dPlan`，从场景 IR 生成确定性 NDC 图片四边形，保持源节点绘制顺序
+- 支持正交相机、平移、Z 旋转、XY 缩放、父子变换、继承可见性和透明度
+- 重复 ID、缺失父节点、父子环、非法投影和透明度均返回稳定错误
+- 非图片节点及缺少尺寸的图片不会静默绘制，进入 `skipped_nodes` 统计
+- Web 库模型与卡片补齐 scene 类型、兼容等级、不支持功能及警告数量
+- renderer 10 项测试及严格 Clippy 通过；workspace 99 项测试通过
+- 当前环境缺少 `bun`，Web build 尚未执行
+- 下一步：解析材质与纹理采样参数，并将绘制计划接入实际 GPU draw submission
+
+## 2026-07-01 Phase 3：基础材质 IR 与纹理依赖
+
+- 根据合法本地样本实现模型引用材质的 pass、混合模式、shader 标识与纹理逻辑名解析
+- 未知混合/字段显式进入不支持语义，纹理引用执行路径逃逸校验
+- 材质清单仅解析模型实际引用项，避免混淆 `materials/` 下的特效和粒子预设
+- 资源依赖校验扩展为 scene → model → material → texture；真实样本纹理引用全部解析
+- `scene-validate --json` 输出材质 IR；剩余缺失资源仅为引擎内置虚拟模型
+- scene-format 50 项、workspace 102 项测试通过；下一步为纹理解码上传和 GPU draw submission

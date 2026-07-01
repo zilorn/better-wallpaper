@@ -30,7 +30,7 @@ type Config = {
   wallpaper: {
     path: string | null;
     engine_mode: boolean;
-    wallpaper_type: "video" | "web";
+    wallpaper_type: "video" | "web" | "scene";
     loop_playback: boolean;
     muted: boolean;
     fill_mode: string;
@@ -40,7 +40,8 @@ type Config = {
   decode: { hardware: string; max_height: number };
   outputs: Output[];
 };
-type LibraryEntry = { name: string; path: string; engine_mode: boolean; wallpaper_type: "video" | "web"; preview_path: string | null; size_bytes: number; modified_unix_seconds: number | null };
+type SceneCompatibility = { level: number; level_name: string; unsupported_features: string[]; warnings: string[] };
+type LibraryEntry = { name: string; path: string; engine_mode: boolean; wallpaper_type: "video" | "web" | "scene"; preview_path: string | null; size_bytes: number; modified_unix_seconds: number | null; scene_compatibility?: SceneCompatibility };
 type Library = { entries: LibraryEntry[]; roots: string[]; engine_roots: string[]; truncated: boolean };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -255,7 +256,7 @@ function LibrariesPage() {
     if (!current) return;
     const next = { ...current, wallpaper: { ...current.wallpaper, path: entry.path, engine_mode: entry.engine_mode, wallpaper_type: entry.wallpaper_type } };
     state.updateConfig(() => next);
-    console.info(`[Better Wallpaper] 正在应用壁纸：${entry.path}`);
+    console.info(`[Better Wallpaper] Applying wallpaper: ${entry.path}`);
     const saved = await state.applyConfig(next);
     if (!saved) state.updateConfig(() => current);
   };
@@ -270,7 +271,7 @@ function LibrariesPage() {
     <div class="library-toolbar"><div><strong>{library()?.entries.length ?? 0} 个壁纸</strong><small>{[...(library()?.roots ?? []), ...(library()?.engine_roots ?? [])].join("、") || "未找到扫描目录"}</small></div><button class="command secondary" disabled={library.loading} onClick={() => refetch()}>重新扫描</button></div>
     <Show when={library()} fallback={<Loading />}>{(result) => <>
       <Show when={result().truncated}><div class="notice">结果已达到 1000 个条目的扫描上限。</div></Show>
-      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的壁纸。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview" onPointerEnter={() => { if (entry.wallpaper_type === "video") setPreviewPath(entry.path); }} onPointerLeave={() => setPreviewPath((current) => current === entry.path ? null : current)}><img src={`/api/v1/library/thumbnail?path=${encodeURIComponent(entry.path)}`} alt="" loading="lazy" decoding="async" /><Show when={entry.wallpaper_type === "video" && previewPath() === entry.path}><LibraryVideoPreview entry={entry} /></Show><span>{entry.wallpaper_type === "web" ? "网页壁纸" : entry.engine_mode ? "视频壁纸 · WALLPAPER ENGINE" : "视频壁纸 · 悬停预览"}</span><strong>{entry.name}</strong></div><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => void select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择并应用"}</button></div></article>}</For></section>
+      <section class="library-grid"><For each={result().entries} fallback={<div class="empty">扫描目录中没有支持的壁纸。</div>}>{(entry) => <article classList={{ "library-card": true, selected: state.config()?.wallpaper.path === entry.path }}><div class="library-preview" onPointerEnter={() => { if (entry.wallpaper_type === "video") setPreviewPath(entry.path); }} onPointerLeave={() => setPreviewPath((current) => current === entry.path ? null : current)}><img src={`/api/v1/library/thumbnail?path=${encodeURIComponent(entry.path)}`} alt="" loading="lazy" decoding="async" /><Show when={entry.wallpaper_type === "video" && previewPath() === entry.path}><LibraryVideoPreview entry={entry} /></Show><span>{entry.wallpaper_type === "scene" ? `场景壁纸 · ${entry.scene_compatibility?.level_name ?? "未解析"}` : entry.wallpaper_type === "web" ? "网页壁纸" : entry.engine_mode ? "视频壁纸 · WALLPAPER ENGINE" : "视频壁纸 · 悬停预览"}</span><strong>{entry.name}</strong></div><Show when={entry.wallpaper_type === "scene" && entry.scene_compatibility}>{(compatibility) => <div class="library-compatibility"><small>兼容等级 L{compatibility().level}</small><Show when={compatibility().unsupported_features.length}><small title={compatibility().unsupported_features.join("\n")}>不支持功能 {compatibility().unsupported_features.length} 项</small></Show><Show when={compatibility().warnings.length}><small title={compatibility().warnings.join("\n")}>解析警告 {compatibility().warnings.length} 项</small></Show></div>}</Show><div class="library-meta"><small>{formatBytes(entry.size_bytes)}</small><button class="command" disabled={state.busy()} onClick={() => void select(entry)}>{state.config()?.wallpaper.path === entry.path ? "已选择" : "选择并应用"}</button></div></article>}</For></section>
     </>}</Show>
   </>;
 }

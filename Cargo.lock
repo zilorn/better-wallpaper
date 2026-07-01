@@ -209,6 +209,7 @@ name = "better-wallpaper-renderer"
 version = "0.1.0"
 dependencies = [
  "ash",
+ "better-wallpaper-scene-format",
  "thiserror 2.0.18",
  "tracing",
 ]

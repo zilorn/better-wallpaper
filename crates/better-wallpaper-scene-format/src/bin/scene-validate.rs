@@ -2,8 +2,8 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
-    ModelManifest, PkgReader, ResourceManifest, ResourceValidationReport, SceneGraph,
-    analyse_scene, compute_compatibility, parse_scene_graph,
+    MaterialManifest, ModelManifest, PkgReader, ResourceManifest, ResourceValidationReport,
+    SceneGraph, analyse_scene, compute_compatibility, parse_scene_graph,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -26,6 +26,7 @@ struct ValidationOutput {
     compatibility: better_wallpaper_scene_format::CompatibilityReport,
     scene_graph: SceneGraph,
     models: ModelManifest,
+    materials: MaterialManifest,
     resources: ResourceManifest,
     resource_validation: ResourceValidationReport,
 }
@@ -50,8 +51,10 @@ fn main() -> Result<()> {
     let scene_graph = parse_scene_graph(&scene_json).context("scene IR conversion failed")?;
     let resources = ResourceManifest::from_package(&package);
     let models = ModelManifest::from_package(&package).context("model validation failed")?;
+    let materials =
+        MaterialManifest::from_package(&package, &models).context("material validation failed")?;
     let resource_validation =
-        resources.validate_scene_graph_with_models(&scene_graph, Some(&models));
+        resources.validate_scene_graph_with_dependencies(&scene_graph, &models, &materials);
     let output = ValidationOutput {
         valid: resource_validation.missing.is_empty(),
         package_version: package.version().to_owned(),
@@ -59,6 +62,7 @@ fn main() -> Result<()> {
         compatibility: compute_compatibility(&metadata),
         scene_graph,
         models,
+        materials,
         resources,
         resource_validation,
     };

@@ -13,6 +13,7 @@
 
 pub mod error;
 pub mod ir;
+pub mod material;
 pub mod model;
 pub mod pkg;
 pub mod resource;
@@ -24,12 +25,13 @@ pub use ir::{
     SceneCamera, SceneGraph, SceneNode, SceneNodeKind, SceneTransform, UnsupportedFeature, Vec2,
     Vec3, parse_scene_graph,
 };
+pub use material::{BlendMode, MaterialDefinition, MaterialPass, parse_material_definition};
 pub use model::{ModelDefinition, parse_model_definition};
 pub use pkg::{PkgEntry, PkgReader};
 pub use resource::{
-    MAX_RESOURCE_CACHE_BYTES, ModelManifest, ModelResource, ResourceCache, ResourceCacheError,
-    ResourceCacheKey, ResourceDescriptor, ResourceKind, ResourceManifest, ResourceReference,
-    ResourceValidationReport,
+    MAX_RESOURCE_CACHE_BYTES, MaterialManifest, MaterialResource, ModelManifest, ModelResource,
+    ResourceCache, ResourceCacheError, ResourceCacheKey, ResourceDescriptor, ResourceKind,
+    ResourceManifest, ResourceReference, ResourceValidationReport,
 };
 pub use scene::{
     CompatibilityLevel, CompatibilityReport, PropertyType, PropertyValue, SceneMetadata,
