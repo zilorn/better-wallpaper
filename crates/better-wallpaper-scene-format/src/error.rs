@@ -91,6 +91,23 @@ pub enum TexError {
     #[error("Mipmap data size {size} exceeds maximum ({max})")]
     MipmapTooLarge { size: u64, max: u64 },
 
+    #[error("Invalid mipmap data size for level {level}: expected {expected} bytes, got {actual}")]
+    InvalidMipmapDataSize {
+        level: usize,
+        expected: u64,
+        actual: usize,
+    },
+
+    #[error("Texture has no mipmap data")]
+    MissingMipmaps,
+
+    #[error("Invalid texture dimensions at mipmap level {level}: {width}x{height}")]
+    InvalidDimensions {
+        level: usize,
+        width: u32,
+        height: u32,
+    },
+
     #[error("Unsupported texture container version {0}")]
     UnsupportedContainerVersion(u32),
 

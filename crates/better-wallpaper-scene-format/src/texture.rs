@@ -138,6 +138,39 @@ pub struct TexTexture {
     pub spritesheet_duration: f32,
 }
 
+/// Color transfer function carried into the renderer without relying on GPU defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TextureColorSpace {
+    Srgb,
+    Linear,
+    Unknown,
+}
+
+/// Alpha interpretation used when creating a renderer texture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TextureAlphaMode {
+    Opaque,
+    Straight,
+    Unknown,
+}
+
+/// A validated mip level. Block-compressed formats remain compressed for direct GPU upload.
+#[derive(Debug, Clone)]
+pub struct TextureMipLevel {
+    pub width: u32,
+    pub height: u32,
+    pub data: Arc<[u8]>,
+}
+
+/// Version-independent texture payload consumed by the renderer/runtime boundary.
+#[derive(Debug, Clone)]
+pub struct TextureImage {
+    pub format: TexFormat,
+    pub color_space: TextureColorSpace,
+    pub alpha_mode: TextureAlphaMode,
+    pub levels: Vec<TextureMipLevel>,
+}
+
 impl TexTexture {
     /// Whether this is BCn/DXT compressed (not raw pixel data)
     pub fn is_compressed_format(&self) -> bool {
@@ -162,6 +195,116 @@ impl TexTexture {
             TexFormat::RGBa1010102 => Some(4),
             _ => None, // compressed
         }
+    }
+
+    /// Convert container-specific mipmaps into a size-validated renderer input.
+    pub fn to_texture_image(&self) -> Result<TextureImage, TexError> {
+        if self.mipmaps.is_empty() {
+            return Err(TexError::MissingMipmaps);
+        }
+
+        let mut levels = Vec::with_capacity(self.mipmaps.len());
+        for (level, mipmap) in self.mipmaps.iter().enumerate() {
+            if mipmap.width == 0
+                || mipmap.height == 0
+                || mipmap.width > MAX_TEXTURE_DIMENSION
+                || mipmap.height > MAX_TEXTURE_DIMENSION
+            {
+                return Err(TexError::InvalidDimensions {
+                    level,
+                    width: mipmap.width,
+                    height: mipmap.height,
+                });
+            }
+            let expected = expected_mipmap_size(self.format, mipmap.width, mipmap.height)?;
+            if mipmap.data.len() as u64 != expected {
+                return Err(TexError::InvalidMipmapDataSize {
+                    level,
+                    expected,
+                    actual: mipmap.data.len(),
+                });
+            }
+            levels.push(TextureMipLevel {
+                width: mipmap.width,
+                height: mipmap.height,
+                data: Arc::clone(&mipmap.data),
+            });
+        }
+
+        Ok(TextureImage {
+            format: self.format,
+            color_space: color_space(self.format),
+            alpha_mode: alpha_mode(self.format),
+            levels,
+        })
+    }
+}
+
+fn expected_mipmap_size(format: TexFormat, width: u32, height: u32) -> Result<u64, TexError> {
+    let size = match format {
+        TexFormat::DXT1 => block_compressed_size(width, height, 8),
+        TexFormat::DXT3 | TexFormat::DXT5 | TexFormat::BC7 => {
+            block_compressed_size(width, height, 16)
+        }
+        _ => {
+            let bytes_per_pixel = match format {
+                TexFormat::ARGB8888 | TexFormat::RGBa1010102 => 4,
+                TexFormat::RGB888 => 3,
+                TexFormat::RGB565 | TexFormat::RG88 | TexFormat::R16f => 2,
+                TexFormat::R8 => 1,
+                TexFormat::RG1616f => 4,
+                TexFormat::RGBA16161616f => 8,
+                TexFormat::RGB161616f => 6,
+                _ => unreachable!("compressed formats handled above"),
+            };
+            u64::from(width)
+                .checked_mul(u64::from(height))
+                .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
+                .ok_or(TexError::MipmapTooLarge {
+                    size: u64::MAX,
+                    max: MAX_MIPMAP_SIZE,
+                })?
+        }
+    };
+    if size > MAX_MIPMAP_SIZE {
+        return Err(TexError::MipmapTooLarge {
+            size,
+            max: MAX_MIPMAP_SIZE,
+        });
+    }
+    Ok(size)
+}
+
+fn block_compressed_size(width: u32, height: u32, bytes_per_block: u64) -> u64 {
+    let blocks_w = u64::from(width).div_ceil(4);
+    let blocks_h = u64::from(height).div_ceil(4);
+    blocks_w
+        .saturating_mul(blocks_h)
+        .saturating_mul(bytes_per_block)
+}
+
+fn color_space(format: TexFormat) -> TextureColorSpace {
+    let _ = format;
+    // Pixel storage alone does not prove whether authored values use an sRGB transfer function.
+    TextureColorSpace::Unknown
+}
+
+fn alpha_mode(format: TexFormat) -> TextureAlphaMode {
+    match format {
+        TexFormat::RGB888
+        | TexFormat::RGB565
+        | TexFormat::RG88
+        | TexFormat::R8
+        | TexFormat::RG1616f
+        | TexFormat::R16f
+        | TexFormat::RGB161616f => TextureAlphaMode::Opaque,
+        TexFormat::ARGB8888
+        | TexFormat::DXT1
+        | TexFormat::DXT3
+        | TexFormat::DXT5
+        | TexFormat::BC7
+        | TexFormat::RGBa1010102
+        | TexFormat::RGBA16161616f => TextureAlphaMode::Unknown,
     }
 }
 
@@ -643,5 +786,33 @@ mod tests {
         assert_eq!(TexFormat::try_from(4).unwrap(), TexFormat::DXT5);
         assert_eq!(TexFormat::try_from(12).unwrap(), TexFormat::BC7);
         assert!(TexFormat::try_from(999).is_err());
+    }
+
+    #[test]
+    fn creates_validated_texture_image() {
+        let tex = TexTexture::parse(&build_tex_rgba8(2, 2)).unwrap();
+        let image = tex.to_texture_image().unwrap();
+        assert_eq!(image.format, TexFormat::ARGB8888);
+        assert_eq!(image.color_space, TextureColorSpace::Unknown);
+        assert_eq!(image.alpha_mode, TextureAlphaMode::Unknown);
+        assert_eq!(image.levels[0].data.len(), 16);
+    }
+
+    #[test]
+    fn validates_raw_and_block_compressed_mipmap_sizes() {
+        assert_eq!(expected_mipmap_size(TexFormat::R8, 3, 2).unwrap(), 6);
+        assert_eq!(expected_mipmap_size(TexFormat::DXT1, 1, 1).unwrap(), 8);
+        assert_eq!(expected_mipmap_size(TexFormat::DXT5, 5, 4).unwrap(), 32);
+
+        let mut tex = TexTexture::parse(&build_tex_rgba8(2, 2)).unwrap();
+        tex.mipmaps[0].data = Arc::from([0_u8; 15]);
+        assert!(matches!(
+            tex.to_texture_image(),
+            Err(TexError::InvalidMipmapDataSize {
+                level: 0,
+                expected: 16,
+                actual: 15
+            })
+        ));
     }
 }

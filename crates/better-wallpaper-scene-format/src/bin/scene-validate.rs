@@ -2,8 +2,8 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
-    PkgReader, ResourceManifest, SceneGraph, analyse_scene, compute_compatibility,
-    parse_scene_graph,
+    PkgReader, ResourceManifest, ResourceValidationReport, SceneGraph, analyse_scene,
+    compute_compatibility, parse_scene_graph,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -26,6 +26,7 @@ struct ValidationOutput {
     compatibility: better_wallpaper_scene_format::CompatibilityReport,
     scene_graph: SceneGraph,
     resources: ResourceManifest,
+    resource_validation: ResourceValidationReport,
 }
 
 fn main() -> Result<()> {
@@ -47,13 +48,15 @@ fn main() -> Result<()> {
     let metadata = analyse_scene(&scene_json).context("scene.json validation failed")?;
     let scene_graph = parse_scene_graph(&scene_json).context("scene IR conversion failed")?;
     let resources = ResourceManifest::from_package(&package);
+    let resource_validation = resources.validate_scene_graph(&scene_graph);
     let output = ValidationOutput {
-        valid: true,
+        valid: resource_validation.missing.is_empty(),
         package_version: package.version().to_owned(),
         file_count: package.len(),
         compatibility: compute_compatibility(&metadata),
         scene_graph,
         resources,
+        resource_validation,
     };
 
     if args.json {
@@ -68,6 +71,12 @@ fn main() -> Result<()> {
         }
         for warning in output.compatibility.warnings {
             println!("Warning: {warning}");
+        }
+        for missing in output.resource_validation.missing {
+            println!(
+                "Missing resource: {} (referenced by {})",
+                missing.path, missing.source
+            );
         }
     }
     Ok(())

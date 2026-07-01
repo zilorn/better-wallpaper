@@ -218,10 +218,11 @@ fn parse_node(
                             "effect without a file identifier",
                         );
                     }
-                    file.map(str::to_owned)
+                    file.map(validate_resource_path)
                 })
-                .collect()
+                .collect::<Result<Vec<_>, _>>()
         })
+        .transpose()?
         .unwrap_or_default();
     for effect in &effects {
         mark(unsupported, &path, &format!("effect: {effect}"));
@@ -433,6 +434,11 @@ mod tests {
     #[test]
     fn rejects_escaping_resource_path() {
         let error = parse_scene_graph(r#"{"objects":[{"image":"../secret"}]}"#).unwrap_err();
+        assert!(matches!(error, SceneParseError::InvalidPath(_)));
+
+        let error =
+            parse_scene_graph(r#"{"objects":[{"image":"safe","effects":[{"file":"../shader"}]}]}"#)
+                .unwrap_err();
         assert!(matches!(error, SceneParseError::InvalidPath(_)));
     }
 

@@ -1,6 +1,14 @@
 use sha1::{Digest, Sha1};
 
-use crate::pkg::PkgReader;
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
+
+use crate::{
+    ir::{SceneGraph, SceneNodeKind},
+    pkg::PkgReader,
+};
 
 /// Stable classification used by the runtime when deciding how an entry may be loaded.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -34,6 +42,151 @@ pub struct ResourceManifest {
     pub resources: Vec<ResourceDescriptor>,
 }
 
+/// A package path used by a scene node and the JSON location that introduced it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+pub struct ResourceReference {
+    pub path: String,
+    pub source: String,
+}
+
+/// Deterministic result of checking direct scene references against the package index.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceValidationReport {
+    pub references: Vec<ResourceReference>,
+    pub missing: Vec<ResourceReference>,
+}
+
+/// Hard upper bound for a CPU-side cache, independent of user quality settings.
+pub const MAX_RESOURCE_CACHE_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Stable cache identity. The path prevents unrelated logical resources with equal content
+/// from accidentally sharing mutable runtime metadata, while the hash invalidates hot reloads.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceCacheKey {
+    pub path: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ResourceCacheError {
+    #[error("Resource cache budget must be between 1 and {max} bytes, got {requested}")]
+    InvalidBudget { requested: u64, max: u64 },
+    #[error("Resource {path} is {size} bytes and exceeds the cache budget of {budget} bytes")]
+    ResourceTooLarge {
+        path: String,
+        size: u64,
+        budget: u64,
+    },
+}
+
+#[derive(Debug)]
+struct CachedResource {
+    data: Arc<[u8]>,
+    last_used: u64,
+}
+
+/// CPU-side byte cache with an enforced memory budget and deterministic LRU eviction.
+#[derive(Debug)]
+pub struct ResourceCache {
+    budget: u64,
+    used: u64,
+    clock: u64,
+    entries: HashMap<ResourceCacheKey, CachedResource>,
+}
+
+impl ResourceCache {
+    pub fn new(budget: u64) -> Result<Self, ResourceCacheError> {
+        if budget == 0 || budget > MAX_RESOURCE_CACHE_BYTES {
+            return Err(ResourceCacheError::InvalidBudget {
+                requested: budget,
+                max: MAX_RESOURCE_CACHE_BYTES,
+            });
+        }
+        Ok(Self {
+            budget,
+            used: 0,
+            clock: 0,
+            entries: HashMap::new(),
+        })
+    }
+
+    pub fn budget(&self) -> u64 {
+        self.budget
+    }
+
+    pub fn used(&self) -> u64 {
+        self.used
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn get(&mut self, key: &ResourceCacheKey) -> Option<Arc<[u8]>> {
+        self.clock = self.clock.saturating_add(1);
+        let entry = self.entries.get_mut(key)?;
+        entry.last_used = self.clock;
+        Some(Arc::clone(&entry.data))
+    }
+
+    pub fn insert(
+        &mut self,
+        key: ResourceCacheKey,
+        data: Arc<[u8]>,
+    ) -> Result<(), ResourceCacheError> {
+        let size = data.len() as u64;
+        if size > self.budget {
+            return Err(ResourceCacheError::ResourceTooLarge {
+                path: key.path,
+                size,
+                budget: self.budget,
+            });
+        }
+
+        if let Some(previous) = self.entries.remove(&key) {
+            self.used -= previous.data.len() as u64;
+        }
+        while self.used.saturating_add(size) > self.budget {
+            let Some(eviction_key) = self
+                .entries
+                .iter()
+                .min_by(|(left_key, left), (right_key, right)| {
+                    left.last_used
+                        .cmp(&right.last_used)
+                        .then_with(|| left_key.path.cmp(&right_key.path))
+                        .then_with(|| left_key.content_hash.cmp(&right_key.content_hash))
+                })
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            if let Some(evicted) = self.entries.remove(&eviction_key) {
+                self.used -= evicted.data.len() as u64;
+                tracing::debug!(
+                    resource = %eviction_key.path,
+                    bytes = evicted.data.len(),
+                    "Evicted scene resource from CPU cache"
+                );
+            }
+        }
+
+        self.clock = self.clock.saturating_add(1);
+        self.used += size;
+        self.entries.insert(
+            key,
+            CachedResource {
+                data,
+                last_used: self.clock,
+            },
+        );
+        Ok(())
+    }
+}
+
 impl ResourceManifest {
     pub fn from_package(package: &PkgReader) -> Self {
         let mut resources = package
@@ -59,6 +212,45 @@ impl ResourceManifest {
             .binary_search_by(|resource| resource.path.as_str().cmp(&normalized))
             .ok()
             .map(|index| &self.resources[index])
+    }
+
+    pub fn validate_scene_graph(&self, graph: &SceneGraph) -> ResourceValidationReport {
+        let mut references = BTreeSet::new();
+        for (index, node) in graph.nodes.iter().enumerate() {
+            let source = format!("objects[{index}]");
+            let resource = match &node.kind {
+                SceneNodeKind::Image(path)
+                | SceneNodeKind::Sound(path)
+                | SceneNodeKind::Particle(path)
+                    if !path.is_empty() =>
+                {
+                    Some(path)
+                }
+                _ => None,
+            };
+            if let Some(path) = resource {
+                references.insert(ResourceReference {
+                    path: path.clone(),
+                    source: source.clone(),
+                });
+            }
+            for (effect_index, path) in node.effects.iter().enumerate() {
+                references.insert(ResourceReference {
+                    path: path.clone(),
+                    source: format!("{source}.effects[{effect_index}]"),
+                });
+            }
+        }
+        let references = references.into_iter().collect::<Vec<_>>();
+        let missing = references
+            .iter()
+            .filter(|reference| self.find(&reference.path).is_none())
+            .cloned()
+            .collect();
+        ResourceValidationReport {
+            references,
+            missing,
+        }
     }
 }
 
@@ -137,5 +329,71 @@ mod tests {
             manifest.resources[0].kind,
             ResourceKind::Unknown { ref extension } if extension == "bin"
         ));
+    }
+
+    #[test]
+    fn reports_missing_scene_resources_deterministically() {
+        let package = package(&[("scene.json", b"{}"), ("models/bg.json", b"{}")]);
+        let manifest = ResourceManifest::from_package(&package);
+        let graph = crate::ir::parse_scene_graph(
+            r#"{"objects":[
+                {"image":"models\\bg.json","effects":[{"file":"effects/missing.json"}]},
+                {"sound":"audio/missing.ogg"}
+            ]}"#,
+        )
+        .unwrap();
+        let report = manifest.validate_scene_graph(&graph);
+
+        assert_eq!(report.references.len(), 3);
+        assert_eq!(report.missing.len(), 2);
+        assert_eq!(report.missing[0].path, "audio/missing.ogg");
+        assert_eq!(report.missing[1].path, "effects/missing.json");
+    }
+
+    fn cache_key(path: &str) -> ResourceCacheKey {
+        ResourceCacheKey {
+            path: path.to_owned(),
+            content_hash: format!("hash-{path}"),
+        }
+    }
+
+    #[test]
+    fn cache_enforces_budget_and_evicts_least_recently_used() {
+        let mut cache = ResourceCache::new(6).unwrap();
+        let first = cache_key("first");
+        let second = cache_key("second");
+        let third = cache_key("third");
+        cache.insert(first.clone(), Arc::from([1_u8; 3])).unwrap();
+        cache.insert(second.clone(), Arc::from([2_u8; 3])).unwrap();
+        assert!(cache.get(&first).is_some());
+
+        cache.insert(third.clone(), Arc::from([3_u8; 3])).unwrap();
+        assert!(cache.get(&second).is_none());
+        assert!(cache.get(&first).is_some());
+        assert!(cache.get(&third).is_some());
+        assert_eq!(cache.used(), 6);
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn cache_replacement_updates_accounting_and_rejects_unsafe_budgets() {
+        assert!(matches!(
+            ResourceCache::new(0),
+            Err(ResourceCacheError::InvalidBudget { .. })
+        ));
+        assert!(ResourceCache::new(MAX_RESOURCE_CACHE_BYTES + 1).is_err());
+
+        let mut cache = ResourceCache::new(4).unwrap();
+        let key = cache_key("same");
+        cache.insert(key.clone(), Arc::from([1_u8; 3])).unwrap();
+        cache.insert(key, Arc::from([2_u8; 2])).unwrap();
+        assert_eq!(cache.used(), 2);
+        assert_eq!(cache.len(), 1);
+
+        let error = cache
+            .insert(cache_key("large"), Arc::from([0_u8; 5]))
+            .unwrap_err();
+        assert!(matches!(error, ResourceCacheError::ResourceTooLarge { .. }));
+        assert_eq!(cache.used(), 2);
     }
 }

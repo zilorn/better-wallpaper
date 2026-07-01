@@ -24,9 +24,16 @@ pub use ir::{
     Vec3, parse_scene_graph,
 };
 pub use pkg::{PkgEntry, PkgReader};
-pub use resource::{ResourceDescriptor, ResourceKind, ResourceManifest};
+pub use resource::{
+    MAX_RESOURCE_CACHE_BYTES, ResourceCache, ResourceCacheError, ResourceCacheKey,
+    ResourceDescriptor, ResourceKind, ResourceManifest, ResourceReference,
+    ResourceValidationReport,
+};
 pub use scene::{
     CompatibilityLevel, CompatibilityReport, SceneMetadata, SceneProject, analyse_scene,
     compute_compatibility,
 };
-pub use texture::{AnimationFrame, FreeImageFormat, Mipmap, TexFormat, TexTexture};
+pub use texture::{
+    AnimationFrame, FreeImageFormat, Mipmap, TexFormat, TexTexture, TextureAlphaMode,
+    TextureColorSpace, TextureImage, TextureMipLevel,
+};

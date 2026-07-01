@@ -74,5 +74,27 @@
 - 未知对象字段和未支持节点能力进入稳定排序的 `UnsupportedFeature`，不静默采用默认渲染
 - 新增确定性 `ResourceManifest`：按规范包路径排序，保留未知扩展类型，记录资源大小与 SHA-1 缓存标识
 - `scene-validate --json` 输出场景 IR 和完整资源清单，可用于私有样本快照
-- scene-format 测试增至 30 项；该 crate 的格式化、测试与严格 Clippy 均通过
-- 尚未完成模型 JSON 解析、资源引用存在性检查、纹理解码到统一像素 IR 与资源预算/LRU
+- 场景对象及特效资源路径统一规范化和逃逸校验；对照包索引输出稳定排序的引用与缺失资源报告
+- 缺失直接资源时 `scene-validate` 的 `valid` 为 false，并在文本输出中标明引用位置
+- 新增统一 `TextureImage` 上传 IR；原始像素与 DXT/BC7 块大小经过 checked 校验，无证据的色彩空间与 alpha 模式明确标记为 unknown
+- scene-format 测试增至 33 项；该 crate 的格式化、测试与严格 Clippy 均通过
+- 当时尚未完成模型 JSON 解析与资源预算/LRU
+
+## 2026-07-01 Phase 2：CPU 资源预算与 LRU
+
+- 新增 `ResourceCache`，使用规范资源路径与内容哈希作为热重载安全的缓存键
+- CPU 缓存预算强制限制在 1～512 MiB，单资源大于预算时返回稳定错误，不尝试无界分配
+- 插入时精确维护已用字节，按最近使用时间驱逐；时间相同时按路径和哈希确定性排序
+- 缓存驱逐输出英语 debug 日志，不记录资源内容
+- 新增预算校验、替换记账和 LRU 顺序测试；scene-format 共 35 项测试及严格 Clippy 通过
+- 当时 Phase 2 剩余：模型 JSON 解析、GPU 资源预算与缓存
+
+## 2026-07-01 Phase 2：GPU 资源预算与 LRU
+
+- 在 `better-wallpaper-renderer` 新增通用 `GpuResourceCache<T>`，不把 GPU 对象反向耦合到格式 crate
+- 显存缓存预算强制限制在 1 字节～2 GiB；单资源超限时返回稳定错误且不改变现有缓存
+- 使用规范资源路径与内容哈希作为键，按访问顺序执行确定性 LRU 驱逐并精确记录显存字节数
+- 缓存独占 GPU 句柄，驱逐、替换、移除和清空会立即触发句柄 `Drop`，避免账面释放而底层资源仍存活
+- 驱逐使用英语 debug 日志，不记录资源内容
+- renderer 6 项单元测试与严格 Clippy 通过
+- Phase 2 剩余：模型 JSON 解析；当前缺少合法样本字段证据，不猜测私有格式语义
