@@ -100,19 +100,14 @@ pub enum PropertyType {
     Unknown(String),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum PropertyValue {
     Number(f64),
     Bool(bool),
     String(String),
+    #[default]
     None,
-}
-
-impl Default for PropertyValue {
-    fn default() -> Self {
-        PropertyValue::None
-    }
 }
 
 /// Parse user-adjustable properties from a project.json string.

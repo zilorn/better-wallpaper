@@ -98,3 +98,13 @@
 - 驱逐使用英语 debug 日志，不记录资源内容
 - renderer 6 项单元测试与严格 Clippy 通过
 - Phase 2 剩余：模型 JSON 解析；当前缺少合法样本字段证据，不猜测私有格式语义
+
+## 2026-07-01 Phase 2：模型资源 IR 与依赖校验
+
+- 基于合法本地样本实现 `models/*.json` 的严格 IR：`autosize`、`cropoffset`、`material`、`puppet`
+- 新增确定性 `ModelManifest`，并将资源校验扩展到模型引用的材质与 puppet
+- 模型路径继续拒绝绝对路径、盘符、NUL 与 `..`；未知字段显式报告
+- `scene-validate --json` 输出模型 IR；真实 137 对象样本的 23 个模型 JSON 解析成功
+- 修正 models/materials/其它 JSON 的资源分类
+- scene-format 共 47 项测试，严格 Clippy 通过
+- Phase 2 格式与资源 IR 范围完成；下一步为 Phase 3 最小 2D 渲染路径

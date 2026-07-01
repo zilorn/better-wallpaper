@@ -348,3 +348,12 @@ Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
 - 单元测试从 33 增至 43 项（含 2D origin、脚本驱动值、容器/模型检测）
 - `scene-validate` 成功通过 137 对象 / 144 文件 / 38MB 真实场景完整解析
 
+### 已完成 — Phase 2：模型资源 IR 与递归引用校验 (2026-07-01)
+
+- 基于合法本地样本确认并实现 `models/*.json` 解析，覆盖 `autosize`、`cropoffset`、`material` 与可选 `puppet` 字段。
+- 模型中的材质和 puppet 路径执行与场景资源一致的逃逸校验；非有限偏移、错误类型和缺失材质会被拒绝。
+- 未知模型字段进入确定性排序的 `UnsupportedFeature`，不静默采用默认语义。
+- `ModelManifest` 按规范路径稳定排序，`scene-validate --json` 输出模型 IR，并递归检查模型到材质/puppet 的资源依赖。
+- 修正 JSON 资源分类：`models/*.json` 与 `materials/*.json` 分开标识，其它未知 JSON 不再误报为模型。
+- scene-format 单元测试增至 47 项，严格 Clippy 通过；137 对象真实样本中的 23 个模型 JSON 全部解析成功。
+- Phase 2 的格式与资源 IR 范围完成；下一步进入 Phase 3 的最小 2D 渲染路径。内置引擎虚拟资源（如 `models/util/solidlayer.json`）仍需在渲染阶段提供受控实现。

@@ -6,7 +6,9 @@ use std::{
 };
 
 use crate::{
+    SceneParseError,
     ir::{SceneGraph, SceneNodeKind},
+    model::{ModelDefinition, parse_model_definition},
     pkg::PkgReader,
 };
 
@@ -16,6 +18,7 @@ use crate::{
 pub enum ResourceKind {
     Scene,
     Model,
+    Material,
     Texture,
     Image,
     Video,
@@ -54,6 +57,17 @@ pub struct ResourceReference {
 pub struct ResourceValidationReport {
     pub references: Vec<ResourceReference>,
     pub missing: Vec<ResourceReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModelResource {
+    pub path: String,
+    pub definition: ModelDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModelManifest {
+    pub models: Vec<ModelResource>,
 }
 
 /// Hard upper bound for a CPU-side cache, independent of user quality settings.
@@ -215,6 +229,14 @@ impl ResourceManifest {
     }
 
     pub fn validate_scene_graph(&self, graph: &SceneGraph) -> ResourceValidationReport {
+        self.validate_scene_graph_with_models(graph, None)
+    }
+
+    pub fn validate_scene_graph_with_models(
+        &self,
+        graph: &SceneGraph,
+        models: Option<&ModelManifest>,
+    ) -> ResourceValidationReport {
         let mut references = BTreeSet::new();
         for (index, node) in graph.nodes.iter().enumerate() {
             let source = format!("objects[{index}]");
@@ -241,6 +263,20 @@ impl ResourceManifest {
                 });
             }
         }
+        if let Some(models) = models {
+            for model in &models.models {
+                references.insert(ResourceReference {
+                    path: model.definition.material.clone(),
+                    source: format!("{}.material", model.path),
+                });
+                if let Some(puppet) = &model.definition.puppet {
+                    references.insert(ResourceReference {
+                        path: puppet.clone(),
+                        source: format!("{}.puppet", model.path),
+                    });
+                }
+            }
+        }
         let references = references.into_iter().collect::<Vec<_>>();
         let missing = references
             .iter()
@@ -254,6 +290,36 @@ impl ResourceManifest {
     }
 }
 
+impl ModelManifest {
+    pub fn from_package(package: &PkgReader) -> Result<Self, SceneParseError> {
+        let mut models = package
+            .entries()
+            .iter()
+            .filter(|entry| entry.filename.starts_with("models/") && entry.ext() == "json")
+            .map(|entry| {
+                let json = package.read_entry_string(entry).map_err(|error| {
+                    SceneParseError::InvalidValue {
+                        field: entry.filename.clone(),
+                        detail: error.to_string(),
+                    }
+                })?;
+                let definition = parse_model_definition(&json).map_err(|error| {
+                    SceneParseError::InvalidValue {
+                        field: entry.filename.clone(),
+                        detail: error.to_string(),
+                    }
+                })?;
+                Ok(ModelResource {
+                    path: entry.filename.clone(),
+                    definition,
+                })
+            })
+            .collect::<Result<Vec<_>, SceneParseError>>()?;
+        models.sort_by(|left, right| left.path.cmp(&right.path));
+        Ok(Self { models })
+    }
+}
+
 fn classify_resource(path: &str, extension: &str, bytes: &[u8]) -> ResourceKind {
     let lower_path = path.to_ascii_lowercase();
     if lower_path == "scene.json" {
@@ -261,6 +327,12 @@ fn classify_resource(path: &str, extension: &str, bytes: &[u8]) -> ResourceKind 
     }
     if lower_path.contains("particle") && extension == "json" {
         return ResourceKind::Particle;
+    }
+    if lower_path.starts_with("models/") && extension == "json" {
+        return ResourceKind::Model;
+    }
+    if lower_path.starts_with("materials/") && extension == "json" {
+        return ResourceKind::Material;
     }
 
     match extension {
@@ -271,7 +343,9 @@ fn classify_resource(path: &str, extension: &str, bytes: &[u8]) -> ResourceKind 
         "frag" | "vert" | "glsl" | "hlsl" => ResourceKind::Shader,
         "js" => ResourceKind::Script,
         "mdl" => ResourceKind::Model,
-        "json" if bytes.starts_with(b"{") || bytes.starts_with(b"[") => ResourceKind::Model,
+        "json" if bytes.starts_with(b"{") || bytes.starts_with(b"[") => ResourceKind::Unknown {
+            extension: extension.to_owned(),
+        },
         _ => ResourceKind::Unknown {
             extension: extension.to_owned(),
         },
@@ -348,6 +422,29 @@ mod tests {
         assert_eq!(report.missing.len(), 2);
         assert_eq!(report.missing[0].path, "audio/missing.ogg");
         assert_eq!(report.missing[1].path, "effects/missing.json");
+    }
+
+    #[test]
+    fn parses_models_and_validates_transitive_resources() {
+        let package = package(&[
+            ("scene.json", b"{}"),
+            (
+                "models/bg.json",
+                br#"{"autosize":true,"cropoffset":"1 2","material":"materials/bg.json","puppet":"models/bg.mdl"}"#,
+            ),
+            ("materials/bg.json", b"{}"),
+        ]);
+        let manifest = ResourceManifest::from_package(&package);
+        let models = ModelManifest::from_package(&package).unwrap();
+        let graph =
+            crate::ir::parse_scene_graph(r#"{"objects":[{"image":"models/bg.json"}]}"#).unwrap();
+        let report = manifest.validate_scene_graph_with_models(&graph, Some(&models));
+
+        assert_eq!(models.models.len(), 1);
+        assert_eq!(models.models[0].definition.crop_offset.unwrap().x, 1.0);
+        assert_eq!(report.missing.len(), 1);
+        assert_eq!(report.missing[0].path, "models/bg.mdl");
+        assert_eq!(report.missing[0].source, "models/bg.json.puppet");
     }
 
     fn cache_key(path: &str) -> ResourceCacheKey {
