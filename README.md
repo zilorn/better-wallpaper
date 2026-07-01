@@ -87,6 +87,17 @@ sudo apt-get install -y \
   qt6-base-dev qt6-declarative-dev qt6-multimedia-dev
 ```
 
+Arch Linux（所有依赖均在官方仓库中）：
+
+```bash
+sudo pacman -S --needed \
+  base-devel clang cmake pkgconf ffmpeg \
+  alsa-lib wayland \
+  qt6-base qt6-declarative qt6-multimedia
+```
+
+注意：Arch 的 `ffmpeg` 包同时提供运行时命令行和开发头文件，无需单独安装 `*-devel` 包。若使用 NVIDIA 专有驱动且需要 Vulkan DMA-BUF 支持，确保已安装 `nvidia-utils` 和 `vulkan-loader`。
+
 Fedora（FFmpeg 开发包要求系统已启用提供完整 FFmpeg 的仓库）：
 
 ```bash
