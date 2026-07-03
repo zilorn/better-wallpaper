@@ -162,7 +162,9 @@ impl EglRenderer {
             renderer.resize(width, height);
             self.output_size = (width, height);
         }
-        renderer.draw_scene(assets);
+        renderer
+            .draw_scene(assets)
+            .map_err(|msg| anyhow::anyhow!("scene GPU draw: {msg}"))?;
         self.egl.swap_buffers(self.display, self.surface)?;
         Ok(())
     }

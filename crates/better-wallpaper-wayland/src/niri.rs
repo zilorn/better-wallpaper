@@ -179,6 +179,10 @@ impl NiriBackend {
             .wl_surface()
             .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
         egl.render_scene(width, height)?;
+        self.layer.commit();
+        self.connection
+            .flush()
+            .context("failed to flush Wayland scene frame")?;
         Ok(())
     }
 

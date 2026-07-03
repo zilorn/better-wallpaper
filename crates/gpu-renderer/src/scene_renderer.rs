@@ -1,8 +1,8 @@
 use better_wallpaper_renderer::Scene2dAssets;
-use better_wallpaper_scene_format::BlendMode;
+use better_wallpaper_scene_format::{BlendMode, TexFormat, TextureImage};
 use glow::HasContext;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, warn};
 
 pub struct SceneGpuRenderer {
     gl: glow::Context,
@@ -46,73 +46,140 @@ impl SceneGpuRenderer {
                 if self.textures.contains_key(&draw.texture_path) {
                     continue;
                 }
-                let texture = self
-                    .gl
-                    .create_texture()
-                    .map_err(|msg| format!("scene texture allocate: {msg}"))?;
-                self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-                self.gl.tex_parameter_i32(
-                    glow::TEXTURE_2D,
-                    glow::TEXTURE_MIN_FILTER,
-                    glow::LINEAR as i32,
-                );
-                self.gl.tex_parameter_i32(
-                    glow::TEXTURE_2D,
-                    glow::TEXTURE_MAG_FILTER,
-                    glow::LINEAR as i32,
-                );
-                self.gl.tex_parameter_i32(
-                    glow::TEXTURE_2D,
-                    glow::TEXTURE_WRAP_S,
-                    glow::CLAMP_TO_EDGE as i32,
-                );
-                self.gl.tex_parameter_i32(
-                    glow::TEXTURE_2D,
-                    glow::TEXTURE_WRAP_T,
-                    glow::CLAMP_TO_EDGE as i32,
-                );
-                let base = &draw.texture.levels[0];
-                self.gl.tex_image_2d(
-                    glow::TEXTURE_2D,
-                    0,
-                    glow::RGBA as i32,
-                    base.width as i32,
-                    base.height as i32,
-                    0,
-                    glow::RGBA,
-                    glow::UNSIGNED_BYTE,
-                    Some(&base.data),
-                );
-                for (idx, level) in draw.texture.levels.iter().enumerate().skip(1) {
-                    self.gl.tex_image_2d(
-                        glow::TEXTURE_2D,
-                        idx as i32,
-                        glow::RGBA as i32,
-                        level.width as i32,
-                        level.height as i32,
-                        0,
-                        glow::RGBA,
-                        glow::UNSIGNED_BYTE,
-                        Some(&level.data),
-                    );
-                }
-                self.gl.bind_texture(glow::TEXTURE_2D, None);
+                let state = match self.upload_texture(&draw.texture) {
+                    Ok(state) => state,
+                    Err(error) => {
+                        let base = draw.texture.levels.first();
+                        warn!(
+                            texture = %draw.texture_path,
+                            format = ?draw.texture.format,
+                            width = base.map_or(0, |level| level.width),
+                            height = base.map_or(0, |level| level.height),
+                            bytes = base.map_or(0, |level| level.data.len()),
+                            %error,
+                            "Skipping unsupported scene texture format"
+                        );
+                        continue;
+                    }
+                };
                 #[allow(clippy::collapsible_if)]
                 if self.textures.len() >= MAX_GPU_TEXTURES {
-                    // evict an existing texture to stay under the GPU texture limit
                     if let Some(key) = self.textures.keys().next().cloned() {
                         if let Some(state) = self.textures.remove(&key) {
                             self.gl.delete_texture(state.texture);
                         }
                     }
                 }
-                self.textures.insert(
-                    draw.texture_path.clone(),
-                    GpuTextureState {
-                        texture,
-                        width: base.width,
-                        height: base.height,
-                    },
+                self.textures.insert(draw.texture_path.clone(), state);
+            }
+        }
+        Ok(())
+    }
+
+    unsafe fn upload_texture(&mut self, image: &TextureImage) -> Result<GpuTextureState, String> {
+        let base = image.levels.first().ok_or("texture has no mipmap levels")?;
+        let gl_tex = unsafe {
+            self.gl
+                .create_texture()
+                .map_err(|msg| format!("scene texture allocate: {msg}"))?
+        };
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(gl_tex));
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::LINEAR as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::LINEAR as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            self.gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+        }
+
+        let result = match image.format {
+            TexFormat::DXT1 | TexFormat::DXT3 | TexFormat::DXT5 | TexFormat::BC7 => unsafe {
+                self.upload_compressed_mipmaps(gl_tex, image)
+            },
+            _ => unsafe { self.upload_rgba8_mipmaps(gl_tex, image) },
+        };
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, None);
+        }
+        result?;
+
+        let error = unsafe { self.gl.get_error() };
+        if error != glow::NO_ERROR {
+            unsafe { self.gl.delete_texture(gl_tex) };
+            return Err(format!(
+                "OpenGL texture upload failed with error 0x{error:04x}"
+            ));
+        }
+
+        Ok(GpuTextureState {
+            texture: gl_tex,
+            width: base.width,
+            height: base.height,
+        })
+    }
+
+    unsafe fn upload_compressed_mipmaps(
+        &self,
+        _tex: glow::Texture,
+        image: &TextureImage,
+    ) -> Result<(), String> {
+        let internal_format = match image.format {
+            TexFormat::DXT1 => glow::COMPRESSED_RGBA_S3TC_DXT1_EXT,
+            TexFormat::DXT3 => glow::COMPRESSED_RGBA_S3TC_DXT3_EXT,
+            TexFormat::DXT5 => glow::COMPRESSED_RGBA_S3TC_DXT5_EXT,
+            TexFormat::BC7 => 0x8E8C, // GL_COMPRESSED_RGBA_BPTC_UNORM
+            _ => unreachable!(),
+        };
+        for (level, mip) in image.levels.iter().enumerate() {
+            unsafe {
+                self.gl.compressed_tex_image_2d(
+                    glow::TEXTURE_2D,
+                    level as i32,
+                    internal_format as i32,
+                    mip.width as i32,
+                    mip.height as i32,
+                    0,
+                    mip.data.len() as i32,
+                    &mip.data,
+                );
+            }
+        }
+        Ok(())
+    }
+
+    unsafe fn upload_rgba8_mipmaps(
+        &self,
+        _tex: glow::Texture,
+        image: &TextureImage,
+    ) -> Result<(), String> {
+        for (level, mip) in image.levels.iter().enumerate() {
+            let rgba = convert_to_rgba8(image.format, &mip.data, mip.width, mip.height);
+            unsafe {
+                self.gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    level as i32,
+                    glow::RGBA as i32,
+                    mip.width as i32,
+                    mip.height as i32,
+                    0,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    Some(&rgba),
                 );
             }
         }
@@ -123,7 +190,9 @@ impl SceneGpuRenderer {
         self.output_size = (width, height);
     }
 
-    pub fn draw_scene(&self, assets: &Scene2dAssets) {
+    pub fn draw_scene(&self, assets: &Scene2dAssets) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        let mut drawn = 0u32;
         unsafe {
             self.gl
                 .viewport(0, 0, self.output_size.0 as i32, self.output_size.1 as i32);
@@ -183,6 +252,7 @@ impl SceneGpuRenderer {
                 self.gl
                     .vertex_attrib_pointer_f32(tex_coord_loc, 2, glow::FLOAT, false, 16, 8);
                 self.gl.draw_arrays(glow::TRIANGLE_FAN, 0, 4);
+                drawn += 1;
             }
             self.gl.disable(glow::BLEND);
             self.gl.disable_vertex_attrib_array(position_loc);
@@ -191,6 +261,17 @@ impl SceneGpuRenderer {
             self.gl.bind_texture(glow::TEXTURE_2D, None);
             self.gl.use_program(None);
         }
+        debug!(
+            drawn,
+            total = assets.draws.len(),
+            elapsed_us = start.elapsed().as_micros() as u64,
+            "scene frame rendered"
+        );
+        let error = unsafe { self.gl.get_error() };
+        if error != glow::NO_ERROR {
+            return Err(format!("OpenGL scene draw failed with error 0x{error:04x}"));
+        }
+        Ok(())
     }
 
     pub fn clear_textures(&mut self) {
@@ -211,6 +292,134 @@ fn scene_vertices(positions: &[[f32; 2]; 4]) -> [f32; 16] {
         vertices[offset + 2..offset + 4].copy_from_slice(&tex_coord);
     }
     vertices
+}
+
+/// Convert a Wallpaper Engine texture payload to canonical RGBA8 for GPU upload.
+///
+/// On little-endian, Wallpaper Engine ARGB8888 data is laid out as [B,G,R,A].
+/// Convert it explicitly because GL_BGRA uploads are not portable to OpenGL ES
+/// contexts and fail with GL_INVALID_OPERATION on some NVIDIA drivers.
+fn convert_to_rgba8(
+    format: TexFormat,
+    data: &[u8],
+    width: u32,
+    height: u32,
+) -> std::borrow::Cow<'_, [u8]> {
+    let pixel_count = (width as usize) * (height as usize);
+    match format {
+        TexFormat::ARGB8888 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for chunk in data.chunks_exact(4).take(pixel_count) {
+                out.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::RGB888 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for chunk in data.chunks_exact(3) {
+                out.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::RGB565 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for chunk in data.chunks_exact(2) {
+                let pixel = u16::from_le_bytes([chunk[0], chunk[1]]);
+                let r = ((pixel >> 11) & 0x1F) as u8 * 255 / 31;
+                let g = ((pixel >> 5) & 0x3F) as u8 * 255 / 63;
+                let b = (pixel & 0x1F) as u8 * 255 / 31;
+                out.extend_from_slice(&[r, g, b, 255]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::R8 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for &value in data.iter().take(pixel_count) {
+                out.extend_from_slice(&[value, value, value, 255]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::RG88 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for chunk in data.chunks_exact(2).take(pixel_count) {
+                out.extend_from_slice(&[chunk[0], chunk[1], 0, 255]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::RGBa1010102 => {
+            let mut out = Vec::with_capacity(pixel_count * 4);
+            for chunk in data.chunks_exact(4) {
+                let pixel = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                let r = ((pixel & 0x3FF) as f32 / 1023.0 * 255.0) as u8;
+                let g = (((pixel >> 10) & 0x3FF) as f32 / 1023.0 * 255.0) as u8;
+                let b = (((pixel >> 20) & 0x3FF) as f32 / 1023.0 * 255.0) as u8;
+                let a = ((pixel >> 30) as f32 / 3.0 * 255.0) as u8;
+                out.extend_from_slice(&[r, g, b, a]);
+            }
+            std::borrow::Cow::Owned(out)
+        }
+        TexFormat::RGBA16161616f | TexFormat::RGB161616f | TexFormat::RG1616f | TexFormat::R16f => {
+            std::borrow::Cow::Owned(convert_float_to_rgba8(format, data, pixel_count))
+        }
+        TexFormat::DXT1 | TexFormat::DXT3 | TexFormat::DXT5 | TexFormat::BC7 => {
+            // Compressed formats handled by upload_compressed_mipmaps
+            std::borrow::Cow::Owned(Vec::new())
+        }
+    }
+}
+
+fn convert_float_to_rgba8(format: TexFormat, data: &[u8], pixel_count: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(pixel_count * 4);
+    match format {
+        TexFormat::RGBA16161616f => {
+            for chunk in data.chunks_exact(8).take(pixel_count) {
+                let r = half::f16::from_le_bytes([chunk[0], chunk[1]]).to_f32();
+                let g = half::f16::from_le_bytes([chunk[2], chunk[3]]).to_f32();
+                let b = half::f16::from_le_bytes([chunk[4], chunk[5]]).to_f32();
+                let a = half::f16::from_le_bytes([chunk[6], chunk[7]]).to_f32();
+                out.extend_from_slice(&[
+                    (r.clamp(0.0, 1.0) * 255.0) as u8,
+                    (g.clamp(0.0, 1.0) * 255.0) as u8,
+                    (b.clamp(0.0, 1.0) * 255.0) as u8,
+                    (a.clamp(0.0, 1.0) * 255.0) as u8,
+                ]);
+            }
+        }
+        TexFormat::RGB161616f => {
+            for chunk in data.chunks_exact(6).take(pixel_count) {
+                let r = half::f16::from_le_bytes([chunk[0], chunk[1]]).to_f32();
+                let g = half::f16::from_le_bytes([chunk[2], chunk[3]]).to_f32();
+                let b = half::f16::from_le_bytes([chunk[4], chunk[5]]).to_f32();
+                out.extend_from_slice(&[
+                    (r.clamp(0.0, 1.0) * 255.0) as u8,
+                    (g.clamp(0.0, 1.0) * 255.0) as u8,
+                    (b.clamp(0.0, 1.0) * 255.0) as u8,
+                    255,
+                ]);
+            }
+        }
+        TexFormat::RG1616f => {
+            for chunk in data.chunks_exact(4).take(pixel_count) {
+                let r = half::f16::from_le_bytes([chunk[0], chunk[1]]).to_f32();
+                let g = half::f16::from_le_bytes([chunk[2], chunk[3]]).to_f32();
+                out.extend_from_slice(&[
+                    (r.clamp(0.0, 1.0) * 255.0) as u8,
+                    (g.clamp(0.0, 1.0) * 255.0) as u8,
+                    0,
+                    255,
+                ]);
+            }
+        }
+        TexFormat::R16f => {
+            for chunk in data.chunks_exact(2).take(pixel_count) {
+                let r = half::f16::from_le_bytes([chunk[0], chunk[1]]).to_f32();
+                let v = (r.clamp(0.0, 1.0) * 255.0) as u8;
+                out.extend_from_slice(&[v, v, v, 255]);
+            }
+        }
+        _ => {}
+    }
+    out
 }
 
 impl Drop for SceneGpuRenderer {
@@ -265,7 +474,8 @@ unsafe fn compile_program(
 
 #[cfg(test)]
 mod tests {
-    use super::scene_vertices;
+    use super::{convert_to_rgba8, scene_vertices};
+    use better_wallpaper_scene_format::TexFormat;
 
     #[test]
     fn interleaves_scene_positions_with_quad_texture_coordinates() {
@@ -276,5 +486,11 @@ mod tests {
                 -1.0, -0.5, 0.0, 0.0, 0.5, -0.5, 1.0, 0.0, 0.5, 1.0, 1.0, 1.0, -1.0, 1.0, 0.0, 1.0,
             ]
         );
+    }
+
+    #[test]
+    fn converts_argb8888_memory_order_to_portable_rgba() {
+        let rgba = convert_to_rgba8(TexFormat::ARGB8888, &[3, 2, 1, 4], 1, 1);
+        assert_eq!(rgba.as_ref(), &[1, 2, 3, 4]);
     }
 }

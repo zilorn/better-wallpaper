@@ -114,6 +114,9 @@ pub enum TexError {
     #[error("Unexpected end of texture data")]
     UnexpectedEof,
 
+    #[error("Invalid texture data: {0}")]
+    InvalidData(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }

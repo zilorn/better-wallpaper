@@ -5,7 +5,7 @@ use better_wallpaper_scene_format::{
     TextureImage, resolve_texture_path,
 };
 use thiserror::Error;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Column-major affine 2D matrix. Points are multiplied as `matrix * [x, y, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,8 +30,8 @@ impl Mat3 {
         Self([x, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, 1.0])
     }
 
-    fn rotation(degrees: f32) -> Self {
-        let (sin, cos) = degrees.to_radians().sin_cos();
+    fn rotation(radians: f32) -> Self {
+        let (sin, cos) = radians.sin_cos();
         Self([cos, sin, 0.0, -sin, cos, 0.0, 0.0, 0.0, 1.0])
     }
 }
@@ -135,12 +135,12 @@ pub fn resolve_scene_2d_assets(
     let model_by_path = models
         .models
         .iter()
-        .map(|model| (model.path.as_str(), model))
+        .map(|model| (model.path.as_str(), model.clone()))
         .collect::<HashMap<_, _>>();
     let material_by_path = materials
         .materials
         .iter()
-        .map(|material| (material.path.as_str(), material))
+        .map(|material| (material.path.as_str(), material.clone()))
         .collect::<HashMap<_, _>>();
 
     let mut draws = Vec::with_capacity(plan.quads.len());
@@ -177,7 +177,7 @@ pub fn resolve_scene_2d_assets(
                 .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
             let bytes = package.read_entry(entry);
             let texture = TexTexture::parse(bytes)
-                .and_then(|texture| texture.to_texture_image())
+                .and_then(|t| t.to_texture_image())
                 .map_err(|error| Scene2dError::InvalidTexture {
                     path: texture_path.clone(),
                     detail: error.to_string(),
@@ -242,16 +242,32 @@ pub fn build_scene_2d_plan(
     {
         return Err(Scene2dError::InvalidProjection);
     }
-    let center = graph
+    // Wallpaper Engine stores the orthographic camera X/Y as an offset from
+    // the centre of the project canvas. Scene objects, on the other hand, use
+    // canvas coordinates (for example 1920,1080 in a 3840x2160 project).
+    // Treating the camera value as an absolute canvas position sends every
+    // layer far outside the viewport for ordinary scene projects.
+    let camera_offset = graph
         .camera
         .center
         .unwrap_or(better_wallpaper_scene_format::Vec3 {
-            x: projection.x * 0.5,
-            y: projection.y * 0.5,
+            x: 0.0,
+            y: 0.0,
             z: 0.0,
         });
+    let center_x = projection.x * 0.5 + camera_offset.x;
+    let center_y = projection.y * 0.5 + camera_offset.y;
     let view = Mat3::scale(2.0 / projection.x, -2.0 / projection.y)
-        * Mat3::translation(-center.x, -center.y);
+        * Mat3::translation(-center_x, -center_y);
+    debug!(
+        projection_width = projection.x,
+        projection_height = projection.y,
+        camera_offset_x = camera_offset.x,
+        camera_offset_y = camera_offset.y,
+        view_center_x = center_x,
+        view_center_y = center_y,
+        "Building scene layout from project canvas coordinates"
+    );
 
     let mut worlds = vec![None; graph.nodes.len()];
     let mut visible = vec![None; graph.nodes.len()];
@@ -414,7 +430,7 @@ mod tests {
         let result = plan(
             r#"{
             "general":{"orthogonalprojection":{"width":100,"height":100}},
-            "camera":{"center":"50 50 0"},
+            "camera":{"center":"0 0 -1"},
             "objects":[
                 {"id":1,"image":"models/a.json","origin":"25 50 0","size":"50 100"},
                 {"id":2,"image":"models/b.json","origin":"75 50 0","size":"50 100","alpha":0.5}
@@ -426,6 +442,49 @@ mod tests {
         assert_eq!(result.quads[0].vertices[2], [0.0, -1.0]);
         assert_eq!(result.quads[1].resource, "models/b.json");
         assert_eq!(result.quads[1].opacity, 0.5);
+    }
+
+    #[test]
+    fn applies_camera_as_project_center_offset() {
+        let result = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":3840,"height":2160}},
+                "camera":{"center":"85.98602 -93.05257 -1"},
+                "objects":[{
+                    "id":"background",
+                    "image":"models/background.json",
+                    "origin":"2005.98602 986.94743 0",
+                    "size":"3840 2160"
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        assert!((result.quads[0].vertices[0][0] + 1.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[0][1] - 1.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[2][0] - 1.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[2][1] + 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn interprets_scene_angles_as_radians() {
+        let result = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":100,"height":100}},
+                "objects":[{
+                    "id":"rotated",
+                    "image":"models/a.json",
+                    "origin":"50 50 0",
+                    "size":"20 10",
+                    "angles":"0 0 1.57079632679"
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        let top_left = result.quads[0].vertices[0];
+        assert!((top_left[0] - 0.1).abs() < 0.0001);
+        assert!((top_left[1] - 0.2).abs() < 0.0001);
     }
 
     #[test]
@@ -519,6 +578,33 @@ mod tests {
         let assets = resolve_scene_2d_assets(&package, plan).unwrap();
         assert_eq!(assets.draws.len(), 1);
         assert_eq!(assets.draws[0].quad.node_id, "good");
+        assert_eq!(assets.skipped_nodes, 1);
+    }
+
+    #[test]
+    fn skips_builtin_post_processing_layers_instead_of_covering_real_images() {
+        let package = package(&[
+            (
+                "models/bg.json",
+                br#"{"material":"materials/bg.json"}"#.to_vec(),
+            ),
+            (
+                "materials/bg.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["bg"]}]}"#.to_vec(),
+            ),
+            ("materials/bg.tex", rgba_tex(1, 1)),
+        ]);
+        let plan = plan(
+            r#"{"objects":[
+                {"id":"bg","image":"models/bg.json","size":"100 100"},
+                {"id":"fx","image":"models/util/projectlayer.json","size":"100 100"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(assets.draws.len(), 1);
+        assert_eq!(assets.draws[0].quad.node_id, "bg");
         assert_eq!(assets.skipped_nodes, 1);
     }
 }

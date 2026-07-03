@@ -13,4 +13,5 @@ better-wallpaper-core = { path = "../better-wallpaper-core" }
 better-wallpaper-renderer = { path = "../better-wallpaper-renderer" }
 better-wallpaper-scene-format = { path = "../better-wallpaper-scene-format" }
 better-wallpaper-ffmpeg = { path = "../better-wallpaper-ffmpeg" }
+half = "2"
 tracing.workspace = true
