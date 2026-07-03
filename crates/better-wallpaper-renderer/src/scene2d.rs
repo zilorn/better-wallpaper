@@ -81,6 +81,38 @@ pub struct Scene2dDraw {
     pub blend_mode: BlendMode,
     pub texture_path: String,
     pub texture: TextureImage,
+    pub animation: Option<SpriteAnimation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpriteFrame {
+    /// Normalized top-left and bottom-right texture coordinates.
+    pub uv: [f32; 4],
+    pub duration_seconds: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpriteAnimation {
+    pub frames: Vec<SpriteFrame>,
+    pub duration_seconds: f32,
+}
+
+impl SpriteAnimation {
+    pub fn uv_at(&self, elapsed_seconds: f64) -> [f32; 4] {
+        if self.frames.is_empty() || self.duration_seconds <= 0.0 {
+            return [0.0, 0.0, 1.0, 1.0];
+        }
+        let mut cursor = elapsed_seconds.rem_euclid(f64::from(self.duration_seconds)) as f32;
+        for frame in &self.frames {
+            if cursor < frame.duration_seconds {
+                return frame.uv;
+            }
+            cursor -= frame.duration_seconds;
+        }
+        self.frames
+            .last()
+            .map_or([0.0, 0.0, 1.0, 1.0], |frame| frame.uv)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -176,17 +208,25 @@ pub fn resolve_scene_2d_assets(
                 .find(&texture_path)
                 .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
             let bytes = package.read_entry(entry);
-            let texture = TexTexture::parse(bytes)
-                .and_then(|t| t.to_texture_image())
-                .map_err(|error| Scene2dError::InvalidTexture {
+            let parsed =
+                TexTexture::parse(bytes).map_err(|error| Scene2dError::InvalidTexture {
                     path: texture_path.clone(),
                     detail: error.to_string(),
                 })?;
+            let animation = sprite_animation(&parsed);
+            let texture =
+                parsed
+                    .to_texture_image()
+                    .map_err(|error| Scene2dError::InvalidTexture {
+                        path: texture_path.clone(),
+                        detail: error.to_string(),
+                    })?;
             Ok(Scene2dDraw {
                 quad,
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
                 texture,
+                animation,
             })
         })();
         match resolved {
@@ -200,6 +240,58 @@ pub fn resolve_scene_2d_assets(
     Ok(Scene2dAssets {
         draws,
         skipped_nodes,
+    })
+}
+
+fn sprite_animation(texture: &TexTexture) -> Option<SpriteAnimation> {
+    let width = texture.texture_width.max(texture.width) as f32;
+    let height = texture.texture_height.max(texture.height) as f32;
+    if width <= 0.0 || height <= 0.0 || texture.frames.len() < 2 {
+        return None;
+    }
+    let frames = texture
+        .frames
+        .iter()
+        .filter_map(|frame| {
+            if !frame.frametime.is_finite()
+                || frame.frametime <= 0.0
+                || !frame.x.is_finite()
+                || !frame.y.is_finite()
+                || !frame.width.is_finite()
+                || !frame.height.is_finite()
+                || frame.x < 0.0
+                || frame.y < 0.0
+                || frame.width <= 0.0
+                || frame.height <= 0.0
+                || frame.x + frame.width > width
+                || frame.y + frame.height > height
+            {
+                return None;
+            }
+            Some(SpriteFrame {
+                uv: [
+                    frame.x / width,
+                    frame.y / height,
+                    (frame.x + frame.width) / width,
+                    (frame.y + frame.height) / height,
+                ],
+                duration_seconds: frame.frametime,
+            })
+        })
+        .collect::<Vec<_>>();
+    if frames.len() < 2 {
+        return None;
+    }
+    let duration_seconds = frames
+        .iter()
+        .map(|frame| frame.duration_seconds)
+        .sum::<f32>();
+    if !duration_seconds.is_finite() || duration_seconds <= 0.0 {
+        return None;
+    }
+    Some(SpriteAnimation {
+        frames,
+        duration_seconds,
     })
 }
 
@@ -377,6 +469,26 @@ fn resolve_node(
 mod tests {
     use super::*;
     use better_wallpaper_scene_format::parse_scene_graph;
+
+    #[test]
+    fn sprite_animation_uses_frame_durations_and_loops() {
+        let animation = SpriteAnimation {
+            frames: vec![
+                SpriteFrame {
+                    uv: [0.0, 0.0, 0.5, 1.0],
+                    duration_seconds: 0.1,
+                },
+                SpriteFrame {
+                    uv: [0.5, 0.0, 1.0, 1.0],
+                    duration_seconds: 0.2,
+                },
+            ],
+            duration_seconds: 0.3,
+        };
+        assert_eq!(animation.uv_at(0.05), [0.0, 0.0, 0.5, 1.0]);
+        assert_eq!(animation.uv_at(0.15), [0.5, 0.0, 1.0, 1.0]);
+        assert_eq!(animation.uv_at(0.35), [0.0, 0.0, 0.5, 1.0]);
+    }
 
     fn plan(json: &str) -> Result<Scene2dPlan, Scene2dError> {
         build_scene_2d_plan(

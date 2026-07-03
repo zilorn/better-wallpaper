@@ -8,5 +8,5 @@ pub use cache::{GpuCacheError, GpuResourceCache, GpuResourceKey, MAX_GPU_CACHE_B
 pub use nvidia::{NvidiaDeviceInfo, NvidiaVulkanContext, NvidiaVulkanError};
 pub use scene2d::{
     Mat3, Scene2dAssets, Scene2dDraw, Scene2dError, Scene2dOptions, Scene2dPlan, Scene2dQuad,
-    build_scene_2d_plan, resolve_scene_2d_assets,
+    SpriteAnimation, SpriteFrame, build_scene_2d_plan, resolve_scene_2d_assets,
 };

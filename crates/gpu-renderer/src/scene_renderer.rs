@@ -190,7 +190,7 @@ impl SceneGpuRenderer {
         self.output_size = (width, height);
     }
 
-    pub fn draw_scene(&self, assets: &Scene2dAssets) -> Result<(), String> {
+    pub fn draw_scene(&self, assets: &Scene2dAssets, elapsed_seconds: f64) -> Result<(), String> {
         let start = std::time::Instant::now();
         let mut drawn = 0u32;
         unsafe {
@@ -240,7 +240,13 @@ impl SceneGpuRenderer {
                 self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
                 self.gl
                     .uniform_1_f32(opacity_loc.as_ref(), draw.quad.opacity);
-                let vertices = scene_vertices(&draw.quad.vertices);
+                let uv = draw
+                    .animation
+                    .as_ref()
+                    .map_or([0.0, 0.0, 1.0, 1.0], |animation| {
+                        animation.uv_at(elapsed_seconds)
+                    });
+                let vertices = scene_vertices(&draw.quad.vertices, uv);
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
                     vertices.len() * std::mem::size_of::<f32>(),
@@ -283,8 +289,9 @@ impl SceneGpuRenderer {
     }
 }
 
-fn scene_vertices(positions: &[[f32; 2]; 4]) -> [f32; 16] {
-    let tex_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 16] {
+    let [left, top, right, bottom] = uv;
+    let tex_coords = [[left, top], [right, top], [right, bottom], [left, bottom]];
     let mut vertices = [0.0; 16];
     for (index, (position, tex_coord)) in positions.iter().zip(tex_coords).enumerate() {
         let offset = index * 4;
@@ -481,11 +488,19 @@ mod tests {
     fn interleaves_scene_positions_with_quad_texture_coordinates() {
         let positions = [[-1.0, -0.5], [0.5, -0.5], [0.5, 1.0], [-1.0, 1.0]];
         assert_eq!(
-            scene_vertices(&positions),
+            scene_vertices(&positions, [0.0, 0.0, 1.0, 1.0]),
             [
                 -1.0, -0.5, 0.0, 0.0, 0.5, -0.5, 1.0, 0.0, 0.5, 1.0, 1.0, 1.0, -1.0, 1.0, 0.0, 1.0,
             ]
         );
+    }
+
+    #[test]
+    fn maps_a_sprite_subrectangle_to_quad_uvs() {
+        let positions = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+        let vertices = scene_vertices(&positions, [0.25, 0.5, 0.5, 1.0]);
+        assert_eq!(&vertices[2..4], &[0.25, 0.5]);
+        assert_eq!(&vertices[10..12], &[0.5, 1.0]);
     }
 
     #[test]

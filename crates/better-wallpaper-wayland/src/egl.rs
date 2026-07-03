@@ -146,7 +146,12 @@ impl EglRenderer {
         Ok(())
     }
 
-    pub(crate) fn render_scene(&mut self, width: u32, height: u32) -> Result<()> {
+    pub(crate) fn render_scene(
+        &mut self,
+        width: u32,
+        height: u32,
+        elapsed_seconds: f64,
+    ) -> Result<()> {
         let renderer = self
             .scene_renderer
             .as_mut()
@@ -163,7 +168,7 @@ impl EglRenderer {
             self.output_size = (width, height);
         }
         renderer
-            .draw_scene(assets)
+            .draw_scene(assets, elapsed_seconds)
             .map_err(|msg| anyhow::anyhow!("scene GPU draw: {msg}"))?;
         self.egl.swap_buffers(self.display, self.surface)?;
         Ok(())

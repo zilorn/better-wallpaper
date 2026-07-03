@@ -375,20 +375,44 @@ fn run_niri_scene(
     info!(
         output_count = backends.len(),
         draw_count = assets.draws.len(),
+        animated_draw_count = assets
+            .draws
+            .iter()
+            .filter(|draw| draw.animation.is_some())
+            .count(),
         "scene assets uploaded to niri GPU"
     );
 
     let fps_limit = 60_u64;
     let frame_interval = Duration::from_secs_f64(1.0 / fps_limit as f64);
+    let mut scene_elapsed = Duration::ZERO;
+    let mut previous_tick = std::time::Instant::now();
+    let mut was_paused = false;
     while !control.is_cancelled() {
         let frame_start = std::time::Instant::now();
+        let delta = frame_start.saturating_duration_since(previous_tick);
+        previous_tick = frame_start;
+        let paused = control.is_paused();
+        if !paused {
+            scene_elapsed = scene_elapsed.saturating_add(delta);
+        }
+        if paused != was_paused {
+            info!(
+                paused,
+                elapsed_seconds = scene_elapsed.as_secs_f64(),
+                "scene clock pause state changed"
+            );
+            was_paused = paused;
+        }
         for backend in &mut backends {
-            backend.present_scene().with_context(|| {
-                format!(
-                    "failed to present scene frame to niri output {}",
-                    backend.output_name()
-                )
-            })?;
+            backend
+                .present_scene(scene_elapsed.as_secs_f64())
+                .with_context(|| {
+                    format!(
+                        "failed to present scene frame to niri output {}",
+                        backend.output_name()
+                    )
+                })?;
         }
         let elapsed = frame_start.elapsed();
         if elapsed < frame_interval {

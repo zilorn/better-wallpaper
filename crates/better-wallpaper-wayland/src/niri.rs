@@ -168,7 +168,7 @@ impl NiriBackend {
         Ok(())
     }
 
-    pub fn present_scene(&mut self) -> anyhow::Result<()> {
+    pub fn present_scene(&mut self, elapsed_seconds: f64) -> anyhow::Result<()> {
         self.dispatch_pending()?;
         let (width, height) = self.size();
         let egl = self.egl.as_mut().ok_or_else(|| {
@@ -178,7 +178,7 @@ impl NiriBackend {
         self.layer
             .wl_surface()
             .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
-        egl.render_scene(width, height)?;
+        egl.render_scene(width, height, elapsed_seconds)?;
         self.layer.commit();
         self.connection
             .flush()
