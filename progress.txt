@@ -1,5 +1,21 @@
 # 进度日志 - Scene 壁纸支持
 
+## 2026-07-03 niri 场景采样与输出尺寸修正
+
+- 场景四边形提交增加逐顶点 UV，移除错误的固定 1920×1080 屏幕坐标采样。
+- fragment shader 现应用场景图计算出的图层透明度，opaque/translucent/additive 混合保持生效。
+- niri 输出 resize 时同步更新场景 renderer viewport 尺寸。
+- 新增顶点与 UV 交错布局回归测试；workspace 105 项测试通过。
+- 全 workspace 严格 Clippy 仍受 daemon 既有 8 项 lint 阻塞，本轮涉及的 gpu-renderer 与 wayland crate 严格 Clippy 通过。
+
+## 2026-07-03 热重载与部分场景容错
+
+- 更换壁纸、保存配置和切换静音均通过 daemon 内播放管线热重载生效。
+- niri 场景退出时显式按 GPU/EGL 后端、共享 CPU 资产的顺序释放旧壁纸资源，再由 supervisor 加载新配置。
+- 修复 scene 分支返回后继续把项目目录交给视频解码器的问题。
+- 场景资产解析改为逐图片节点降级：不支持或损坏节点记录英语警告并跳过，已支持节点仍正常提交。
+- 新增混合有效与未实现图层的回归测试，确保单图层失败不会拖垮整张壁纸。
+
 ## 2026-06-30
 
 ### 已完成

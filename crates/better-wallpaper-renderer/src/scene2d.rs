@@ -5,6 +5,7 @@ use better_wallpaper_scene_format::{
     TextureImage, resolve_texture_path,
 };
 use thiserror::Error;
+use tracing::warn;
 
 /// Column-major affine 2D matrix. Points are multiplied as `matrix * [x, y, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -143,52 +144,62 @@ pub fn resolve_scene_2d_assets(
         .collect::<HashMap<_, _>>();
 
     let mut draws = Vec::with_capacity(plan.quads.len());
+    let mut skipped_nodes = plan.skipped_nodes;
     for quad in plan.quads {
-        let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
-            Scene2dError::MissingModel {
-                node: quad.node_id.clone(),
-                model: quad.resource.clone(),
+        let resolved = (|| {
+            let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
+                Scene2dError::MissingModel {
+                    node: quad.node_id.clone(),
+                    model: quad.resource.clone(),
+                }
+            })?;
+            let material_path = &model.definition.material;
+            let material = material_by_path
+                .get(material_path.as_str())
+                .ok_or_else(|| Scene2dError::MissingMaterial {
+                    model: model.path.clone(),
+                    material: material_path.clone(),
+                })?;
+            let pass = material
+                .definition
+                .passes
+                .first()
+                .ok_or_else(|| Scene2dError::MissingMaterialPass(material.path.clone()))?;
+            if matches!(pass.blend_mode, BlendMode::Unknown(_)) {
+                return Err(Scene2dError::UnsupportedBlendMode(material.path.clone()));
             }
-        })?;
-        let material_path = &model.definition.material;
-        let material = material_by_path
-            .get(material_path.as_str())
-            .ok_or_else(|| Scene2dError::MissingMaterial {
-                model: model.path.clone(),
-                material: material_path.clone(),
-            })?;
-        let pass = material
-            .definition
-            .passes
-            .first()
-            .ok_or_else(|| Scene2dError::MissingMaterialPass(material.path.clone()))?;
-        if matches!(pass.blend_mode, BlendMode::Unknown(_)) {
-            return Err(Scene2dError::UnsupportedBlendMode(material.path.clone()));
+            let [texture_name] = pass.textures.as_slice() else {
+                return Err(Scene2dError::UnsupportedTextureCount(material.path.clone()));
+            };
+            let texture_path = resolve_texture_path(&material.path, texture_name);
+            let entry = package
+                .find(&texture_path)
+                .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
+            let bytes = package.read_entry(entry);
+            let texture = TexTexture::parse(bytes)
+                .and_then(|texture| texture.to_texture_image())
+                .map_err(|error| Scene2dError::InvalidTexture {
+                    path: texture_path.clone(),
+                    detail: error.to_string(),
+                })?;
+            Ok(Scene2dDraw {
+                quad,
+                blend_mode: pass.blend_mode.clone(),
+                texture_path,
+                texture,
+            })
+        })();
+        match resolved {
+            Ok(draw) => draws.push(draw),
+            Err(error) => {
+                skipped_nodes += 1;
+                warn!(%error, "Skipping unsupported scene image node");
+            }
         }
-        let [texture_name] = pass.textures.as_slice() else {
-            return Err(Scene2dError::UnsupportedTextureCount(material.path.clone()));
-        };
-        let texture_path = resolve_texture_path(&material.path, texture_name);
-        let entry = package
-            .find(&texture_path)
-            .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
-        let bytes = package.read_entry(entry);
-        let texture = TexTexture::parse(bytes)
-            .and_then(|texture| texture.to_texture_image())
-            .map_err(|error| Scene2dError::InvalidTexture {
-                path: texture_path.clone(),
-                detail: error.to_string(),
-            })?;
-        draws.push(Scene2dDraw {
-            quad,
-            blend_mode: pass.blend_mode.clone(),
-            texture_path,
-            texture,
-        });
     }
     Ok(Scene2dAssets {
         draws,
-        skipped_nodes: plan.skipped_nodes,
+        skipped_nodes,
     })
 }
 
@@ -474,5 +485,40 @@ mod tests {
         assert_eq!(assets.draws[0].texture_path, "materials/bg.tex");
         assert_eq!(assets.draws[0].blend_mode, BlendMode::Translucent);
         assert_eq!(assets.draws[0].texture.levels[0].data.len(), 16);
+    }
+
+    #[test]
+    fn skips_an_unsupported_draw_without_discarding_valid_draws() {
+        let package = package(&[
+            (
+                "models/good.json",
+                br#"{"material":"materials/good.json"}"#.to_vec(),
+            ),
+            (
+                "models/unsupported.json",
+                br#"{"material":"materials/unsupported.json"}"#.to_vec(),
+            ),
+            (
+                "materials/good.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["good"]}]}"#.to_vec(),
+            ),
+            (
+                "materials/unsupported.json",
+                br#"{"passes":[{"blending":"unimplemented","shader":"genericimage4","textures":["bad"]}]}"#.to_vec(),
+            ),
+            ("materials/good.tex", rgba_tex(1, 1)),
+        ]);
+        let plan = plan(
+            r#"{"objects":[
+                {"id":"good","image":"models/good.json","size":"10 10"},
+                {"id":"unsupported","image":"models/unsupported.json","size":"10 10"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(assets.draws.len(), 1);
+        assert_eq!(assets.draws[0].quad.node_id, "good");
+        assert_eq!(assets.skipped_nodes, 1);
     }
 }

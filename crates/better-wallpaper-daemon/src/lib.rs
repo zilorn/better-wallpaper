@@ -7,8 +7,35 @@ pub mod tray;
 use std::{
     collections::VecDeque,
     io::Write,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
+use tracing::Metadata;
+
+/// Runtime-switchable log level shared by the configuration API and subscriber.
+#[derive(Clone)]
+pub struct LogLevelController {
+    debug: Arc<AtomicBool>,
+}
+
+impl LogLevelController {
+    pub fn new(level: &str) -> Self {
+        Self {
+            debug: Arc::new(AtomicBool::new(level == "debug")),
+        }
+    }
+
+    pub fn set(&self, level: &str) {
+        self.debug.store(level == "debug", Ordering::Relaxed);
+    }
+
+    pub fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        *metadata.level() <= tracing::Level::INFO
+            || (self.debug.load(Ordering::Relaxed) && *metadata.level() == tracing::Level::DEBUG)
+    }
+}
 
 /// 环形日志缓冲区，用于在 Web UI 中预览日志。
 #[derive(Clone)]

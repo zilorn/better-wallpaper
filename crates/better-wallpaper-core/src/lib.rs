@@ -9,6 +9,6 @@ pub use config::{
 pub use desktop::{DesktopDetection, DesktopKind, detect_desktop, select_backend};
 pub use playback::PlaybackControl;
 pub use video::{
-    ColorInfo, CudaFrame, DecodeOptions, DecodedFrame, MediaInfo, PixelFormat, Rational,
-    VideoDecoder, VideoError,
+    ColorInfo, CudaFrame, CudaFrameOwner, DecodeOptions, DecodedFrame, MediaInfo, PixelFormat,
+    Rational, VideoDecoder, VideoError,
 };

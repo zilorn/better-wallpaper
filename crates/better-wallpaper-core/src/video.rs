@@ -52,6 +52,7 @@ pub struct CudaFrame {
     pub planes: [usize; 2],
     pub strides: [usize; 2],
     owner: *mut c_void,
+    retain: unsafe fn(*mut c_void) -> *mut c_void,
     release: unsafe fn(*mut c_void),
 }
 unsafe impl Send for CudaFrame {}
@@ -74,14 +75,39 @@ impl CudaFrame {
         planes: [usize; 2],
         strides: [usize; 2],
         owner: *mut c_void,
+        retain: unsafe fn(*mut c_void) -> *mut c_void,
         release: unsafe fn(*mut c_void),
     ) -> Self {
         Self {
             planes,
             strides,
             owner,
+            retain,
             release,
         }
+    }
+
+    /// Retain the underlying hardware frame so its CUDA context remains alive.
+    pub fn retain_owner(&self) -> Option<CudaFrameOwner> {
+        let owner = unsafe { (self.retain)(self.owner) };
+        (!owner.is_null()).then_some(CudaFrameOwner {
+            owner,
+            release: self.release,
+        })
+    }
+}
+
+/// An opaque retained reference to a CUDA frame and its hardware context.
+pub struct CudaFrameOwner {
+    owner: *mut c_void,
+    release: unsafe fn(*mut c_void),
+}
+
+unsafe impl Send for CudaFrameOwner {}
+
+impl Drop for CudaFrameOwner {
+    fn drop(&mut self) {
+        unsafe { (self.release)(self.owner) }
     }
 }
 

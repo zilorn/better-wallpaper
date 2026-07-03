@@ -160,9 +160,10 @@ impl NiriBackend {
         self.state.configured_size.unwrap_or((1, 1))
     }
     pub fn load_scene_assets(&mut self, assets: Scene2dAssets) -> anyhow::Result<()> {
-        let egl = self.egl.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("EGL not available, cannot load scene textures")
-        })?;
+        let egl = self
+            .egl
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("EGL not available, cannot load scene textures"))?;
         egl.set_scene_assets(assets)?;
         Ok(())
     }
@@ -180,7 +181,6 @@ impl NiriBackend {
         egl.render_scene(width, height)?;
         Ok(())
     }
-
 
     pub fn present(&mut self, frame: &DecodedFrame, fill_mode: FillMode) -> Result<PresentMetrics> {
         self.dispatch_pending()?;

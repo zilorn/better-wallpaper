@@ -161,6 +161,7 @@ impl FfmpegDecoder {
                         [(*raw).data[0] as usize, (*raw).data[1] as usize],
                         [(*raw).linesize[0] as usize, (*raw).linesize[1] as usize],
                         raw.cast(),
+                        retain_cuda_frame,
                         release_cuda_frame,
                     )
                 };
@@ -264,7 +265,7 @@ impl FfmpegDecoder {
         let perf_elapsed = self.perf_started.elapsed();
         if perf_elapsed >= Duration::from_secs(1) {
             let frames = self.perf_frames.max(1) as f64;
-            info!(
+            debug!(
                 frames = self.perf_frames,
                 gpu_transfer_avg_ms = self.perf_transfer.as_secs_f64() * 1000.0 / frames,
                 rgba_convert_avg_ms = self.perf_convert.as_secs_f64() * 1000.0 / frames,
@@ -289,6 +290,10 @@ impl FfmpegDecoder {
             color,
         }))
     }
+}
+
+unsafe fn retain_cuda_frame(owner: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+    unsafe { ffmpeg::ffi::av_frame_clone(owner.cast()) }.cast()
 }
 
 impl VideoDecoder for FfmpegDecoder {

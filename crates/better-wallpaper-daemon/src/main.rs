@@ -10,7 +10,7 @@ use better_wallpaper_core::{
     BackendKind, ConfigStore, PlaybackControl, WallpaperType,
     desktop::{ProcessEnvironment, detect_desktop, select_backend},
 };
-use better_wallpaper_daemon::{LogStore, playback, server};
+use better_wallpaper_daemon::{LogLevelController, LogStore, playback, server};
 use better_wallpaper_kde::run_kde_controlled;
 use better_wallpaper_renderer::{
     NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan, resolve_scene_2d_assets,
@@ -18,7 +18,7 @@ use better_wallpaper_renderer::{
 use better_wallpaper_scene_format::{PkgReader, parse_scene_graph};
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{Layer, filter::filter_fn, layer::SubscriberExt};
 
 const MANAGEMENT_BIND: &str = "127.0.0.1:43129";
 
@@ -31,8 +31,9 @@ struct Cli {
     backend: Option<CliBackend>,
     #[arg(long)]
     no_ui: bool,
-    #[arg(long, default_value = "info")]
-    log_level: String,
+    /// Override the configured log level for this process
+    #[arg(long, value_parser = ["info", "debug"])]
+    log_level: Option<String>,
     /// Require NVIDIA Vulkan/DMA-BUF to be available when starting niri, otherwise exit
     #[arg(long)]
     require_nvidia: bool,
@@ -62,19 +63,27 @@ impl From<CliBackend> for BackendKind {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let log_store = LogStore::new(2000);
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_new(&cli.log_level).context("invalid --log-level")?)
-        .with_writer(log_store.clone())
-        .with_target(true)
-        .init();
-    std::panic::set_hook(Box::new(|panic| error!(%panic, "process panicked")));
-
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .context("HOME not set")?;
-    let path = cli.config.unwrap_or(ConfigStore::default_path()?);
-    let config = ConfigStore::new(path.clone(), home.clone()).load_or_create()?;
+    let path = cli.config.clone().unwrap_or(ConfigStore::default_path()?);
+    let mut config = ConfigStore::new(path.clone(), home.clone()).load_or_create()?;
+    if let Some(level) = cli.log_level.as_deref() {
+        config.general.log_level = level.to_owned();
+    }
+    let log_level = LogLevelController::new(&config.general.log_level);
+    let log_store = LogStore::new(2000);
+    let log_filter = log_level.clone();
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(log_store.clone())
+                .with_target(true)
+                .with_filter(filter_fn(move |metadata| log_filter.enabled(metadata))),
+        ),
+    )
+    .context("failed to initialize logging")?;
+    std::panic::set_hook(Box::new(|panic| error!(%panic, "process panicked")));
     let detection = detect_desktop(&ProcessEnvironment);
     let backend = select_backend(
         cli.backend.map(Into::into),
@@ -130,6 +139,7 @@ fn main() -> Result<()> {
                 playback_control,
                 home,
                 log_store,
+                log_level,
             ),
         );
     }
@@ -227,7 +237,9 @@ fn run_playback(
         let assets = prepared.assets.expect("assets were validated above");
         match backend {
             BackendKind::Niri => {
-                let output_names: Vec<_> = config.outputs.iter()
+                let output_names: Vec<_> = config
+                    .outputs
+                    .iter()
                     .filter(|o| o.enabled)
                     .map(|o| o.name.clone())
                     .collect();
@@ -244,6 +256,10 @@ fn run_playback(
                 warn!(?backend, "scene rendering is not supported on this backend");
             }
         }
+        // A scene project directory must never fall through into the video decoder.
+        // Returning also drops all package/CPU/GPU resources before the supervisor
+        // consumes a pending hot-reload request and constructs the replacement.
+        return Ok(());
     }
     if config.wallpaper.wallpaper_type == WallpaperType::Web && backend != BackendKind::Kde {
         warn!(
@@ -326,7 +342,6 @@ struct PreparedScene {
     asset_error: Option<String>,
 }
 
-
 fn run_niri_scene(
     assets: better_wallpaper_renderer::Scene2dAssets,
     output_names: &[String],
@@ -335,10 +350,13 @@ fn run_niri_scene(
     use std::time::Duration;
 
     let mut backends = if output_names.is_empty() {
-        vec![better_wallpaper_wayland::NiriBackend::connect(None)
-            .context("failed to auto-select niri output for scene")?]
+        vec![
+            better_wallpaper_wayland::NiriBackend::connect(None)
+                .context("failed to auto-select niri output for scene")?,
+        ]
     } else {
-        output_names.iter()
+        output_names
+            .iter()
             .map(|name| {
                 better_wallpaper_wayland::NiriBackend::connect(Some(name))
                     .with_context(|| format!("failed to initialize niri output {name} for scene"))
@@ -347,8 +365,12 @@ fn run_niri_scene(
     };
 
     for backend in &mut backends {
-        backend.load_scene_assets(assets.clone())
-            .with_context(|| format!("failed to load scene assets for niri output {}", backend.output_name()))?;
+        backend.load_scene_assets(assets.clone()).with_context(|| {
+            format!(
+                "failed to load scene assets for niri output {}",
+                backend.output_name()
+            )
+        })?;
     }
     info!(
         output_count = backends.len(),
@@ -361,15 +383,21 @@ fn run_niri_scene(
     while !control.is_cancelled() {
         let frame_start = std::time::Instant::now();
         for backend in &mut backends {
-            backend.present_scene()
-                .with_context(|| format!("failed to present scene frame to niri output {}", backend.output_name()))?;
+            backend.present_scene().with_context(|| {
+                format!(
+                    "failed to present scene frame to niri output {}",
+                    backend.output_name()
+                )
+            })?;
         }
         let elapsed = frame_start.elapsed();
         if elapsed < frame_interval {
             std::thread::sleep(frame_interval - elapsed);
         }
     }
-    info!("niri scene rendering stopped");
+    drop(backends);
+    drop(assets);
+    info!("niri scene rendering stopped and GPU/CPU resources released");
     Ok(())
 }
 fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
@@ -399,10 +427,11 @@ fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
         },
     )
     .context("failed to build shared scene draw plan")?;
-    let (resolved_draw_count, asset_error, assets) = match resolve_scene_2d_assets(&package, plan.clone()) {
-        Ok(assets) => (assets.draws.len(), None, Some(assets)),
-        Err(error) => (0, Some(error.to_string()), None),
-    };
+    let (resolved_draw_count, asset_error, assets) =
+        match resolve_scene_2d_assets(&package, plan.clone()) {
+            Ok(assets) => (assets.draws.len(), None, Some(assets)),
+            Err(error) => (0, Some(error.to_string()), None),
+        };
     Ok(PreparedScene {
         plan,
         resolved_draw_count,

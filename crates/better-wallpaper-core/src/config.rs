@@ -235,9 +235,9 @@ impl AppConfig {
                 "wallpaper.fps_limit must be in the range 1..=240".into(),
             ));
         }
-        if self.general.log_level.trim().is_empty() {
+        if !matches!(self.general.log_level.as_str(), "info" | "debug") {
             return Err(ConfigError::Validation(
-                "general.log_level cannot be empty".into(),
+                "general.log_level must be either info or debug".into(),
             ));
         }
         if let Some(path) = &self.wallpaper.path {

@@ -1,8 +1,8 @@
 use anyhow::{Result, bail};
 use better_wallpaper_core::{DecodedFrame, config::FillMode};
+use better_wallpaper_renderer::Scene2dAssets;
 use glow::HasContext;
 use gpu_renderer::{GpuRenderer, SceneGpuRenderer};
-use better_wallpaper_renderer::Scene2dAssets;
 use khronos_egl as egl;
 use std::{
     ffi::c_void,
@@ -127,31 +127,39 @@ impl EglRenderer {
     pub(crate) fn set_scene_assets(&mut self, assets: Scene2dAssets) -> Result<()> {
         let gl = unsafe {
             glow::Context::from_loader_function(|name| {
-                self.egl.get_proc_address(name)
+                self.egl
+                    .get_proc_address(name)
                     .map_or(ptr::null(), |p| p as *const _)
             })
         };
         let mut scene = SceneGpuRenderer::new(gl, self.output_size.0, self.output_size.1)
             .map_err(|msg| anyhow::anyhow!("scene GPU renderer: {msg}"))?;
-        scene.upload_scene_textures(&assets)
+        scene
+            .upload_scene_textures(&assets)
             .map_err(|msg| anyhow::anyhow!("scene texture upload: {msg}"))?;
-        info!(draw_count = assets.draws.len(), "scene textures uploaded to GPU");
+        info!(
+            draw_count = assets.draws.len(),
+            "scene textures uploaded to GPU"
+        );
         self.scene_renderer = Some(scene);
         self.scene_assets = Some(assets);
         Ok(())
     }
 
     pub(crate) fn render_scene(&mut self, width: u32, height: u32) -> Result<()> {
-        let renderer = self.scene_renderer.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("SceneGpuRenderer not initialized")
-        })?;
-        let assets = self.scene_assets.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Scene2dAssets not loaded")
-        })?;
+        let renderer = self
+            .scene_renderer
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("SceneGpuRenderer not initialized"))?;
+        let assets = self
+            .scene_assets
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Scene2dAssets not loaded"))?;
         if self.output_size != (width, height) {
             unsafe {
                 wl_egl_window_resize(self.window, width as i32, height as i32, 0, 0);
             }
+            renderer.resize(width, height);
             self.output_size = (width, height);
         }
         renderer.draw_scene(assets);
@@ -216,7 +224,7 @@ impl EglRenderer {
         self.perf_frames += 1;
         if self.perf_started.elapsed() >= Duration::from_secs(1) {
             let frames = self.perf_frames.max(1) as f64;
-            info!(
+            debug!(
                 frames = self.perf_frames,
                 upload_avg_ms = self.perf_upload.as_secs_f64() * 1000.0 / frames,
                 swap_avg_ms = self.perf_swap.as_secs_f64() * 1000.0 / frames,

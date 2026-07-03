@@ -1,4 +1,4 @@
-use better_wallpaper_core::CudaFrame;
+use better_wallpaper_core::{CudaFrame, CudaFrameOwner};
 use glow::HasContext;
 use std::{ffi::c_void, ptr};
 
@@ -62,6 +62,7 @@ pub struct CudaGl {
     resources: [CuResource; 2],
     size: (u32, u32),
     context: CuContext,
+    owner: Option<CudaFrameOwner>,
 }
 
 impl CudaGl {
@@ -77,6 +78,7 @@ impl CudaGl {
             resources: [ptr::null_mut(); 2],
             size: (0, 0),
             context: ptr::null_mut(),
+            owner: None,
         })
     }
 
@@ -87,6 +89,9 @@ impl CudaGl {
         width: u32,
         height: u32,
     ) -> Result<(glow::Texture, glow::Texture), String> {
+        let owner = frame
+            .retain_owner()
+            .ok_or("failed to retain CUDA frame for OpenGL resource lifetime")?;
         let mut context = ptr::null_mut();
         check(
             unsafe {
@@ -155,6 +160,11 @@ impl CudaGl {
             )?;
             Ok((self.y, self.uv))
         })();
+        if result.is_ok() {
+            // Keep the decoder's CUDA context alive until the registered OpenGL
+            // resources have been unregistered during resize or teardown.
+            self.owner = Some(owner);
+        }
         let mut previous = ptr::null_mut();
         unsafe {
             cuCtxPopCurrent_v2(&mut previous);
@@ -172,6 +182,7 @@ impl CudaGl {
                 *resource = ptr::null_mut();
             }
         }
+        self.owner.take();
         if !self.context.is_null() {
             let mut previous = ptr::null_mut();
             unsafe { cuCtxPopCurrent_v2(&mut previous) };

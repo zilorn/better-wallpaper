@@ -173,7 +173,7 @@ impl NiriPerformanceWindow {
         }
         let seconds = elapsed.as_secs_f64();
         let presented = self.presented.max(1) as f64;
-        info!(
+        debug!(
             decoded_fps = self.decoded as f64 / seconds,
             submitted_fps = self.presented as f64 / seconds,
             late_fps = self.dropped as f64 / seconds,

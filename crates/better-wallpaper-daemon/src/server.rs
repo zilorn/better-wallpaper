@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{LogStore, tray::WallpaperTray};
+use crate::{LogLevelController, LogStore, tray::WallpaperTray};
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use better_wallpaper_core::{
@@ -43,6 +43,7 @@ pub struct ApiState {
     plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
     thumbnail_generation: Arc<Mutex<()>>,
     pub log_store: LogStore,
+    log_level: LogLevelController,
 }
 
 #[derive(Serialize)]
@@ -78,6 +79,7 @@ impl ApiState {
         playback: PlaybackControl,
         home: PathBuf,
         log_store: LogStore,
+        log_level: LogLevelController,
     ) -> Self {
         Self {
             config,
@@ -89,6 +91,7 @@ impl ApiState {
             plasma_instances: Arc::new(Mutex::new(HashMap::new())),
             thumbnail_generation: Arc::new(Mutex::new(())),
             log_store,
+            log_level,
         }
     }
 }
@@ -1274,6 +1277,7 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         Ok(mut current) => *current = config.clone(),
         Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     }
+    state.log_level.set(&config.general.log_level);
     state.playback.request_reload();
     info!("management API config update complete, playback pipeline rebuild requested");
     json_response(
