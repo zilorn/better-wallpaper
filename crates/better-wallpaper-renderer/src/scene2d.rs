@@ -81,6 +81,8 @@ pub struct Scene2dDraw {
     pub blend_mode: BlendMode,
     pub texture_path: String,
     pub texture: TextureImage,
+    /// Logical image bounds within a potentially padded GPU texture.
+    pub uv: [f32; 4],
     pub animation: Option<SpriteAnimation>,
 }
 
@@ -214,6 +216,14 @@ pub fn resolve_scene_2d_assets(
                     detail: error.to_string(),
                 })?;
             let animation = sprite_animation(&parsed);
+            let storage_width = parsed.texture_width.max(parsed.width) as f32;
+            let storage_height = parsed.texture_height.max(parsed.height) as f32;
+            let uv = [
+                0.0,
+                0.0,
+                parsed.width as f32 / storage_width,
+                parsed.height as f32 / storage_height,
+            ];
             let texture =
                 parsed
                     .to_texture_image()
@@ -226,6 +236,7 @@ pub fn resolve_scene_2d_assets(
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
                 texture,
+                uv,
                 animation,
             })
         })();

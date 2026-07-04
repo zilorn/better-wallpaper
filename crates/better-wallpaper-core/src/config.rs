@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -85,6 +86,7 @@ pub struct SceneConfig {
     pub audio_processing: bool,
     pub particle_limit: u32,
     pub script_enabled: bool,
+    pub properties: BTreeMap<String, String>,
 }
 
 impl Default for SceneConfig {
@@ -96,6 +98,7 @@ impl Default for SceneConfig {
             audio_processing: false,
             particle_limit: 10_000,
             script_enabled: false,
+            properties: BTreeMap::new(),
         }
     }
 }
@@ -239,6 +242,26 @@ impl AppConfig {
             return Err(ConfigError::Validation(
                 "general.log_level must be either info or debug".into(),
             ));
+        }
+        if let Some(scene) = &self.scene {
+            if scene.particle_limit > 100_000 {
+                return Err(ConfigError::Validation(
+                    "scene.particle_limit must be in the range 0..=100000".into(),
+                ));
+            }
+            if scene.properties.len() > 256 {
+                return Err(ConfigError::Validation(
+                    "scene.properties cannot contain more than 256 entries".into(),
+                ));
+            }
+            for (key, value) in &scene.properties {
+                if key.is_empty() || key.len() > 128 || value.len() > 4096 {
+                    return Err(ConfigError::Validation(
+                        "scene property names must be 1..=128 bytes and values at most 4096 bytes"
+                            .into(),
+                    ));
+                }
+            }
         }
         if let Some(path) = &self.wallpaper.path {
             self.wallpaper.path = Some(expand_path(path, home));
@@ -478,11 +501,24 @@ mod tests {
             quality: SceneQuality::Medium,
             mouse: false,
             particle_limit: 5000,
+            properties: BTreeMap::from([("rain".into(), "0.5".into())]),
             ..Default::default()
         });
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let decoded: AppConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(decoded.wallpaper.wallpaper_type, WallpaperType::Scene);
-        assert_eq!(decoded.scene.unwrap().particle_limit, 5000);
+        let scene = decoded.scene.unwrap();
+        assert_eq!(scene.particle_limit, 5000);
+        assert_eq!(
+            scene.properties.get("rain").map(String::as_str),
+            Some("0.5")
+        );
+    }
+
+    #[test]
+    fn rejects_scene_resource_limits() {
+        let mut config = AppConfig::default();
+        config.scene.as_mut().unwrap().particle_limit = 100_001;
+        assert!(config.validate_and_normalize(Path::new("/tmp")).is_err());
     }
 }

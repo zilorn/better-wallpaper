@@ -36,6 +36,15 @@ type Config = {
     fill_mode: string;
     fps_limit: number;
   };
+  scene: {
+    quality: "low" | "medium" | "high";
+    mouse: boolean;
+    parallax: boolean;
+    audio_processing: boolean;
+    particle_limit: number;
+    script_enabled: boolean;
+    properties: Record<string, string>;
+  } | null;
   library: { paths: string[] };
   decode: { hardware: string; max_height: number };
   outputs: Output[];
@@ -178,10 +187,22 @@ function WallpapersPage() {
   const state = useApp();
   const updateWallpaper = (key: keyof Config["wallpaper"], value: string | boolean | number | null) =>
     state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value, ...(key === "path" ? { engine_mode: false, wallpaper_type: "video" as const } : {}) } }));
+  const updateScene = <K extends keyof NonNullable<Config["scene"]>>(key: K, value: NonNullable<Config["scene"]>[K]) =>
+    state.updateConfig((current) => ({
+      ...current,
+      scene: { ...(current.scene ?? defaultSceneConfig()), [key]: value },
+    }));
   return <><PageHeader title="壁纸" description="选择视频或网页壁纸，并控制当前播放任务。" />
     <Show when={state.config()} fallback={<Loading />} >{(config) => <div class="settings-grid">
       <section class="page-panel preview-panel"><div class="video-preview"><span>{config().wallpaper.wallpaper_type === "web" ? "WEB" : config().wallpaper.wallpaper_type === "scene" ? "SCENE" : "VIDEO"}</span><strong>{fileName(config().wallpaper.path)}</strong></div><div class="playback-summary"><div><span>当前状态</span><strong>{playbackLabel(state.status()?.playback)}</strong></div><button class="command" disabled={state.busy() || !state.status()?.playback.running || state.status()?.playback.cancelled} onClick={() => state.setPaused(!state.status()?.playback.paused)}>{state.status()?.playback.paused ? "恢复播放" : "暂停播放"}</button></div></section>
-      <section class="page-panel"><h3>视频配置</h3><label>视频路径<input value={config().wallpaper.path ?? ""} onInput={(event) => updateWallpaper("path", event.currentTarget.value || null)} placeholder="/home/user/Videos/wallpaper.mp4" /></label><label>缩放方式<select value={config().wallpaper.fill_mode} onChange={(event) => updateWallpaper("fill_mode", event.currentTarget.value)}><option value="cover">裁切铺满</option><option value="contain">完整显示</option><option value="stretch">拉伸</option></select></label><label class="check"><input type="checkbox" checked={config().wallpaper.loop_playback} onChange={(event) => updateWallpaper("loop_playback", event.currentTarget.checked)} />循环播放</label><label class="check"><input type="checkbox" checked={!config().wallpaper.muted} onChange={(event) => updateWallpaper("muted", !event.currentTarget.checked)} />播放声音</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存配置</button></section>
+      <section class="page-panel">
+        <Show when={config().wallpaper.wallpaper_type === "scene"} fallback={<>
+          <h3>视频配置</h3><label>视频路径<input value={config().wallpaper.path ?? ""} onInput={(event) => updateWallpaper("path", event.currentTarget.value || null)} placeholder="/home/user/Videos/wallpaper.mp4" /></label><label>缩放方式<select value={config().wallpaper.fill_mode} onChange={(event) => updateWallpaper("fill_mode", event.currentTarget.value)}><option value="cover">裁切铺满</option><option value="contain">完整显示</option><option value="stretch">拉伸</option></select></label><label class="check"><input type="checkbox" checked={config().wallpaper.loop_playback} onChange={(event) => updateWallpaper("loop_playback", event.currentTarget.checked)} />循环播放</label><label class="check"><input type="checkbox" checked={!config().wallpaper.muted} onChange={(event) => updateWallpaper("muted", !event.currentTarget.checked)} />播放声音</label>
+        </>}>
+          <h3>场景配置</h3><label>质量档位<select value={config().scene?.quality ?? "high"} onChange={(event) => updateScene("quality", event.currentTarget.value as "low" | "medium" | "high")}><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label><label>粒子数量上限<input type="number" min="0" max="100000" step="100" value={config().scene?.particle_limit ?? 10000} onInput={(event) => updateScene("particle_limit", event.currentTarget.valueAsNumber)} /></label><label class="check"><input type="checkbox" checked={config().scene?.mouse ?? true} onChange={(event) => updateScene("mouse", event.currentTarget.checked)} />鼠标交互</label><label class="check"><input type="checkbox" checked={config().scene?.parallax ?? true} onChange={(event) => updateScene("parallax", event.currentTarget.checked)} />视差效果</label><label class="check"><input type="checkbox" checked={config().scene?.audio_processing ?? false} onChange={(event) => updateScene("audio_processing", event.currentTarget.checked)} />音频响应</label><label class="check"><input type="checkbox" checked={config().scene?.script_enabled ?? false} onChange={(event) => updateScene("script_enabled", event.currentTarget.checked)} />实验性脚本（尚未执行）</label>
+        </Show>
+        <button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存配置</button>
+      </section>
     </div>}</Show>
   </>;
 }
@@ -288,6 +309,7 @@ function SettingsPage() {
 function Diagnostic(props: { label: string; value: string }) { return <div><span>{props.label}</span><small>{props.value}</small></div>; }
 function Loading() { return <div class="empty">正在读取服务数据…</div>; }
 function fileName(path: string | null) { return path?.split("/").filter(Boolean).at(-1) ?? "尚未选择视频"; }
+function defaultSceneConfig(): NonNullable<Config["scene"]> { return { quality: "high", mouse: true, parallax: true, audio_processing: false, particle_limit: 10000, script_enabled: false, properties: {} }; }
 function playbackLabel(playback?: PlaybackStatus) { return !playback ? "未知" : playback.cancelled ? "已停止" : !playback.running ? "空闲" : playback.paused ? "已暂停" : "播放中"; }
 function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 

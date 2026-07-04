@@ -36,6 +36,9 @@ pub enum TexFormat {
     RGBa1010102 = 13,
     RGBA16161616f = 14,
     RGB161616f = 15,
+    /// Canonical RGBA8 produced after decoding an embedded image.
+    /// This value is internal and is never accepted from a TEXI format id.
+    RGBA8888 = 16,
 }
 
 impl TryFrom<u32> for TexFormat {
@@ -184,6 +187,7 @@ impl TexTexture {
     pub fn bytes_per_pixel(&self) -> Option<u32> {
         match self.format {
             TexFormat::ARGB8888 => Some(4),
+            TexFormat::RGBA8888 => Some(4),
             TexFormat::RGB888 => Some(3),
             TexFormat::RGB565 => Some(2),
             TexFormat::RG88 => Some(2),
@@ -217,16 +221,25 @@ impl TexTexture {
                 });
             }
             let expected = expected_mipmap_size(self.format, mipmap.width, mipmap.height)?;
-            if mipmap.data.len() as u64 != expected {
+            let divisor = 1_u32.checked_shl(level as u32).unwrap_or(u32::MAX);
+            let storage_width = self.texture_width.div_ceil(divisor).max(1);
+            let storage_height = self.texture_height.div_ceil(divisor).max(1);
+            let storage_expected =
+                expected_mipmap_size(self.format, storage_width, storage_height)?;
+            let (upload_width, upload_height) = if mipmap.data.len() as u64 == expected {
+                (mipmap.width, mipmap.height)
+            } else if mipmap.data.len() as u64 == storage_expected {
+                (storage_width, storage_height)
+            } else {
                 return Err(TexError::InvalidMipmapDataSize {
                     level,
                     expected,
                     actual: mipmap.data.len(),
                 });
-            }
+            };
             levels.push(TextureMipLevel {
-                width: mipmap.width,
-                height: mipmap.height,
+                width: upload_width,
+                height: upload_height,
                 data: Arc::clone(&mipmap.data),
             });
         }
@@ -248,7 +261,7 @@ fn expected_mipmap_size(format: TexFormat, width: u32, height: u32) -> Result<u6
         }
         _ => {
             let bytes_per_pixel = match format {
-                TexFormat::ARGB8888 | TexFormat::RGBa1010102 => 4,
+                TexFormat::ARGB8888 | TexFormat::RGBA8888 | TexFormat::RGBa1010102 => 4,
                 TexFormat::RGB888 => 3,
                 TexFormat::RGB565 | TexFormat::RG88 | TexFormat::R16f => 2,
                 TexFormat::R8 => 1,
@@ -305,6 +318,7 @@ fn alpha_mode(format: TexFormat) -> TextureAlphaMode {
         | TexFormat::R16f
         | TexFormat::RGB161616f => TextureAlphaMode::Opaque,
         TexFormat::ARGB8888
+        | TexFormat::RGBA8888
         | TexFormat::DXT1
         | TexFormat::DXT3
         | TexFormat::DXT5
@@ -356,7 +370,7 @@ impl TexTexture {
         }
 
         let format_raw = read_u32_le(data, &mut offset)?;
-        let format = TexFormat::try_from(format_raw)?;
+        let mut format = TexFormat::try_from(format_raw)?;
         let flags = read_u32_le(data, &mut offset)?;
         let texture_width = read_u32_le(data, &mut offset)?;
         let texture_height = read_u32_le(data, &mut offset)?;
@@ -471,11 +485,10 @@ impl TexTexture {
                         });
                     }
 
-                    let decoded = if compression == 1 {
+                    let encoded = if compression == 1 {
                         let comp_size = compressed_size as usize;
                         let comp_bytes = get_slice(data, &mut offset, comp_size)?;
-                        let max_uncomp =
-                            (comp_size as u64).saturating_mul(MAX_COMPRESSION_RATIO);
+                        let max_uncomp = (comp_size as u64).saturating_mul(MAX_COMPRESSION_RATIO);
                         if uncomp_u64 > max_uncomp {
                             return Err(TexError::CompressionRatioExceeded {
                                 compressed: comp_size as u64,
@@ -487,16 +500,16 @@ impl TexTexture {
                             .map_err(|e| TexError::Lz4Error(e.to_string()))?;
                         decomp_buf
                     } else {
-                        let raw =
-                            get_slice(data, &mut offset, compressed_size as usize)?;
-                        if matches!(free_image_format, Some(FreeImageFormat::Png))
-                            && raw.len() >= 8
-                            && &raw[..8] == b"\x89PNG\r\n\x1a\n"
-                        {
-                            decode_png_to_rgba8(raw, width, height)?
-                        } else {
-                            raw.to_vec()
-                        }
+                        let raw = get_slice(data, &mut offset, compressed_size as usize)?;
+                        raw.to_vec()
+                    };
+                    let decoded = if matches!(free_image_format, Some(FreeImageFormat::Png))
+                        && encoded.starts_with(b"\x89PNG\r\n\x1a\n")
+                    {
+                        format = TexFormat::RGBA8888;
+                        decode_png_to_rgba8(&encoded, width, height)?
+                    } else {
+                        encoded
                     };
                     mipmaps.push(Mipmap {
                         width,
@@ -579,7 +592,7 @@ impl TexTexture {
                     });
                 }
 
-                let data_slice = if compression == 1 {
+                let encoded = if compression == 1 {
                     // LZ4 compressed
                     let comp_size = compressed_size as usize;
                     let comp_bytes = get_slice(data, &mut offset, comp_size)?;
@@ -596,27 +609,27 @@ impl TexTexture {
                     let mut decomp_buf = vec![0u8; actual_uncompressed as usize];
                     let result = lz4_flex::decompress_into(comp_bytes, &mut decomp_buf);
                     match result {
-                        Ok(_) => Arc::from(decomp_buf.into_boxed_slice()),
+                        Ok(_) => decomp_buf,
                         Err(e) => {
                             return Err(TexError::Lz4Error(e.to_string()));
                         }
                     }
                 } else {
                     let raw = get_slice(data, &mut offset, actual_uncompressed as usize)?;
-                    // FreeImage PNG textures embed raw PNG bytes; decode them
-                    // into RGBA8 so downstream size validation passes. Only
-                    // attempt decoding when the data starts with a PNG magic
-                    // header — some TEXB0003 containers carry raw pixel data
-                    // with a PNG format tag (our test fixtures do this).
-                    if matches!(free_image_format, Some(FreeImageFormat::Png))
-                        && raw.len() >= 8
-                        && &raw[..8] == b"\x89PNG\r\n\x1a\n"
-                    {
-                        Arc::from(decode_png_to_rgba8(raw, mip_w, mip_h)?)
-                    } else {
-                        Arc::from(raw)
-                    }
+                    raw.to_vec()
                 };
+                // FreeImage PNG payloads may themselves be LZ4-compressed.
+                // Detect the image after container decompression so both
+                // storage variants produce the same canonical RGBA8 layout.
+                let data_slice: Arc<[u8]> =
+                    if matches!(free_image_format, Some(FreeImageFormat::Png))
+                        && encoded.starts_with(b"\x89PNG\r\n\x1a\n")
+                    {
+                        format = TexFormat::RGBA8888;
+                        Arc::from(decode_png_to_rgba8(&encoded, mip_w, mip_h)?)
+                    } else {
+                        Arc::from(encoded)
+                    };
 
                 mipmaps.push(Mipmap {
                     width: mip_w,
@@ -940,6 +953,7 @@ mod tests {
 
     #[test]
     fn validates_raw_and_block_compressed_mipmap_sizes() {
+        assert_eq!(expected_mipmap_size(TexFormat::RGBA8888, 3, 2).unwrap(), 24);
         assert_eq!(expected_mipmap_size(TexFormat::R8, 3, 2).unwrap(), 6);
         assert_eq!(expected_mipmap_size(TexFormat::DXT1, 1, 1).unwrap(), 8);
         assert_eq!(expected_mipmap_size(TexFormat::DXT5, 5, 4).unwrap(), 32);
@@ -954,5 +968,14 @@ mod tests {
                 actual: 15
             })
         ));
+    }
+
+    #[test]
+    fn accepts_exact_storage_padding_dimensions() {
+        let mut tex = TexTexture::parse(&build_tex_rgba8(2, 2)).unwrap();
+        tex.texture_height = 4;
+        tex.mipmaps[0].data = Arc::from([0_u8; 32]);
+        let image = tex.to_texture_image().unwrap();
+        assert_eq!((image.levels[0].width, image.levels[0].height), (2, 4));
     }
 }

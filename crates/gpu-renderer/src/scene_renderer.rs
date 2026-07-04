@@ -243,9 +243,7 @@ impl SceneGpuRenderer {
                 let uv = draw
                     .animation
                     .as_ref()
-                    .map_or([0.0, 0.0, 1.0, 1.0], |animation| {
-                        animation.uv_at(elapsed_seconds)
-                    });
+                    .map_or(draw.uv, |animation| animation.uv_at(elapsed_seconds));
                 let vertices = scene_vertices(&draw.quad.vertices, uv);
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
@@ -303,9 +301,9 @@ fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 16] {
 
 /// Convert a Wallpaper Engine texture payload to canonical RGBA8 for GPU upload.
 ///
-/// On little-endian, Wallpaper Engine ARGB8888 data is laid out as [B,G,R,A].
-/// Convert it explicitly because GL_BGRA uploads are not portable to OpenGL ES
-/// contexts and fail with GL_INVALID_OPERATION on some NVIDIA drivers.
+/// Wallpaper Engine's format id 0 is historically named ARGB8888, but observed
+/// TEX payloads store bytes in RGBA order. Preserve that byte order for the
+/// portable GL_RGBA upload path.
 fn convert_to_rgba8(
     format: TexFormat,
     data: &[u8],
@@ -314,13 +312,7 @@ fn convert_to_rgba8(
 ) -> std::borrow::Cow<'_, [u8]> {
     let pixel_count = (width as usize) * (height as usize);
     match format {
-        TexFormat::ARGB8888 => {
-            let mut out = Vec::with_capacity(pixel_count * 4);
-            for chunk in data.chunks_exact(4).take(pixel_count) {
-                out.extend_from_slice(&[chunk[2], chunk[1], chunk[0], chunk[3]]);
-            }
-            std::borrow::Cow::Owned(out)
-        }
+        TexFormat::RGBA8888 | TexFormat::ARGB8888 => std::borrow::Cow::Borrowed(data),
         TexFormat::RGB888 => {
             let mut out = Vec::with_capacity(pixel_count * 4);
             for chunk in data.chunks_exact(3) {
@@ -504,8 +496,16 @@ mod tests {
     }
 
     #[test]
-    fn converts_argb8888_memory_order_to_portable_rgba() {
-        let rgba = convert_to_rgba8(TexFormat::ARGB8888, &[3, 2, 1, 4], 1, 1);
-        assert_eq!(rgba.as_ref(), &[1, 2, 3, 4]);
+    fn preserves_observed_format_zero_rgba_channel_order() {
+        let blue_pixel = [7, 20, 240, 255];
+        let rgba = convert_to_rgba8(TexFormat::ARGB8888, &blue_pixel, 1, 1);
+        assert_eq!(rgba.as_ref(), &blue_pixel);
+    }
+
+    #[test]
+    fn preserves_decoded_rgba8_channel_order() {
+        let pixels = [240, 20, 7, 128];
+        let rgba = convert_to_rgba8(TexFormat::RGBA8888, &pixels, 1, 1);
+        assert_eq!(rgba.as_ref(), &pixels);
     }
 }
