@@ -1,5 +1,55 @@
 # 进度日志 - Scene 壁纸支持
 
+## 2026-07-04 Library API 500 修复与水效果遮罩
+
+- 修复未知用户属性类型无法按 tagged enum 序列化的问题；已部署服务的 `/api/v1/library` 实测返回 HTTP 200，未知类型以稳定对象保留。
+- Scene IR 保留 water effect 的 mask/normal/phase 引用，共享资产层解析全部 effect TEX，GPU 使用独立纹理单元限制局部范围并读取方向场。
+- 同一 draw 可组合 waterripple 与 waterflow；waterripple normal 和 waterflow phase 均已参与逐像素位移，周期方向纹理使用 repeat、局部遮罩使用 clamp。
+- 已重新部署并实机加载：EGL OpenGL ES 3.2 初始化、9 个 draw 与 effect 纹理上传成功，筛选日志中无 shader/GL error。
+- `cargo test --workspace` 共 123 项通过，相关 crate 严格 Clippy 通过。
+
+## 2026-07-04 Waterflow 基础动态链路
+
+- 按当前真实 Workshop 场景字段解析 waterflow 的 phase scale、速度和强度，并加入严格数值校验。
+- 同一图层的 waterripple 与 waterflow 可同时进入共享 IR 和 GPU shader，不再因只保存单一水效果而丢失后一个 effect。
+- 当前 shader 提供有界的基础流动形变；mask 与 phase 纹理尚未接入，不能视为官方 waterflow 的完整复刻。
+- `cargo test --workspace` 共 121 项通过。
+
+## 2026-07-04 当前实机壁纸 Waterwaves / Waterripple 动画
+
+- 直接检测当前配置的真实场景 `2919051696`，按其活动 effect 实现 waterwaves 与 waterripple 时间驱动纹理位移。
+- 解析并使用真实方向、尺度、速度、强度参数；共享场景时钟保证暂停冻结和多输出同步。
+- 经 `packaging/install.sh` 部署重启后，journal 确认 9 个 draw 中 4 个为动态 draw，OpenGL ES 3.2 正常且无 shader/GL 错误。
+- 每帧渲染日志调整为 trace，避免 debug 级别每秒写入 60 条 journal。
+- 当前未采样 effect 遮罩/法线，视觉仍是基础近似；下一步补 waterwaves mask、waterripple normal 和 waterflow pass。
+
+## 2026-07-04 真实 Scroll 动效与场景项目属性
+
+- 从真实 Workshop effect 实例解析并运行 `effects/scroll/effect.json`，支持启用状态、XY 速度、重复次数、暂停冻结及 GPU UV 滚动。
+- 真实包 `3098540596` 检测到 1 个默认启用 scroll 图层；动态 draw 统计同时覆盖 TEX 精灵帧与 scroll effect。
+- `scene.properties` 运行时覆盖用户属性绑定的 bool、number、字符串/向量值，配置热重载后生效。
+- 库 API 暴露 scene 项目的 slider、bool、combo、color、file、textinput 定义，Web 页面生成对应控件。
+- low/medium/high 质量档位实际控制 niri 场景 30/45/60 FPS；其余粒子、鼠标、音频开关保留为后续能力边界，不虚报为已实现效果。
+- 真实坐标审计确认 cropoffset 已包含在 origin 中且角度为弧度；剩余错位重点转向 transform effect、puppet/3D 和 SceneScript。
+
+## 2026-07-04 真实 Workshop 动态资源审计与解析纠偏
+
+- 对本机 24 个合法 Workshop 场景包进行只读检测，确认真实动态主要来自 effect shader、粒子与 `.mdl` puppet；未用测试 fixture 反推格式。
+- `animationlayers`、逐层视差、扩展变换和颜色混合等当前未执行语义进入明确兼容性报告，不再静默忽略。
+- 根据真实动态遮罩超过 250:1 的 LZ4 数据，将压缩比上限调整为 512:1，同时将单 mip 内存上限收紧至 64 MiB；5 个大型样本共 165 张纹理复测为 0 解析失败。
+- 修复用户属性/脚本绑定布尔值的默认可见性解析，隐藏层不再因对象形式被错误显示。
+- `scene-inspect` 支持安全读取单个 UTF-8 条目及输出纹理头摘要，便于持续核验真实包而不落盘原始资产。
+- 后续动态效果将从离屏 effect pass 开始，优先覆盖高频 waterwaves/shake/transform；遮罩局部形变不能降级成错误的整图抖动。
+
+## 2026-07-04 RGB 通道、纹理填充与动态场景实机验证
+
+- 根据实际显示修正格式 0 纹理字节序：观察样本为 RGBA，不再执行错误的 R/B 交换。
+- TEXB 内嵌 PNG 解码后使用独立 RGBA8 格式，避免二次交换颜色通道。
+- 接受严格匹配 TEX 头部存储尺寸的 GPU 对齐填充，并裁剪静态 UV 到逻辑图像区域。
+- 新增自构造两帧动态场景生成器与 fixture，水平图集按青色/橙色正确排列并每 0.5 秒切换。
+- 动画帧 UV 增加半 texel 内缩，线性过滤不再把相邻帧混成渐变。
+- niri 实机日志确认 `draw_count=1 animated_draw_count=1`，持续 60 FPS 渲染，无 OpenGL 错误。
+
 ## 2026-07-04 场景配置控制面与属性持久化
 
 - Web API 类型补齐完整 `scene` 配置，保存配置不再把该字段遗漏为 `null`。

@@ -22,8 +22,9 @@ pub mod texture;
 
 pub use error::{FormatError, PkgError, SceneParseError, TexError};
 pub use ir::{
-    SceneCamera, SceneGraph, SceneNode, SceneNodeKind, SceneTransform, UnsupportedFeature, Vec2,
-    Vec3, parse_scene_graph,
+    SceneCamera, SceneGraph, SceneNode, SceneNodeKind, SceneTransform, ScrollEffect,
+    UnsupportedFeature, Vec2, Vec3, WaterFlowEffect, WaterWaveEffect, parse_scene_graph,
+    parse_scene_graph_with_properties,
 };
 pub use material::{BlendMode, MaterialDefinition, MaterialPass, parse_material_definition};
 pub use model::{ModelDefinition, parse_model_definition};

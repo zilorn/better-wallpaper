@@ -50,7 +50,8 @@ type Config = {
   outputs: Output[];
 };
 type SceneCompatibility = { level: number; level_name: string; unsupported_features: string[]; warnings: string[] };
-type LibraryEntry = { name: string; path: string; engine_mode: boolean; wallpaper_type: "video" | "web" | "scene"; preview_path: string | null; size_bytes: number; modified_unix_seconds: number | null; scene_compatibility?: SceneCompatibility };
+type SceneProperty = { key: string; text: string; prop_type: { kind: string; min?: number; max?: number; step?: number; options?: [string, string][] }; value: string | number | boolean | null };
+type LibraryEntry = { name: string; path: string; engine_mode: boolean; wallpaper_type: "video" | "web" | "scene"; preview_path: string | null; size_bytes: number; modified_unix_seconds: number | null; scene_compatibility?: SceneCompatibility; scene_properties?: SceneProperty[] };
 type Library = { entries: LibraryEntry[]; roots: string[]; engine_roots: string[]; truncated: boolean };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -185,6 +186,7 @@ function PageHeader(props: { title: string; description: string }) {
 
 function WallpapersPage() {
   const state = useApp();
+  const [library] = createResource(() => requestJson<Library>("/api/v1/library"));
   const updateWallpaper = (key: keyof Config["wallpaper"], value: string | boolean | number | null) =>
     state.updateConfig((current) => ({ ...current, wallpaper: { ...current.wallpaper, [key]: value, ...(key === "path" ? { engine_mode: false, wallpaper_type: "video" as const } : {}) } }));
   const updateScene = <K extends keyof NonNullable<Config["scene"]>>(key: K, value: NonNullable<Config["scene"]>[K]) =>
@@ -192,6 +194,11 @@ function WallpapersPage() {
       ...current,
       scene: { ...(current.scene ?? defaultSceneConfig()), [key]: value },
     }));
+  const selectedScene = createMemo(() => library()?.entries.find((entry) => entry.wallpaper_type === "scene" && entry.path === state.config()?.wallpaper.path));
+  const updateSceneProperty = (key: string, value: string) => updateScene("properties", {
+    ...(state.config()?.scene?.properties ?? {}),
+    [key]: value,
+  });
   return <><PageHeader title="壁纸" description="选择视频或网页壁纸，并控制当前播放任务。" />
     <Show when={state.config()} fallback={<Loading />} >{(config) => <div class="settings-grid">
       <section class="page-panel preview-panel"><div class="video-preview"><span>{config().wallpaper.wallpaper_type === "web" ? "WEB" : config().wallpaper.wallpaper_type === "scene" ? "SCENE" : "VIDEO"}</span><strong>{fileName(config().wallpaper.path)}</strong></div><div class="playback-summary"><div><span>当前状态</span><strong>{playbackLabel(state.status()?.playback)}</strong></div><button class="command" disabled={state.busy() || !state.status()?.playback.running || state.status()?.playback.cancelled} onClick={() => state.setPaused(!state.status()?.playback.paused)}>{state.status()?.playback.paused ? "恢复播放" : "暂停播放"}</button></div></section>
@@ -199,12 +206,30 @@ function WallpapersPage() {
         <Show when={config().wallpaper.wallpaper_type === "scene"} fallback={<>
           <h3>视频配置</h3><label>视频路径<input value={config().wallpaper.path ?? ""} onInput={(event) => updateWallpaper("path", event.currentTarget.value || null)} placeholder="/home/user/Videos/wallpaper.mp4" /></label><label>缩放方式<select value={config().wallpaper.fill_mode} onChange={(event) => updateWallpaper("fill_mode", event.currentTarget.value)}><option value="cover">裁切铺满</option><option value="contain">完整显示</option><option value="stretch">拉伸</option></select></label><label class="check"><input type="checkbox" checked={config().wallpaper.loop_playback} onChange={(event) => updateWallpaper("loop_playback", event.currentTarget.checked)} />循环播放</label><label class="check"><input type="checkbox" checked={!config().wallpaper.muted} onChange={(event) => updateWallpaper("muted", !event.currentTarget.checked)} />播放声音</label>
         </>}>
-          <h3>场景配置</h3><label>质量档位<select value={config().scene?.quality ?? "high"} onChange={(event) => updateScene("quality", event.currentTarget.value as "low" | "medium" | "high")}><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label><label>粒子数量上限<input type="number" min="0" max="100000" step="100" value={config().scene?.particle_limit ?? 10000} onInput={(event) => updateScene("particle_limit", event.currentTarget.valueAsNumber)} /></label><label class="check"><input type="checkbox" checked={config().scene?.mouse ?? true} onChange={(event) => updateScene("mouse", event.currentTarget.checked)} />鼠标交互</label><label class="check"><input type="checkbox" checked={config().scene?.parallax ?? true} onChange={(event) => updateScene("parallax", event.currentTarget.checked)} />视差效果</label><label class="check"><input type="checkbox" checked={config().scene?.audio_processing ?? false} onChange={(event) => updateScene("audio_processing", event.currentTarget.checked)} />音频响应</label><label class="check"><input type="checkbox" checked={config().scene?.script_enabled ?? false} onChange={(event) => updateScene("script_enabled", event.currentTarget.checked)} />实验性脚本（尚未执行）</label>
+          <h3>场景配置</h3><label>质量档位<select value={config().scene?.quality ?? "high"} onChange={(event) => updateScene("quality", event.currentTarget.value as "low" | "medium" | "high")}><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label><label>粒子数量上限<input type="number" min="0" max="100000" step="100" value={config().scene?.particle_limit ?? 10000} onInput={(event) => updateScene("particle_limit", event.currentTarget.valueAsNumber)} /></label><label class="check"><input type="checkbox" checked={config().scene?.mouse ?? true} onChange={(event) => updateScene("mouse", event.currentTarget.checked)} />鼠标交互</label><label class="check"><input type="checkbox" checked={config().scene?.parallax ?? true} onChange={(event) => updateScene("parallax", event.currentTarget.checked)} />视差效果</label><label class="check"><input type="checkbox" checked={config().scene?.audio_processing ?? false} onChange={(event) => updateScene("audio_processing", event.currentTarget.checked)} />音频响应</label><label class="check"><input type="checkbox" checked={config().scene?.script_enabled ?? false} onChange={(event) => updateScene("script_enabled", event.currentTarget.checked)} />实验性脚本（尚未执行）</label><Show when={selectedScene()?.scene_properties?.length}><h3>壁纸属性</h3><For each={selectedScene()?.scene_properties}>{(property) => <ScenePropertyInput property={property} value={config().scene?.properties[property.key]} onChange={(value) => updateSceneProperty(property.key, value)} />}</For></Show>
         </Show>
         <button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存配置</button>
       </section>
     </div>}</Show>
   </>;
+}
+
+function ScenePropertyInput(props: { property: SceneProperty; value: string | undefined; onChange: (value: string) => void }) {
+  const value = () => props.value ?? String(props.property.value ?? "");
+  const label = () => props.property.text || props.property.key;
+  if (props.property.prop_type.kind === "bool") {
+    return <label class="check"><input type="checkbox" checked={value() === "true"} onChange={(event) => props.onChange(String(event.currentTarget.checked))} />{label()}</label>;
+  }
+  if (props.property.prop_type.kind === "slider") {
+    return <label>{label()}<input type="number" min={props.property.prop_type.min} max={props.property.prop_type.max} step={props.property.prop_type.step ?? "any"} value={value()} onInput={(event) => props.onChange(event.currentTarget.value)} /></label>;
+  }
+  if (props.property.prop_type.kind === "combo") {
+    return <label>{label()}<select value={value()} onChange={(event) => props.onChange(event.currentTarget.value)}><For each={props.property.prop_type.options ?? []}>{(option) => <option value={option[1]}>{option[0]}</option>}</For></select></label>;
+  }
+  if (["color", "text_input", "textinput", "file"].includes(props.property.prop_type.kind)) {
+    return <label>{label()}<input value={value()} onInput={(event) => props.onChange(event.currentTarget.value)} /></label>;
+  }
+  return null;
 }
 
 function DisplaysPage() {

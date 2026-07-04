@@ -228,6 +228,63 @@ L0～L2 预计需要约 8～12 个工程周；L3 额外约 3～5 周；L4 无法
 
 ## 实施进度 (2026-06-30)
 
+### 已完成 — Library API 未知属性序列化修复 (2026-07-04)
+
+- 修复 `PropertyType::Unknown(String)` 与 Serde 内部 tag 不兼容导致 `/api/v1/library` 返回 500 的问题，未知类型改为稳定对象 `{kind: "unknown", value: "..."}`。
+- 新增未知项目属性序列化回归测试，并通过 `packaging/install.sh` 部署。
+- 已对运行中的管理端点实测：HTTP 200、响应 208569 字节，4 个未知属性安全保留；近期 service 日志无 error/panic。
+
+### 已完成 — Water Effect 遮罩多纹理提交 (2026-07-04)
+
+- Scene IR 保留 waterwaves/waterripple/waterflow pass 的 mask、normal 与 phase 纹理逻辑名，路径继续执行逃逸校验。
+- 共享场景资产层解析并校验水效果 TEX；GPU 缓存上传主纹理和 effect 纹理，fragment shader 使用独立纹理单元采样 water-wave mask/normal 与 water-flow mask/phase。
+- waterwaves、waterripple 与 waterflow 的基础位移现在按局部遮罩强度生效，不再对整个图层统一形变；同一图层可组合 ripple 与 flow 遮罩。
+- waterripple normal 与 waterflow phase 已参与逐像素方向场，并使用 repeat 采样；mask 保持 clamp 采样。参数映射基于当前合法样本，仍需 golden image 校准后才能宣称与官方效果等价。
+- workspace 共 123 项测试通过，相关格式、renderer 与 GPU crate 严格 Clippy 通过。
+
+### 已完成 — 当前实机壁纸 Waterwaves / Waterripple 动画 (2026-07-04)
+
+- 针对当前实际加载的 Workshop 场景 `2919051696` 检查 `scene.json`，确认其主要动画不是精灵图或 scroll，而是背景 waterripple/waterflow 与前景 6 层 waterwaves。
+- Scene IR 解析真实 waterwaves 的 direction、scale、speed、strength，并解析 waterripple 的 scroll direction、scale、animation/scroll speed 与 ripple strength。
+- OpenGL ES fragment shader 使用共享场景时钟执行纹理位移；暂停会冻结动画，时间相位限制在一小时内避免长期精度下降。
+- 已通过 `packaging/install.sh` 实机部署并重启服务；日志确认当前场景 `draw_count=9`、`animated_draw_count=4`，EGL OpenGL ES 3.2 初始化成功且无 shader/GL 错误。
+- 将每帧 `scene frame rendered` 从 debug 降为 trace，避免 60 FPS 场景淹没 journal。
+- 当前 waterwaves/waterripple 已采样遮罩与可用法线，waterflow 已使用参数、遮罩和 phase 方向场；粒子、composelayer 和音频条仍未实现，且视觉参数尚待 golden 校准，不能宣称已完整还原该壁纸。
+
+### 已完成 — Waterflow 基础动态链路 (2026-07-04)
+
+- 根据当前真实场景中的 `effects/waterflow/effect.json` 解析 `phasescale`、`speed` 与 `strength`，并对非有限值、非正 phase scale 和负 strength 执行拒绝校验。
+- waterflow 与同图层 waterripple 保持为两个独立 IR 参数，GPU 在同一 draw 中顺序组合两种时间驱动形变；暂停与多输出继续共享场景时钟。
+- fragment shader 使用有界流场近似基础动态，workspace 共 121 项测试通过。
+- 当前已采样 waterflow mask 与 phase 方向场；仍需参考帧校准强度、相位速度和坐标变换。
+
+### 已完成 — 真实 Scroll 动效与项目属性运行时接入 (2026-07-04)
+
+- 根据真实 Workshop `effects/scroll/effect.json` 实例实现首个官方 effect 动态路径：解析启用状态、`speedx`、`speedy` 与 `repeat`，GPU 使用共享场景时钟滚动 UV，并按 draw 切换 repeat/clamp 采样。
+- 使用真实包复测确认 `3098540596` 的活动 scroll 图层进入 Scene IR；长时间运行时滚动相位取模，避免浮点精度随运行时间持续恶化。
+- `scene.properties` 现覆盖场景中 `{"user":"key","value":fallback}` 绑定的 bool、number 与 string/vector fallback；保存配置后的热重载会重建场景并应用属性，不再只是持久化未消费字段。
+- Wallpaper Engine 库 API 返回 `project.json/general.properties`，Web 场景配置根据 slider、bool、combo、color、file 与 textinput 生成项目属性控件。
+- 场景质量档位已进入 niri 运行时：low/medium/high 分别限制为 30/45/60 FPS；日志记录加载的场景配置及属性覆盖数量。
+- 真实样本证明 `cropoffset` 已烘入节点 `origin`，不得重复叠加；角度单位由 `1.57080/3.14159` 样本确认是弧度。仍有位置错误的图层主要依赖尚未实现的 transform effect、puppet/3D 或脚本求值。
+- 当前 scroll 是完整动态实现；shake、waterwaves、pulse 等遮罩效果仍需离屏 render pass，不能用整图几何抖动冒充。
+
+### 已完成 — 真实 Workshop 动态资源审计与解析纠偏 (2026-07-04)
+
+- 使用本机 24 个合法 Workshop `scene.pkg` 做只读检测，而非以测试 fixture 推断真实格式；确认常见动态效果依次包含 waterwaves、shake、transform、foliagesway、pulse 等。
+- 确认 `animationlayers` 在复杂样本中引用 `.mdl` puppet 动画 ID，并受用户属性与 SceneScript 控制；当前将其明确报告为不支持，不再把字段静默当成已渲染。
+- 真实单通道动态遮罩的 LZ4 压缩比可超过 250:1；压缩比阈值按证据调整为 512:1，同时把单 mip 硬上限从 256 MiB 收紧为 64 MiB。抽查 5 个大型真实场景共 165 张纹理，解析失败数从多项降为 0。
+- 修正绑定布尔值的初始可见性：`visible: {"user": ..., "value": false}` 不再错误地显示图层，避免真实场景出现隐藏层叠影。
+- `scene-inspect` 新增受限 `--entry` 与 `--textures` 模式，用于继续审计真实包内 JSON、纹理尺寸、存储填充和动画元数据，不解包到文件系统。
+- 真实样本显示主要动态来自官方 effect shader、粒子和 puppet，而非 TEX 精灵帧；下一步优先建立离屏 effect pass，不能用整图位移冒充遮罩驱动的局部 shake/waterwaves。
+
+### 已完成 — RGB 修复与首个实机动态场景 (2026-07-04)
+
+- 修正格式 0 裸纹理的实际 RGBA 字节序，不再错误交换红蓝通道；内嵌 PNG 解码结果也显式标记为 RGBA8。
+- 支持逻辑尺寸与 GPU 对齐存储尺寸不同的纹理，仅在字节数精确匹配头部存储尺寸时接收，并通过 UV 排除填充区域。
+- 新增完全自构造的两帧动态场景 fixture/generator，按水平图集正确排列不对称青色与橙色帧；动画 UV 收进半个 texel，避免线性采样串入相邻帧。
+- 实机 niri 日志确认 `draw_count=1`、`animated_draw_count=1`，动态场景以 60 FPS 持续渲染且无 OpenGL 错误。
+- Workshop 场景仍有大量粒子、合成层、puppet 和脚本动画未支持；本项只证明基础动画纹理端到端可运行。
+
 ### 已完成 — 场景配置 API 往返与 Web 控制面 (2026-07-04)
 
 - Web 配置模型补齐 `scene`，避免保存其它设置时丢失场景配置。

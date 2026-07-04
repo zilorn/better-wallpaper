@@ -7,11 +7,12 @@ use crate::error::TexError;
 /// Maximum texture dimension (width or height) in pixels
 pub const MAX_TEXTURE_DIMENSION: u32 = 16_384;
 
-/// Maximum mipmap data size (256 MiB)
-pub const MAX_MIPMAP_SIZE: u64 = 256 * 1024 * 1024;
+/// Maximum mipmap data size. This matches the package single-entry ceiling.
+pub const MAX_MIPMAP_SIZE: u64 = 64 * 1024 * 1024;
 
-/// Maximum compression ratio (compressed:uncompressed) allowed
-pub const MAX_COMPRESSION_RATIO: u64 = 20;
+/// Maximum compression ratio allowed. Real single-channel masks commonly
+/// exceed 200:1, while the exact decoded size remains bounded above.
+pub const MAX_COMPRESSION_RATIO: u64 = 512;
 
 /// Maximum number of frames in an animated texture
 pub const MAX_ANIMATION_FRAMES: u32 = 10_000;
@@ -915,7 +916,7 @@ mod tests {
         buf.extend(1u32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
-        buf.extend(100i32.to_le_bytes());
+        buf.extend(1024i32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
         buf.push(0);
 
@@ -923,7 +924,7 @@ mod tests {
             TexTexture::parse(&buf),
             Err(TexError::CompressionRatioExceeded {
                 compressed: 1,
-                uncompressed: 100
+                uncompressed: 1024
             })
         ));
     }

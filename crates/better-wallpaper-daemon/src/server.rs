@@ -17,7 +17,8 @@ use better_wallpaper_core::{
     config::{FillMode, WallpaperType},
 };
 use better_wallpaper_scene_format::{
-    CompatibilityLevel, PkgReader, analyse_scene, compute_compatibility,
+    CompatibilityLevel, PkgReader, UserProperty, analyse_scene, compute_compatibility,
+    parse_project_properties,
 };
 use ksni::blocking::TrayMethods;
 use serde::{Deserialize, Serialize};
@@ -377,7 +378,7 @@ fn config_revision(config: &AppConfig) -> u64 {
         })
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize)]
 struct LibraryEntry {
     name: String,
     path: PathBuf,
@@ -388,6 +389,8 @@ struct LibraryEntry {
     modified_unix_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scene_compatibility: Option<CompatibilityPayload>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    scene_properties: Vec<UserProperty>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -838,6 +841,7 @@ fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntr
                     size_bytes: metadata.len(),
                     modified_unix_seconds,
                     scene_compatibility: None,
+                    scene_properties: Vec::new(),
                 });
                 if entries.len() >= MAX_LIBRARY_ENTRIES {
                     truncated = true;
@@ -945,9 +949,14 @@ fn scan_wallpaper_engine_library(
         .filter(|path| path.is_dir())
     {
         let descriptor = project_directory.join("project.json");
-        let project: WallpaperEngineProject = match File::open(&descriptor)
-            .and_then(|file| serde_json::from_reader(file).map_err(std::io::Error::other))
-        {
+        let descriptor_json = match fs::read_to_string(&descriptor) {
+            Ok(json) => json,
+            Err(error) => {
+                warn!(path = %descriptor.display(), %error, "skipping unreadable Wallpaper Engine project");
+                continue;
+            }
+        };
+        let project: WallpaperEngineProject = match serde_json::from_str(&descriptor_json) {
             Ok(project) => project,
             Err(error) => {
                 warn!(path = %descriptor.display(), %error, "skipping invalid Wallpaper Engine project");
@@ -962,6 +971,20 @@ fn scan_wallpaper_engine_library(
                 info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
                 continue;
             }
+        };
+        let scene_properties = if wallpaper_type == WallpaperType::Scene {
+            match parse_project_properties(&descriptor_json) {
+                Ok(properties) => properties
+                    .into_iter()
+                    .map(|(_, property)| property)
+                    .collect(),
+                Err(error) => {
+                    warn!(path = %descriptor.display(), %error, "failed to parse scene user properties");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
         };
 
         let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
@@ -1053,6 +1076,7 @@ fn scan_wallpaper_engine_library(
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|duration| duration.as_secs()),
             scene_compatibility,
+            scene_properties,
         });
         if entries.len() >= MAX_LIBRARY_ENTRIES {
             *truncated = true;

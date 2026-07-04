@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 
@@ -43,8 +43,38 @@ pub struct SceneNode {
     pub kind: SceneNodeKind,
     pub transform: SceneTransform,
     pub effects: Vec<String>,
+    pub scroll: Option<ScrollEffect>,
+    pub water_wave: Option<WaterWaveEffect>,
+    pub water_flow: Option<WaterFlowEffect>,
     /// Fields retained by name so unsupported input cannot silently change rendering.
     pub unknown_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScrollEffect {
+    pub speed_x: f32,
+    pub speed_y: f32,
+    pub repeat_x: f32,
+    pub repeat_y: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WaterWaveEffect {
+    pub direction: f32,
+    pub scale: f32,
+    pub speed: f32,
+    pub strength: f32,
+    pub mask: Option<String>,
+    pub normal: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WaterFlowEffect {
+    pub phase_scale: f32,
+    pub speed: f32,
+    pub strength: f32,
+    pub mask: Option<String>,
+    pub phase: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -75,7 +105,15 @@ pub struct UnsupportedFeature {
 }
 
 pub fn parse_scene_graph(scene_json: &str) -> Result<SceneGraph, SceneParseError> {
-    let root: Value = serde_json::from_str(scene_json)?;
+    parse_scene_graph_with_properties(scene_json, &BTreeMap::new())
+}
+
+pub fn parse_scene_graph_with_properties(
+    scene_json: &str,
+    properties: &BTreeMap<String, String>,
+) -> Result<SceneGraph, SceneParseError> {
+    let mut root: Value = serde_json::from_str(scene_json)?;
+    apply_property_overrides(&mut root, properties, 0)?;
     let root = root
         .as_object()
         .ok_or_else(|| SceneParseError::InvalidValue {
@@ -118,6 +156,67 @@ pub fn parse_scene_graph(scene_json: &str) -> Result<SceneGraph, SceneParseError
         nodes,
         unsupported_features: unsupported.into_iter().collect(),
     })
+}
+
+fn apply_property_overrides(
+    value: &mut Value,
+    properties: &BTreeMap<String, String>,
+    depth: usize,
+) -> Result<(), SceneParseError> {
+    if depth > 64 {
+        return Err(SceneParseError::InvalidValue {
+            field: "property binding".into(),
+            detail: "binding nesting exceeds safety limit".into(),
+        });
+    }
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                apply_property_overrides(value, properties, depth + 1)?;
+            }
+        }
+        Value::Object(object) => {
+            let binding = object.get("user").and_then(Value::as_str).and_then(|key| {
+                properties
+                    .get(key)
+                    .map(|value| (key.to_owned(), value.clone()))
+            });
+            if let Some((key, override_value)) = binding
+                && let Some(fallback) = object.get_mut("value")
+            {
+                *fallback = match fallback {
+                    Value::Bool(_) => Value::Bool(override_value.parse().map_err(|_| {
+                        SceneParseError::InvalidValue {
+                            field: format!("scene.properties.{key}"),
+                            detail: "expected true or false".into(),
+                        }
+                    })?),
+                    Value::Number(_) => {
+                        let number = override_value.parse::<f64>().map_err(|_| {
+                            SceneParseError::InvalidValue {
+                                field: format!("scene.properties.{key}"),
+                                detail: "expected a finite number".into(),
+                            }
+                        })?;
+                        if !number.is_finite() {
+                            return Err(SceneParseError::InvalidValue {
+                                field: format!("scene.properties.{key}"),
+                                detail: "expected a finite number".into(),
+                            });
+                        }
+                        Value::from(number)
+                    }
+                    Value::String(_) => Value::String(override_value),
+                    _ => fallback.clone(),
+                };
+            }
+            for value in object.values_mut() {
+                apply_property_overrides(value, properties, depth + 1)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn parse_camera(root: &Map<String, Value>) -> Result<SceneCamera, SceneParseError> {
@@ -253,8 +352,29 @@ fn parse_node(
         })
         .transpose()?
         .unwrap_or_default();
+    let scroll = parse_scroll_effect(object.get("effects"), &path)?;
+    let water_wave = parse_water_wave_effect(object.get("effects"), &path)?;
+    let water_flow = parse_water_flow_effect(object.get("effects"), &path)?;
     for effect in &effects {
-        mark(unsupported, &path, &format!("effect: {effect}"));
+        if effect != "effects/scroll/effect.json"
+            && effect != "effects/waterwaves/effect.json"
+            && effect != "effects/waterripple/effect.json"
+            && effect != "effects/waterflow/effect.json"
+        {
+            mark(unsupported, &path, &format!("effect: {effect}"));
+        }
+    }
+    for (field, feature) in [
+        ("animationlayers", "model animation layers"),
+        ("attachment", "model attachment"),
+        ("color", "layer color modulation"),
+        ("colorBlendMode", "layer color blend mode"),
+        ("parallaxDepth", "per-layer parallax depth"),
+        ("transform", "extended layer transform"),
+    ] {
+        if object.contains_key(field) {
+            mark(unsupported, &format!("{path}.{field}"), feature);
+        }
     }
 
     Ok(SceneNode {
@@ -267,7 +387,15 @@ fn parse_node(
         parent: scalar_id(object.get("parent")),
         visible: object
             .get("visible")
-            .and_then(Value::as_bool)
+            .map(|value| {
+                unwrap_script_value(value)
+                    .as_bool()
+                    .ok_or_else(|| SceneParseError::InvalidValue {
+                        field: format!("{path}.visible"),
+                        detail: "expected a boolean or bound boolean value".into(),
+                    })
+            })
+            .transpose()?
             .unwrap_or(true),
         kind,
         transform: SceneTransform {
@@ -287,8 +415,248 @@ fn parse_node(
                 .transpose()?,
         },
         effects,
+        scroll,
+        water_wave,
+        water_flow,
         unknown_fields,
     })
+}
+
+fn parse_water_flow_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<WaterFlowEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/waterflow/effect.json") {
+            continue;
+        }
+        if !effect
+            .get("visible")
+            .map(|value| unwrap_script_value(value).as_bool().unwrap_or(true))
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        let values = effect
+            .get("passes")
+            .and_then(Value::as_array)
+            .and_then(|passes| passes.first())
+            .and_then(|pass| pass.get("constantshadervalues"))
+            .and_then(Value::as_object)
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterflow effect is missing constant shader values".into(),
+            })?;
+        let phase_scale = optional_finite_number(values, "phasescale").unwrap_or(1.0);
+        let speed = optional_finite_number(values, "speed").unwrap_or(1.0);
+        let strength = optional_finite_number(values, "strength").unwrap_or(0.0);
+        if phase_scale <= 0.0 || strength < 0.0 {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterflow phase scale must be positive and strength non-negative".into(),
+            });
+        }
+        return Ok(Some(WaterFlowEffect {
+            phase_scale,
+            speed,
+            strength,
+            mask: effect_texture(effect, index, 1)?,
+            phase: effect_texture(effect, index, 2)?,
+        }));
+    }
+    Ok(None)
+}
+
+fn parse_water_wave_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<WaterWaveEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/waterwaves/effect.json") {
+            continue;
+        }
+        if !effect
+            .get("visible")
+            .map(|value| unwrap_script_value(value).as_bool().unwrap_or(true))
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        let values = effect
+            .get("passes")
+            .and_then(Value::as_array)
+            .and_then(|passes| passes.first())
+            .and_then(|pass| pass.get("constantshadervalues"))
+            .and_then(Value::as_object)
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterwaves effect is missing constant shader values".into(),
+            })?;
+        let direction = optional_finite_number(values, "direction").unwrap_or(0.0);
+        let scale = optional_finite_number(values, "scale").unwrap_or(1.0);
+        let speed = optional_finite_number(values, "speed").unwrap_or(1.0);
+        let strength = optional_finite_number(values, "strength").unwrap_or(0.0);
+        if scale <= 0.0 || strength < 0.0 {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterwaves scale must be positive and strength non-negative".into(),
+            });
+        }
+        return Ok(Some(WaterWaveEffect {
+            direction,
+            scale,
+            speed,
+            strength,
+            mask: effect_texture(effect, index, 1)?,
+            normal: None,
+        }));
+    }
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/waterripple/effect.json") {
+            continue;
+        }
+        if !effect
+            .get("visible")
+            .map(|value| unwrap_script_value(value).as_bool().unwrap_or(true))
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        let values = effect
+            .get("passes")
+            .and_then(Value::as_array)
+            .and_then(|passes| passes.first())
+            .and_then(|pass| pass.get("constantshadervalues"))
+            .and_then(Value::as_object)
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterripple effect is missing constant shader values".into(),
+            })?;
+        let direction = optional_finite_number(values, "scrolldirection").unwrap_or(0.0);
+        let scale = optional_finite_number(values, "scale").unwrap_or(1.0);
+        let animation_speed = optional_finite_number(values, "animationspeed").unwrap_or(0.0);
+        let scroll_speed = optional_finite_number(values, "scrollspeed").unwrap_or(0.0);
+        let strength = optional_finite_number(values, "ripplestrength").unwrap_or(0.0);
+        if scale <= 0.0 || strength < 0.0 {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "waterripple scale must be positive and strength non-negative".into(),
+            });
+        }
+        return Ok(Some(WaterWaveEffect {
+            direction,
+            scale,
+            speed: animation_speed + scroll_speed,
+            strength,
+            mask: effect_texture(effect, index, 1)?,
+            normal: effect_texture(effect, index, 2)?,
+        }));
+    }
+    Ok(None)
+}
+
+fn effect_texture(
+    effect: &Map<String, Value>,
+    effect_index: usize,
+    texture_index: usize,
+) -> Result<Option<String>, SceneParseError> {
+    let Some(value) = effect
+        .get("passes")
+        .and_then(Value::as_array)
+        .and_then(|passes| passes.first())
+        .and_then(|pass| pass.get("textures"))
+        .and_then(Value::as_array)
+        .and_then(|textures| textures.get(texture_index))
+    else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let texture = value
+        .as_str()
+        .ok_or_else(|| SceneParseError::InvalidValue {
+            field: format!("effects[{effect_index}].textures[{texture_index}]"),
+            detail: "effect texture must be a string or null".into(),
+        })?;
+    validate_resource_path(texture).map(Some)
+}
+
+fn parse_scroll_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<ScrollEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/scroll/effect.json") {
+            continue;
+        }
+        let visible = effect
+            .get("visible")
+            .map(|value| unwrap_script_value(value).as_bool().unwrap_or(true))
+            .unwrap_or(true);
+        if !visible {
+            continue;
+        }
+        let values = effect
+            .get("passes")
+            .and_then(Value::as_array)
+            .and_then(|passes| passes.first())
+            .and_then(|pass| pass.get("constantshadervalues"))
+            .and_then(Value::as_object)
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "scroll effect is missing constant shader values".into(),
+            })?;
+        let speed_x = optional_finite_number(values, "speedx").unwrap_or(0.0);
+        let speed_y = optional_finite_number(values, "speedy").unwrap_or(0.0);
+        let repeat = values
+            .get("repeat")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].repeat"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 1.0, y: 1.0 });
+        if repeat.x <= 0.0 || repeat.y <= 0.0 {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}].repeat"),
+                detail: "scroll repeat must be finite and positive".into(),
+            });
+        }
+        return Ok(Some(ScrollEffect {
+            speed_x,
+            speed_y,
+            repeat_x: repeat.x,
+            repeat_y: repeat.y,
+        }));
+    }
+    Ok(None)
+}
+
+fn optional_finite_number(object: &Map<String, Value>, field: &str) -> Option<f32> {
+    object
+        .get(field)
+        .and_then(Value::as_f64)
+        .map(|value| value as f32)
+        .filter(|value| value.is_finite())
 }
 
 fn string_resource(
@@ -566,6 +934,78 @@ mod tests {
         assert_eq!(origin.x, 1920.0);
         assert_eq!(origin.y, 1080.0);
         assert_eq!(origin.z, 0.0);
+    }
+
+    #[test]
+    fn uses_bound_visibility_fallback_value() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"bg.json","visible":{"user":"show_bg","value":false}}]}"#,
+        )
+        .unwrap();
+        assert!(!graph.nodes[0].visible);
+    }
+
+    #[test]
+    fn applies_scene_property_overrides_to_bound_values() {
+        let properties = BTreeMap::from([
+            ("show_bg".into(), "true".into()),
+            ("scale".into(), "2 3 1".into()),
+        ]);
+        let graph = parse_scene_graph_with_properties(
+            r#"{"objects":[{"image":"bg.json","visible":{"user":"show_bg","value":false},"scale":{"user":"scale","value":"1 1 1"}}]}"#,
+            &properties,
+        )
+        .unwrap();
+        assert!(graph.nodes[0].visible);
+        assert_eq!(graph.nodes[0].transform.scale.unwrap().x, 2.0);
+        assert_eq!(graph.nodes[0].transform.scale.unwrap().y, 3.0);
+    }
+
+    #[test]
+    fn parses_enabled_real_scroll_effect_parameters() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"clouds.json","effects":[{"file":"effects/scroll/effect.json","visible":true,"passes":[{"constantshadervalues":{"repeat":"2 1","speedx":-0.3,"speedy":0.2}}]}]}]}"#,
+        )
+        .unwrap();
+        let scroll = graph.nodes[0].scroll.unwrap();
+        assert_eq!(scroll.speed_x, -0.3);
+        assert_eq!(scroll.speed_y, 0.2);
+        assert_eq!(scroll.repeat_x, 2.0);
+        assert!(graph.unsupported_features.is_empty());
+    }
+
+    #[test]
+    fn parses_real_waterwaves_parameters() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"foreground.json","effects":[{"file":"effects/waterwaves/effect.json","visible":true,"passes":[{"constantshadervalues":{"direction":1.5772198,"scale":0.01,"speed":1.41,"strength":0.06}}]}]}]}"#,
+        )
+        .unwrap();
+        let wave = graph.nodes[0].water_wave.as_ref().unwrap();
+        assert_eq!(wave.direction, 1.5772198);
+        assert_eq!(wave.scale, 0.01);
+        assert_eq!(wave.speed, 1.41);
+        assert_eq!(wave.strength, 0.06);
+        assert!(graph.unsupported_features.is_empty());
+    }
+
+    #[test]
+    fn parses_waterflow_alongside_waterripple() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"water.json","effects":[{"file":"effects/waterripple/effect.json","passes":[{"constantshadervalues":{"animationspeed":0.03,"scrollspeed":0.08,"scale":1.0,"ripplestrength":0.1},"textures":[null,"masks/ripple","effects/normal"]}]},{"file":"effects/waterflow/effect.json","passes":[{"constantshadervalues":{"phasescale":0.62,"speed":0.08,"strength":1.0},"textures":[null,"masks/flow","effects/phase"]}]}]}]}"#,
+        )
+        .unwrap();
+        let node = &graph.nodes[0];
+        let wave = node.water_wave.as_ref().unwrap();
+        assert_eq!(wave.speed, 0.11);
+        assert_eq!(wave.mask.as_deref(), Some("masks/ripple"));
+        assert_eq!(wave.normal.as_deref(), Some("effects/normal"));
+        let flow = node.water_flow.as_ref().unwrap();
+        assert_eq!(flow.phase_scale, 0.62);
+        assert_eq!(flow.speed, 0.08);
+        assert_eq!(flow.strength, 1.0);
+        assert_eq!(flow.mask.as_deref(), Some("masks/flow"));
+        assert_eq!(flow.phase.as_deref(), Some("effects/phase"));
+        assert!(graph.unsupported_features.is_empty());
     }
 
     #[test]

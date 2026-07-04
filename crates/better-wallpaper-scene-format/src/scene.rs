@@ -97,7 +97,9 @@ pub enum PropertyType {
     TextInput,
     Text,
     Group,
-    Unknown(String),
+    Unknown {
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -188,7 +190,9 @@ pub fn parse_project_properties(
             "textinput" => PropertyType::TextInput,
             "text" => PropertyType::Text,
             "group" => PropertyType::Group,
-            other => PropertyType::Unknown(other.to_string()),
+            other => PropertyType::Unknown {
+                value: other.to_string(),
+            },
         };
 
         let value = match &prop_type {
@@ -562,6 +566,17 @@ mod tests {
     fn no_properties_returns_empty() {
         let props = parse_project_properties(r#"{"title": "test", "type": "scene"}"#).unwrap();
         assert!(props.is_empty());
+    }
+
+    #[test]
+    fn unknown_property_type_serializes_for_library_api() {
+        let props = parse_project_properties(
+            r#"{"general":{"properties":{"custom":{"type":"custom_widget","value":"x"}}}}"#,
+        )
+        .unwrap();
+        let json = serde_json::to_value(&props[0].1).unwrap();
+        assert_eq!(json["prop_type"]["kind"], "unknown");
+        assert_eq!(json["prop_type"]["value"], "custom_widget");
     }
 
     #[test]

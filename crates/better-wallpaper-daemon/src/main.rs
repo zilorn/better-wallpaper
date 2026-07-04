@@ -15,7 +15,7 @@ use better_wallpaper_kde::run_kde_controlled;
 use better_wallpaper_renderer::{
     NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan, resolve_scene_2d_assets,
 };
-use better_wallpaper_scene_format::{PkgReader, parse_scene_graph};
+use better_wallpaper_scene_format::PkgReader;
 use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
 use tracing_subscriber::{Layer, filter::filter_fn, layer::SubscriberExt};
@@ -219,7 +219,8 @@ fn run_playback(
             info!("scene wallpaper path not configured, backend idle");
             return Ok(());
         };
-        let prepared = prepare_scene(project_dir)?;
+        let scene_config = config.scene.clone().unwrap_or_default();
+        let prepared = prepare_scene(project_dir, &scene_config)?;
         info!(
             ?backend,
             draw_count = prepared.plan.quads.len(),
@@ -243,7 +244,7 @@ fn run_playback(
                     .filter(|o| o.enabled)
                     .map(|o| o.name.clone())
                     .collect();
-                run_niri_scene(assets, &output_names, control.clone())?;
+                run_niri_scene(assets, &output_names, &scene_config, control.clone())?;
             }
             BackendKind::Kde => {
                 warn!("KDE Plasma scene rendering is not yet implemented through the GPU path");
@@ -345,6 +346,7 @@ struct PreparedScene {
 fn run_niri_scene(
     assets: better_wallpaper_renderer::Scene2dAssets,
     output_names: &[String],
+    scene_config: &better_wallpaper_core::SceneConfig,
     control: PlaybackControl,
 ) -> Result<()> {
     use std::time::Duration;
@@ -378,12 +380,30 @@ fn run_niri_scene(
         animated_draw_count = assets
             .draws
             .iter()
-            .filter(|draw| draw.animation.is_some())
+            .filter(|draw| {
+                draw.animation.is_some()
+                    || draw.quad.scroll.is_some()
+                    || draw.quad.water_wave.is_some()
+            })
             .count(),
         "scene assets uploaded to niri GPU"
     );
 
-    let fps_limit = 60_u64;
+    let fps_limit = match scene_config.quality {
+        better_wallpaper_core::SceneQuality::Low => 30_u64,
+        better_wallpaper_core::SceneQuality::Medium => 45_u64,
+        better_wallpaper_core::SceneQuality::High => 60_u64,
+    };
+    info!(
+        ?scene_config.quality,
+        fps_limit,
+        mouse = scene_config.mouse,
+        parallax = scene_config.parallax,
+        audio_processing = scene_config.audio_processing,
+        particle_limit = scene_config.particle_limit,
+        property_override_count = scene_config.properties.len(),
+        "scene runtime configuration applied"
+    );
     let frame_interval = Duration::from_secs_f64(1.0 / fps_limit as f64);
     let mut scene_elapsed = Duration::ZERO;
     let mut previous_tick = std::time::Instant::now();
@@ -424,7 +444,10 @@ fn run_niri_scene(
     info!("niri scene rendering stopped and GPU/CPU resources released");
     Ok(())
 }
-fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
+fn prepare_scene(
+    project_dir: &std::path::Path,
+    scene_config: &better_wallpaper_core::SceneConfig,
+) -> Result<PreparedScene> {
     if !project_dir.is_dir() {
         anyhow::bail!(
             "scene wallpaper source is not a project directory: {}",
@@ -442,7 +465,11 @@ fn prepare_scene(project_dir: &std::path::Path) -> Result<PreparedScene> {
     let scene_json = package
         .read_entry_string(scene_entry)
         .context("failed to read scene.json")?;
-    let graph = parse_scene_graph(&scene_json).context("failed to parse scene graph")?;
+    let graph = better_wallpaper_scene_format::parse_scene_graph_with_properties(
+        &scene_json,
+        &scene_config.properties,
+    )
+    .context("failed to parse scene graph")?;
     let plan = build_scene_2d_plan(
         &graph,
         Scene2dOptions {

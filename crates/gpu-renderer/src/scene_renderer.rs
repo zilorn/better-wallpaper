@@ -2,7 +2,7 @@ use better_wallpaper_renderer::Scene2dAssets;
 use better_wallpaper_scene_format::{BlendMode, TexFormat, TextureImage};
 use glow::HasContext;
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 pub struct SceneGpuRenderer {
     gl: glow::Context,
@@ -20,7 +20,7 @@ struct GpuTextureState {
 }
 
 const VERTEX_SHADER: &str = "attribute vec2 a_position;\nattribute vec2 a_tex_coord;\nvarying vec2 v_tex_coord;\nvoid main() {\n    v_tex_coord = a_tex_coord;\n    gl_Position = vec4(a_position, 0.0, 1.0);\n}";
-const FRAGMENT_SHADER: &str = "precision mediump float;\nuniform sampler2D u_texture;\nuniform float u_opacity;\nvarying vec2 v_tex_coord;\nvoid main() {\n    vec4 color = texture2D(u_texture, v_tex_coord);\n    gl_FragColor = vec4(color.rgb, color.a * u_opacity);\n}";
+const FRAGMENT_SHADER: &str = "precision highp float;\nuniform sampler2D u_texture;\nuniform sampler2D u_water_wave_mask;\nuniform sampler2D u_water_wave_normal;\nuniform sampler2D u_water_flow_mask;\nuniform sampler2D u_water_flow_phase;\nuniform float u_has_water_wave_mask;\nuniform float u_has_water_wave_normal;\nuniform float u_has_water_flow_mask;\nuniform float u_has_water_flow_phase;\nuniform float u_opacity;\nuniform float u_time;\nuniform vec4 u_water_wave;\nuniform vec3 u_water_flow;\nvarying vec2 v_tex_coord;\nvoid main() {\n    vec2 uv = v_tex_coord;\n    if (u_water_wave.w > 0.0) {\n        float mask = mix(1.0, texture2D(u_water_wave_mask, v_tex_coord).r, u_has_water_wave_mask);\n        vec2 direction = vec2(cos(u_water_wave.x), sin(u_water_wave.x));\n        float frequency = 6.2831853 / max(u_water_wave.y, 0.01);\n        float phase = dot(uv, direction) * frequency + u_time * u_water_wave.z;\n        vec2 procedural = direction * sin(phase);\n        vec2 normal_uv = v_tex_coord / max(u_water_wave.y, 0.01) + direction * u_time * u_water_wave.z * 0.02;\n        vec2 normal = texture2D(u_water_wave_normal, normal_uv).rg * 2.0 - 1.0;\n        uv += mix(procedural, normal, u_has_water_wave_normal) * u_water_wave.w * 0.01 * mask;\n    }\n    if (u_water_flow.z > 0.0) {\n        float mask = mix(1.0, texture2D(u_water_flow_mask, v_tex_coord).r, u_has_water_flow_mask);\n        float phase = u_time * u_water_flow.y;\n        float frequency = 6.2831853 * max(u_water_flow.x, 0.01);\n        vec2 procedural = vec2(sin(uv.y * frequency + phase), cos(uv.x * frequency - phase));\n        vec2 phase_uv = v_tex_coord * max(u_water_flow.x, 0.01) + vec2(phase * 0.02, -phase * 0.015);\n        vec2 phase_flow = texture2D(u_water_flow_phase, phase_uv).rg * 2.0 - 1.0;\n        uv += mix(procedural, phase_flow, u_has_water_flow_phase) * u_water_flow.z * 0.003 * mask;\n    }\n    vec4 color = texture2D(u_texture, uv);\n    gl_FragColor = vec4(color.rgb, color.a * u_opacity);\n}";
 
 const MAX_GPU_TEXTURES: usize = 256;
 
@@ -43,34 +43,49 @@ impl SceneGpuRenderer {
     pub fn upload_scene_textures(&mut self, assets: &Scene2dAssets) -> Result<(), String> {
         unsafe {
             for draw in &assets.draws {
-                if self.textures.contains_key(&draw.texture_path) {
-                    continue;
+                let mut pending = vec![(&draw.texture_path, &draw.texture)];
+                if let Some(mask) = &draw.water_wave_mask {
+                    pending.push((&mask.path, &mask.texture));
                 }
-                let state = match self.upload_texture(&draw.texture) {
-                    Ok(state) => state,
-                    Err(error) => {
-                        let base = draw.texture.levels.first();
-                        warn!(
-                            texture = %draw.texture_path,
-                            format = ?draw.texture.format,
-                            width = base.map_or(0, |level| level.width),
-                            height = base.map_or(0, |level| level.height),
-                            bytes = base.map_or(0, |level| level.data.len()),
-                            %error,
-                            "Skipping unsupported scene texture format"
-                        );
+                if let Some(mask) = &draw.water_flow_mask {
+                    pending.push((&mask.path, &mask.texture));
+                }
+                if let Some(normal) = &draw.water_wave_normal {
+                    pending.push((&normal.path, &normal.texture));
+                }
+                if let Some(phase) = &draw.water_flow_phase {
+                    pending.push((&phase.path, &phase.texture));
+                }
+                for (path, texture) in pending {
+                    if self.textures.contains_key(path) {
                         continue;
                     }
-                };
-                #[allow(clippy::collapsible_if)]
-                if self.textures.len() >= MAX_GPU_TEXTURES {
-                    if let Some(key) = self.textures.keys().next().cloned() {
-                        if let Some(state) = self.textures.remove(&key) {
-                            self.gl.delete_texture(state.texture);
+                    let state = match self.upload_texture(texture) {
+                        Ok(state) => state,
+                        Err(error) => {
+                            let base = texture.levels.first();
+                            warn!(
+                                texture = %path,
+                                format = ?texture.format,
+                                width = base.map_or(0, |level| level.width),
+                                height = base.map_or(0, |level| level.height),
+                                bytes = base.map_or(0, |level| level.data.len()),
+                                %error,
+                                "Skipping unsupported scene texture format"
+                            );
+                            continue;
+                        }
+                    };
+                    #[allow(clippy::collapsible_if)]
+                    if self.textures.len() >= MAX_GPU_TEXTURES {
+                        if let Some(key) = self.textures.keys().next().cloned() {
+                            if let Some(state) = self.textures.remove(&key) {
+                                self.gl.delete_texture(state.texture);
+                            }
                         }
                     }
+                    self.textures.insert(path.clone(), state);
                 }
-                self.textures.insert(draw.texture_path.clone(), state);
             }
         }
         Ok(())
@@ -210,9 +225,42 @@ impl SceneGpuRenderer {
                 .unwrap_or(1);
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
+            let time_loc = self.gl.get_uniform_location(self.program, "u_time");
+            let water_wave_loc = self.gl.get_uniform_location(self.program, "u_water_wave");
+            let water_flow_loc = self.gl.get_uniform_location(self.program, "u_water_flow");
+            let water_wave_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_water_wave_mask");
+            let water_flow_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_water_flow_mask");
+            let water_wave_normal_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_water_wave_normal");
+            let water_flow_phase_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_water_flow_phase");
+            let has_water_wave_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_water_wave_mask");
+            let has_water_flow_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_water_flow_mask");
+            let has_water_wave_normal_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_water_wave_normal");
+            let has_water_flow_phase_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_water_flow_phase");
             self.gl.enable_vertex_attrib_array(position_loc);
             self.gl.enable_vertex_attrib_array(tex_coord_loc);
             self.gl.uniform_1_i32(sampler_loc.as_ref(), 0);
+            self.gl.uniform_1_i32(water_wave_mask_loc.as_ref(), 1);
+            self.gl.uniform_1_i32(water_flow_mask_loc.as_ref(), 2);
+            self.gl.uniform_1_i32(water_wave_normal_loc.as_ref(), 3);
+            self.gl.uniform_1_i32(water_flow_phase_loc.as_ref(), 4);
+            self.gl
+                .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
             for draw in &assets.draws {
                 let Some(state) = self.textures.get(&draw.texture_path) else {
                     continue;
@@ -238,12 +286,88 @@ impl SceneGpuRenderer {
                 }
                 self.gl.active_texture(glow::TEXTURE0);
                 self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
+                let wrap = if draw.quad.scroll.is_some() {
+                    glow::REPEAT
+                } else {
+                    glow::CLAMP_TO_EDGE
+                } as i32;
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, wrap);
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
                 self.gl
                     .uniform_1_f32(opacity_loc.as_ref(), draw.quad.opacity);
-                let uv = draw
+                if let Some(wave) = &draw.quad.water_wave {
+                    self.gl.uniform_4_f32(
+                        water_wave_loc.as_ref(),
+                        wave.direction,
+                        wave.scale,
+                        wave.speed,
+                        wave.strength,
+                    );
+                } else {
+                    self.gl
+                        .uniform_4_f32(water_wave_loc.as_ref(), 0.0, 1.0, 0.0, 0.0);
+                }
+                if let Some(flow) = &draw.quad.water_flow {
+                    self.gl.uniform_3_f32(
+                        water_flow_loc.as_ref(),
+                        flow.phase_scale,
+                        flow.speed,
+                        flow.strength,
+                    );
+                } else {
+                    self.gl
+                        .uniform_3_f32(water_flow_loc.as_ref(), 1.0, 0.0, 0.0);
+                }
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE1,
+                    draw.water_wave_mask
+                        .as_ref()
+                        .map(|texture| texture.path.as_str()),
+                    has_water_wave_mask_loc.as_ref(),
+                    false,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE2,
+                    draw.water_flow_mask
+                        .as_ref()
+                        .map(|texture| texture.path.as_str()),
+                    has_water_flow_mask_loc.as_ref(),
+                    false,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE3,
+                    draw.water_wave_normal
+                        .as_ref()
+                        .map(|texture| texture.path.as_str()),
+                    has_water_wave_normal_loc.as_ref(),
+                    true,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE4,
+                    draw.water_flow_phase
+                        .as_ref()
+                        .map(|texture| texture.path.as_str()),
+                    has_water_flow_phase_loc.as_ref(),
+                    true,
+                );
+                self.gl.active_texture(glow::TEXTURE0);
+                let mut uv = draw
                     .animation
                     .as_ref()
                     .map_or(draw.uv, |animation| animation.uv_at(elapsed_seconds));
+                if let Some(scroll) = draw.quad.scroll {
+                    uv = scroll_uv(uv, scroll, elapsed_seconds);
+                }
                 let vertices = scene_vertices(&draw.quad.vertices, uv);
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
@@ -265,7 +389,7 @@ impl SceneGpuRenderer {
             self.gl.bind_texture(glow::TEXTURE_2D, None);
             self.gl.use_program(None);
         }
-        debug!(
+        trace!(
             drawn,
             total = assets.draws.len(),
             elapsed_us = start.elapsed().as_micros() as u64,
@@ -285,6 +409,48 @@ impl SceneGpuRenderer {
             }
         }
     }
+}
+
+unsafe fn bind_optional_texture(
+    gl: &glow::Context,
+    textures: &HashMap<String, GpuTextureState>,
+    unit: u32,
+    path: Option<&str>,
+    present_location: Option<&glow::UniformLocation>,
+    repeat: bool,
+) {
+    unsafe {
+        gl.active_texture(unit);
+        let texture = path.and_then(|path| textures.get(path));
+        gl.bind_texture(glow::TEXTURE_2D, texture.map(|state| state.texture));
+        if texture.is_some() {
+            let wrap = if repeat {
+                glow::REPEAT
+            } else {
+                glow::CLAMP_TO_EDGE
+            } as i32;
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, wrap);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
+        }
+        gl.uniform_1_f32(present_location, f32::from(texture.is_some()));
+    }
+}
+
+fn scroll_uv(
+    uv: [f32; 4],
+    scroll: better_wallpaper_scene_format::ScrollEffect,
+    elapsed_seconds: f64,
+) -> [f32; 4] {
+    let width = uv[2] - uv[0];
+    let height = uv[3] - uv[1];
+    let phase_x = (elapsed_seconds * f64::from(scroll.speed_x)).rem_euclid(1.0) as f32;
+    let phase_y = (elapsed_seconds * f64::from(scroll.speed_y)).rem_euclid(1.0) as f32;
+    [
+        uv[0] + phase_x * width,
+        uv[1] + phase_y * height,
+        uv[0] + (phase_x + scroll.repeat_x) * width,
+        uv[1] + (phase_y + scroll.repeat_y) * height,
+    ]
 }
 
 fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 16] {
@@ -473,8 +639,8 @@ unsafe fn compile_program(
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_to_rgba8, scene_vertices};
-    use better_wallpaper_scene_format::TexFormat;
+    use super::{convert_to_rgba8, scene_vertices, scroll_uv};
+    use better_wallpaper_scene_format::{ScrollEffect, TexFormat};
 
     #[test]
     fn interleaves_scene_positions_with_quad_texture_coordinates() {
@@ -507,5 +673,19 @@ mod tests {
         let pixels = [240, 20, 7, 128];
         let rgba = convert_to_rgba8(TexFormat::RGBA8888, &pixels, 1, 1);
         assert_eq!(rgba.as_ref(), &pixels);
+    }
+
+    #[test]
+    fn scroll_effect_moves_and_repeats_texture_coordinates() {
+        let effect = ScrollEffect {
+            speed_x: 0.25,
+            speed_y: -0.5,
+            repeat_x: 2.0,
+            repeat_y: 1.0,
+        };
+        assert_eq!(
+            scroll_uv([0.0, 0.0, 1.0, 1.0], effect, 2.0),
+            [0.5, 0.0, 2.5, 1.0]
+        );
     }
 }

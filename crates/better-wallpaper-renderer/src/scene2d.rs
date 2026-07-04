@@ -65,6 +65,9 @@ pub struct Scene2dQuad {
     /// Quad corners in NDC, ordered top-left, top-right, bottom-right, bottom-left.
     pub vertices: [[f32; 2]; 4],
     pub opacity: f32,
+    pub scroll: Option<better_wallpaper_scene_format::ScrollEffect>,
+    pub water_wave: Option<better_wallpaper_scene_format::WaterWaveEffect>,
+    pub water_flow: Option<better_wallpaper_scene_format::WaterFlowEffect>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +87,16 @@ pub struct Scene2dDraw {
     /// Logical image bounds within a potentially padded GPU texture.
     pub uv: [f32; 4],
     pub animation: Option<SpriteAnimation>,
+    pub water_wave_mask: Option<Scene2dEffectTexture>,
+    pub water_wave_normal: Option<Scene2dEffectTexture>,
+    pub water_flow_mask: Option<Scene2dEffectTexture>,
+    pub water_flow_phase: Option<Scene2dEffectTexture>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scene2dEffectTexture {
+    pub path: String,
+    pub texture: TextureImage,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -231,6 +244,30 @@ pub fn resolve_scene_2d_assets(
                         path: texture_path.clone(),
                         detail: error.to_string(),
                     })?;
+            let water_wave_mask = quad
+                .water_wave
+                .as_ref()
+                .and_then(|effect| effect.mask.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
+            let water_flow_mask = quad
+                .water_flow
+                .as_ref()
+                .and_then(|effect| effect.mask.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
+            let water_wave_normal = quad
+                .water_wave
+                .as_ref()
+                .and_then(|effect| effect.normal.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
+            let water_flow_phase = quad
+                .water_flow
+                .as_ref()
+                .and_then(|effect| effect.phase.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
             Ok(Scene2dDraw {
                 quad,
                 blend_mode: pass.blend_mode.clone(),
@@ -238,6 +275,10 @@ pub fn resolve_scene_2d_assets(
                 texture,
                 uv,
                 animation,
+                water_wave_mask,
+                water_wave_normal,
+                water_flow_mask,
+                water_flow_phase,
             })
         })();
         match resolved {
@@ -252,6 +293,29 @@ pub fn resolve_scene_2d_assets(
         draws,
         skipped_nodes,
     })
+}
+
+fn load_effect_texture(
+    package: &PkgReader,
+    logical_name: &str,
+) -> Result<Scene2dEffectTexture, Scene2dError> {
+    let path = resolve_texture_path("", logical_name);
+    let entry = package
+        .find(&path)
+        .ok_or_else(|| Scene2dError::MissingTexture(path.clone()))?;
+    let parsed = TexTexture::parse(package.read_entry(entry)).map_err(|error| {
+        Scene2dError::InvalidTexture {
+            path: path.clone(),
+            detail: error.to_string(),
+        }
+    })?;
+    let texture = parsed
+        .to_texture_image()
+        .map_err(|error| Scene2dError::InvalidTexture {
+            path: path.clone(),
+            detail: error.to_string(),
+        })?;
+    Ok(Scene2dEffectTexture { path, texture })
 }
 
 fn sprite_animation(texture: &TexTexture) -> Option<SpriteAnimation> {
@@ -281,10 +345,10 @@ fn sprite_animation(texture: &TexTexture) -> Option<SpriteAnimation> {
             }
             Some(SpriteFrame {
                 uv: [
-                    frame.x / width,
-                    frame.y / height,
-                    (frame.x + frame.width) / width,
-                    (frame.y + frame.height) / height,
+                    (frame.x + 0.5) / width,
+                    (frame.y + 0.5) / height,
+                    (frame.x + frame.width - 0.5) / width,
+                    (frame.y + frame.height - 0.5) / height,
                 ],
                 duration_seconds: frame.frametime,
             })
@@ -417,6 +481,9 @@ pub fn build_scene_2d_plan(
                 transform.transform_point([-half_x, half_y]),
             ],
             opacity,
+            scroll: node.scroll,
+            water_wave: node.water_wave.clone(),
+            water_flow: node.water_flow.clone(),
         });
     }
     Ok(Scene2dPlan {
@@ -499,6 +566,48 @@ mod tests {
         assert_eq!(animation.uv_at(0.05), [0.0, 0.0, 0.5, 1.0]);
         assert_eq!(animation.uv_at(0.15), [0.5, 0.0, 1.0, 1.0]);
         assert_eq!(animation.uv_at(0.35), [0.0, 0.0, 0.5, 1.0]);
+    }
+
+    #[test]
+    fn sprite_animation_insets_uvs_to_prevent_adjacent_frame_bleeding() {
+        let texture = TexTexture {
+            format: better_wallpaper_scene_format::TexFormat::ARGB8888,
+            width: 4,
+            height: 2,
+            texture_width: 4,
+            texture_height: 2,
+            flags: 4,
+            mipmaps: Vec::new(),
+            frames: vec![
+                better_wallpaper_scene_format::AnimationFrame {
+                    frame_number: 0,
+                    frametime: 0.5,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 2.0,
+                    height: 2.0,
+                },
+                better_wallpaper_scene_format::AnimationFrame {
+                    frame_number: 1,
+                    frametime: 0.5,
+                    x: 2.0,
+                    y: 0.0,
+                    width: 2.0,
+                    height: 2.0,
+                },
+            ],
+            is_animated: true,
+            container_version: 2,
+            free_image_format: None,
+            is_video: false,
+            spritesheet_cols: 2,
+            spritesheet_rows: 1,
+            spritesheet_frames: 2,
+            spritesheet_duration: 1.0,
+        };
+        let animation = sprite_animation(&texture).unwrap();
+        assert_eq!(animation.uv_at(0.25), [0.125, 0.25, 0.375, 0.75]);
+        assert_eq!(animation.uv_at(0.75), [0.625, 0.25, 0.875, 0.75]);
     }
 
     fn plan(json: &str) -> Result<Scene2dPlan, Scene2dError> {
@@ -667,6 +776,48 @@ mod tests {
         assert_eq!(assets.draws[0].texture_path, "materials/bg.tex");
         assert_eq!(assets.draws[0].blend_mode, BlendMode::Translucent);
         assert_eq!(assets.draws[0].texture.levels[0].data.len(), 16);
+    }
+
+    #[test]
+    fn resolves_water_effect_masks_as_shared_draw_assets() {
+        let package = package(&[
+            (
+                "models/water.json",
+                br#"{"material":"materials/water.json"}"#.to_vec(),
+            ),
+            (
+                "materials/water.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["water"]}]}"#.to_vec(),
+            ),
+            ("materials/water.tex", rgba_tex(2, 2)),
+            ("materials/masks/wave.tex", rgba_tex(2, 2)),
+            ("materials/masks/flow.tex", rgba_tex(2, 2)),
+            ("materials/effects/normal.tex", rgba_tex(2, 2)),
+            ("materials/effects/phase.tex", rgba_tex(2, 2)),
+        ]);
+        let plan = plan(
+            r#"{"objects":[{"id":"water","image":"models/water.json","size":"100 100","effects":[{"file":"effects/waterripple/effect.json","passes":[{"constantshadervalues":{"scale":1,"ripplestrength":0.1},"textures":[null,"masks/wave","effects/normal"]}]},{"file":"effects/waterflow/effect.json","passes":[{"constantshadervalues":{"phasescale":1,"speed":1,"strength":1},"textures":[null,"masks/flow","effects/phase"]}]}]}]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        let draw = &assets.draws[0];
+        assert_eq!(
+            draw.water_wave_mask.as_ref().unwrap().path,
+            "materials/masks/wave.tex"
+        );
+        assert_eq!(
+            draw.water_flow_mask.as_ref().unwrap().path,
+            "materials/masks/flow.tex"
+        );
+        assert_eq!(
+            draw.water_wave_normal.as_ref().unwrap().path,
+            "materials/effects/normal.tex"
+        );
+        assert_eq!(
+            draw.water_flow_phase.as_ref().unwrap().path,
+            "materials/effects/phase.tex"
+        );
     }
 
     #[test]
