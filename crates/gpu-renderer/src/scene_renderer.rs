@@ -53,13 +53,13 @@ impl SceneGpuRenderer {
         unsafe {
             for draw in &assets.draws {
                 let mut pending = vec![(&draw.texture_path, &draw.texture)];
-                if let Some(mask) = &draw.water_wave_mask {
+                for mask in draw.water_wave_masks.iter().flatten() {
                     pending.push((&mask.path, &mask.texture));
                 }
                 if let Some(mask) = &draw.water_flow_mask {
                     pending.push((&mask.path, &mask.texture));
                 }
-                if let Some(normal) = &draw.water_wave_normal {
+                for normal in draw.water_wave_normals.iter().flatten() {
                     pending.push((&normal.path, &normal.texture));
                 }
                 if let Some(phase) = &draw.water_flow_phase {
@@ -72,6 +72,12 @@ impl SceneGpuRenderer {
                     pending.push((&mask.path, &mask.texture));
                 }
                 if let Some(mask) = &draw.shine_mask {
+                    pending.push((&mask.path, &mask.texture));
+                }
+                for map in draw.shake_maps.iter().flatten() {
+                    pending.push((&map.path, &map.texture));
+                }
+                for mask in draw.pulse_masks.iter().flatten() {
                     pending.push((&mask.path, &mask.texture));
                 }
                 for (path, texture) in pending {
@@ -326,11 +332,19 @@ impl SceneGpuRenderer {
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
             let time_loc = self.gl.get_uniform_location(self.program, "u_time");
-            let water_wave_loc = self.gl.get_uniform_location(self.program, "u_water_wave");
+            let water_wave_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_water_wave{index}"))
+                })
+                .collect::<Vec<_>>();
             let water_flow_loc = self.gl.get_uniform_location(self.program, "u_water_flow");
-            let water_wave_mask_loc = self
-                .gl
-                .get_uniform_location(self.program, "u_water_wave_mask");
+            let water_wave_mask_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_water_wave_mask{index}"))
+                })
+                .collect::<Vec<_>>();
             let water_flow_mask_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_water_flow_mask");
@@ -340,9 +354,14 @@ impl SceneGpuRenderer {
             let water_flow_phase_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_water_flow_phase");
-            let has_water_wave_mask_loc = self
-                .gl
-                .get_uniform_location(self.program, "u_has_water_wave_mask");
+            let has_water_wave_mask_locs = (0..3)
+                .map(|index| {
+                    self.gl.get_uniform_location(
+                        self.program,
+                        &format!("u_has_water_wave_mask{index}"),
+                    )
+                })
+                .collect::<Vec<_>>();
             let has_water_flow_mask_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_has_water_flow_mask");
@@ -384,10 +403,75 @@ impl SceneGpuRenderer {
             let has_shine_mask_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_has_shine_mask");
+            let shake_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_shake{index}"))
+                })
+                .collect::<Vec<_>>();
+            let shake_friction_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_shake_friction{index}"))
+                })
+                .collect::<Vec<_>>();
+            let shake_map_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_shake_map{index}"))
+                })
+                .collect::<Vec<_>>();
+            let has_shake_map_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_has_shake_map{index}"))
+                })
+                .collect::<Vec<_>>();
+            let pulse_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_pulse{index}"))
+                })
+                .collect::<Vec<_>>();
+            let pulse_bounds_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_pulse_bounds{index}"))
+                })
+                .collect::<Vec<_>>();
+            let pulse_low_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_pulse_low{index}"))
+                })
+                .collect::<Vec<_>>();
+            let pulse_high_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_pulse_high{index}"))
+                })
+                .collect::<Vec<_>>();
+            let pulse_mask_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_pulse_mask{index}"))
+                })
+                .collect::<Vec<_>>();
+            let has_pulse_mask_locs = (0..3)
+                .map(|index| {
+                    self.gl
+                        .get_uniform_location(self.program, &format!("u_has_pulse_mask{index}"))
+                })
+                .collect::<Vec<_>>();
+            let spin_loc = self.gl.get_uniform_location(self.program, "u_spin");
+            let spin_aspect_loc = self.gl.get_uniform_location(self.program, "u_spin_aspect");
+            let has_spin_loc = self.gl.get_uniform_location(self.program, "u_has_spin");
             self.gl.enable_vertex_attrib_array(position_loc);
             self.gl.enable_vertex_attrib_array(tex_coord_loc);
             self.gl.uniform_1_i32(sampler_loc.as_ref(), 0);
-            self.gl.uniform_1_i32(water_wave_mask_loc.as_ref(), 1);
+            for (location, unit) in water_wave_mask_locs.iter().zip([1, 9, 10]) {
+                self.gl.uniform_1_i32(location.as_ref(), unit);
+            }
             self.gl.uniform_1_i32(water_flow_mask_loc.as_ref(), 2);
             self.gl.uniform_1_i32(water_wave_normal_loc.as_ref(), 3);
             self.gl.uniform_1_i32(water_flow_phase_loc.as_ref(), 4);
@@ -395,6 +479,12 @@ impl SceneGpuRenderer {
             self.gl.uniform_1_i32(foliage_mask0_loc.as_ref(), 6);
             self.gl.uniform_1_i32(foliage_mask1_loc.as_ref(), 7);
             self.gl.uniform_1_i32(shine_mask_loc.as_ref(), 8);
+            for (location, unit) in shake_map_locs.iter().zip([11, 12, 3]) {
+                self.gl.uniform_1_i32(location.as_ref(), unit);
+            }
+            for (location, unit) in pulse_mask_locs.iter().zip([13, 14, 15]) {
+                self.gl.uniform_1_i32(location.as_ref(), unit);
+            }
             self.gl
                 .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
             for draw in &assets.draws {
@@ -433,17 +523,18 @@ impl SceneGpuRenderer {
                     .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
                 self.gl
                     .uniform_1_f32(opacity_loc.as_ref(), draw.quad.opacity);
-                if let Some(wave) = &draw.quad.water_wave {
-                    self.gl.uniform_4_f32(
-                        water_wave_loc.as_ref(),
-                        wave.direction,
-                        wave.scale,
-                        wave.speed,
-                        wave.strength,
-                    );
-                } else {
-                    self.gl
-                        .uniform_4_f32(water_wave_loc.as_ref(), 0.0, 1.0, 0.0, 0.0);
+                for (index, location) in water_wave_locs.iter().enumerate() {
+                    if let Some(wave) = draw.quad.water_waves.get(index) {
+                        self.gl.uniform_4_f32(
+                            location.as_ref(),
+                            wave.direction,
+                            wave.scale,
+                            wave.speed,
+                            wave.strength,
+                        );
+                    } else {
+                        self.gl.uniform_4_f32(location.as_ref(), 0.0, 1.0, 0.0, 0.0);
+                    }
                 }
                 if let Some(flow) = &draw.quad.water_flow {
                     self.gl.uniform_3_f32(
@@ -502,14 +593,87 @@ impl SceneGpuRenderer {
                     self.gl
                         .uniform_3_f32(shine_color_loc.as_ref(), 1.0, 1.0, 1.0);
                 }
+                for index in 0..3 {
+                    if let Some(shake) = draw.quad.shakes.get(index) {
+                        self.gl.uniform_4_f32(
+                            shake_locs[index].as_ref(),
+                            shake.speed,
+                            shake.strength,
+                            shake.bounds.x,
+                            shake.bounds.y,
+                        );
+                        self.gl.uniform_2_f32(
+                            shake_friction_locs[index].as_ref(),
+                            shake.friction.x,
+                            shake.friction.y,
+                        );
+                    } else {
+                        self.gl
+                            .uniform_4_f32(shake_locs[index].as_ref(), 0.0, 0.0, 0.0, 1.0);
+                        self.gl
+                            .uniform_2_f32(shake_friction_locs[index].as_ref(), 1.0, 1.0);
+                    }
+                    if let Some(pulse) = draw.quad.pulses.get(index) {
+                        self.gl.uniform_4_f32(
+                            pulse_locs[index].as_ref(),
+                            pulse.speed,
+                            pulse.phase,
+                            pulse.amount,
+                            pulse.power,
+                        );
+                        self.gl.uniform_2_f32(
+                            pulse_bounds_locs[index].as_ref(),
+                            pulse.bounds.x,
+                            pulse.bounds.y,
+                        );
+                        self.gl.uniform_3_f32(
+                            pulse_low_locs[index].as_ref(),
+                            pulse.tint_low.x,
+                            pulse.tint_low.y,
+                            pulse.tint_low.z,
+                        );
+                        self.gl.uniform_3_f32(
+                            pulse_high_locs[index].as_ref(),
+                            pulse.tint_high.x,
+                            pulse.tint_high.y,
+                            pulse.tint_high.z,
+                        );
+                    } else {
+                        self.gl
+                            .uniform_4_f32(pulse_locs[index].as_ref(), 0.0, 0.0, 0.0, 1.0);
+                        self.gl
+                            .uniform_2_f32(pulse_bounds_locs[index].as_ref(), 0.0, 1.0);
+                        self.gl
+                            .uniform_3_f32(pulse_low_locs[index].as_ref(), 1.0, 1.0, 1.0);
+                        self.gl
+                            .uniform_3_f32(pulse_high_locs[index].as_ref(), 1.0, 1.0, 1.0);
+                    }
+                }
+                if let Some(spin) = draw.quad.spin {
+                    self.gl.uniform_3_f32(
+                        spin_loc.as_ref(),
+                        spin.speed,
+                        spin.center.x,
+                        spin.center.y,
+                    );
+                    self.gl.uniform_1_f32(has_spin_loc.as_ref(), 1.0);
+                } else {
+                    self.gl.uniform_3_f32(spin_loc.as_ref(), 0.0, 0.5, 0.5);
+                    self.gl.uniform_1_f32(has_spin_loc.as_ref(), 0.0);
+                }
+                self.gl.uniform_1_f32(
+                    spin_aspect_loc.as_ref(),
+                    state.width as f32 / state.height.max(1) as f32,
+                );
                 bind_optional_texture(
                     &self.gl,
                     &self.textures,
                     glow::TEXTURE1,
-                    draw.water_wave_mask
-                        .as_ref()
+                    draw.water_wave_masks
+                        .first()
+                        .and_then(Option::as_ref)
                         .map(|texture| texture.path.as_str()),
-                    has_water_wave_mask_loc.as_ref(),
+                    has_water_wave_mask_locs[0].as_ref(),
                     false,
                 );
                 bind_optional_texture(
@@ -526,8 +690,9 @@ impl SceneGpuRenderer {
                     &self.gl,
                     &self.textures,
                     glow::TEXTURE3,
-                    draw.water_wave_normal
-                        .as_ref()
+                    draw.water_wave_normals
+                        .first()
+                        .and_then(Option::as_ref)
                         .map(|texture| texture.path.as_str()),
                     has_water_wave_normal_loc.as_ref(),
                     true,
@@ -582,6 +747,51 @@ impl SceneGpuRenderer {
                     has_water_flow_phase_loc.as_ref(),
                     true,
                 );
+                for (index, unit) in [glow::TEXTURE9, glow::TEXTURE10].into_iter().enumerate() {
+                    bind_optional_texture(
+                        &self.gl,
+                        &self.textures,
+                        unit,
+                        draw.water_wave_masks
+                            .get(index + 1)
+                            .and_then(Option::as_ref)
+                            .map(|texture| texture.path.as_str()),
+                        has_water_wave_mask_locs[index + 1].as_ref(),
+                        false,
+                    );
+                }
+                for (index, unit) in [glow::TEXTURE11, glow::TEXTURE12, glow::TEXTURE3]
+                    .into_iter()
+                    .enumerate()
+                {
+                    bind_optional_texture(
+                        &self.gl,
+                        &self.textures,
+                        unit,
+                        draw.shake_maps
+                            .get(index)
+                            .and_then(Option::as_ref)
+                            .map(|texture| texture.path.as_str()),
+                        has_shake_map_locs[index].as_ref(),
+                        false,
+                    );
+                }
+                for (index, unit) in [glow::TEXTURE13, glow::TEXTURE14, glow::TEXTURE15]
+                    .into_iter()
+                    .enumerate()
+                {
+                    bind_optional_texture(
+                        &self.gl,
+                        &self.textures,
+                        unit,
+                        draw.pulse_masks
+                            .get(index)
+                            .and_then(Option::as_ref)
+                            .map(|texture| texture.path.as_str()),
+                        has_pulse_mask_locs[index].as_ref(),
+                        false,
+                    );
+                }
                 self.gl.active_texture(glow::TEXTURE0);
                 let mut uv = draw
                     .animation
@@ -691,10 +901,10 @@ fn scroll_uv(
     let phase_x = (elapsed_seconds * f64::from(scroll.speed_x)).rem_euclid(1.0) as f32;
     let phase_y = (elapsed_seconds * f64::from(scroll.speed_y)).rem_euclid(1.0) as f32;
     [
-        uv[0] + phase_x * width,
-        uv[1] + phase_y * height,
-        uv[0] + (phase_x + scroll.repeat_x) * width,
-        uv[1] + (phase_y + scroll.repeat_y) * height,
+        uv[0] + phase_x * scroll.repeat_x * width,
+        uv[1] + phase_y * scroll.repeat_y * height,
+        uv[0] + (phase_x + 1.0) * scroll.repeat_x * width,
+        uv[1] + (phase_y + 1.0) * scroll.repeat_y * height,
     ]
 }
 
@@ -989,7 +1199,7 @@ mod tests {
         };
         assert_eq!(
             scroll_uv([0.0, 0.0, 1.0, 1.0], effect, 2.0),
-            [0.5, 0.0, 2.5, 1.0]
+            [1.0, 0.0, 3.0, 1.0]
         );
     }
 

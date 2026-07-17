@@ -66,8 +66,11 @@ pub struct Scene2dQuad {
     pub vertices: [[f32; 2]; 4],
     pub opacity: f32,
     pub scroll: Option<better_wallpaper_scene_format::ScrollEffect>,
-    pub water_wave: Option<better_wallpaper_scene_format::WaterWaveEffect>,
+    pub water_waves: Vec<better_wallpaper_scene_format::WaterWaveEffect>,
     pub water_flow: Option<better_wallpaper_scene_format::WaterFlowEffect>,
+    pub shakes: Vec<better_wallpaper_scene_format::ShakeEffect>,
+    pub pulses: Vec<better_wallpaper_scene_format::PulseEffect>,
+    pub spin: Option<better_wallpaper_scene_format::SpinEffect>,
     pub iris: Option<better_wallpaper_scene_format::IrisEffect>,
     pub foliage_sway: Vec<better_wallpaper_scene_format::FoliageSwayEffect>,
     pub shine: Option<better_wallpaper_scene_format::ShineEffect>,
@@ -90,13 +93,15 @@ pub struct Scene2dDraw {
     /// Logical image bounds within a potentially padded GPU texture.
     pub uv: [f32; 4],
     pub animation: Option<SpriteAnimation>,
-    pub water_wave_mask: Option<Scene2dEffectTexture>,
-    pub water_wave_normal: Option<Scene2dEffectTexture>,
+    pub water_wave_masks: Vec<Option<Scene2dEffectTexture>>,
+    pub water_wave_normals: Vec<Option<Scene2dEffectTexture>>,
     pub water_flow_mask: Option<Scene2dEffectTexture>,
     pub water_flow_phase: Option<Scene2dEffectTexture>,
     pub iris_mask: Option<Scene2dEffectTexture>,
     pub foliage_masks: Vec<Option<Scene2dEffectTexture>>,
     pub shine_mask: Option<Scene2dEffectTexture>,
+    pub shake_maps: Vec<Option<Scene2dEffectTexture>>,
+    pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
 }
 
 #[derive(Debug, Clone)]
@@ -267,24 +272,34 @@ pub fn resolve_scene_2d_assets(
                 parsed.height as f32 / upload_height,
             ];
             let animation = sprite_animation(&parsed, upload_width, upload_height);
-            let water_wave_mask = quad
-                .water_wave
-                .as_ref()
-                .and_then(|effect| effect.mask.as_deref())
-                .map(|path| load_effect_texture(package, path))
-                .transpose()?;
+            let water_wave_masks = quad
+                .water_waves
+                .iter()
+                .map(|effect| {
+                    effect
+                        .mask
+                        .as_deref()
+                        .map(|path| load_effect_texture(package, path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             let water_flow_mask = quad
                 .water_flow
                 .as_ref()
                 .and_then(|effect| effect.mask.as_deref())
                 .map(|path| load_effect_texture(package, path))
                 .transpose()?;
-            let water_wave_normal = quad
-                .water_wave
-                .as_ref()
-                .and_then(|effect| effect.normal.as_deref())
-                .map(|path| load_effect_texture(package, path))
-                .transpose()?;
+            let water_wave_normals = quad
+                .water_waves
+                .iter()
+                .map(|effect| {
+                    effect
+                        .normal
+                        .as_deref()
+                        .map(|path| load_effect_texture(package, path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             let water_flow_phase = quad
                 .water_flow
                 .as_ref()
@@ -314,6 +329,28 @@ pub fn resolve_scene_2d_assets(
                 .and_then(|effect| effect.mask.as_deref())
                 .map(|path| load_effect_texture(package, path))
                 .transpose()?;
+            let shake_maps = quad
+                .shakes
+                .iter()
+                .map(|effect| {
+                    effect
+                        .direction_map
+                        .as_deref()
+                        .map(|path| load_effect_texture(package, path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let pulse_masks = quad
+                .pulses
+                .iter()
+                .map(|effect| {
+                    effect
+                        .mask
+                        .as_deref()
+                        .map(|path| load_effect_texture(package, path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(Scene2dDraw {
                 quad,
                 blend_mode: pass.blend_mode.clone(),
@@ -321,13 +358,15 @@ pub fn resolve_scene_2d_assets(
                 texture,
                 uv,
                 animation,
-                water_wave_mask,
-                water_wave_normal,
+                water_wave_masks,
+                water_wave_normals,
                 water_flow_mask,
                 water_flow_phase,
                 iris_mask,
                 foliage_masks,
                 shine_mask,
+                shake_maps,
+                pulse_masks,
             })
         })();
         match resolved {
@@ -462,12 +501,12 @@ pub fn build_scene_2d_plan(
     {
         return Err(Scene2dError::InvalidProjection);
     }
-    // Wallpaper Engine stores the orthographic camera X/Y as an offset from
-    // the centre of the project canvas. Scene objects, on the other hand, use
-    // canvas coordinates (for example 1920,1080 in a 3840x2160 project).
-    // Treating the camera value as an absolute canvas position sends every
-    // layer far outside the viewport for ordinary scene projects.
-    let camera_offset = graph
+    // The serialized camera position belongs to the editor viewport. Runtime
+    // 2D layers are authored in project-canvas coordinates and full-screen
+    // layers consistently use projection/2 as their origin. Applying the
+    // editor pan here shifts otherwise exact full-screen layers and exposes
+    // clear-color borders.
+    let editor_camera = graph
         .camera
         .center
         .unwrap_or(better_wallpaper_scene_format::Vec3 {
@@ -475,18 +514,18 @@ pub fn build_scene_2d_plan(
             y: 0.0,
             z: 0.0,
         });
-    let center_x = projection.x * 0.5 + camera_offset.x;
-    let center_y = projection.y * 0.5 + camera_offset.y;
+    let center_x = projection.x * 0.5;
+    let center_y = projection.y * 0.5;
     let view = Mat3::scale(2.0 / projection.x, -2.0 / projection.y)
         * Mat3::translation(-center_x, -center_y);
     debug!(
         projection_width = projection.x,
         projection_height = projection.y,
-        camera_offset_x = camera_offset.x,
-        camera_offset_y = camera_offset.y,
+        editor_camera_x = editor_camera.x,
+        editor_camera_y = editor_camera.y,
         view_center_x = center_x,
         view_center_y = center_y,
-        "Building scene layout from project canvas coordinates"
+        "Building scene layout in project canvas coordinates; editor camera pan ignored"
     );
 
     let mut worlds = vec![None; graph.nodes.len()];
@@ -535,8 +574,11 @@ pub fn build_scene_2d_plan(
             ],
             opacity,
             scroll: node.scroll,
-            water_wave: node.water_wave.clone(),
+            water_waves: node.water_waves.clone(),
             water_flow: node.water_flow.clone(),
+            shakes: node.shakes.clone(),
+            pulses: node.pulses.clone(),
+            spin: node.spin,
             iris: node.iris.clone(),
             foliage_sway: node.foliage_sway.clone(),
             shine: node.shine.clone(),
@@ -754,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn applies_camera_as_project_center_offset() {
+    fn ignores_serialized_editor_camera_pan_for_runtime_layout() {
         let result = plan(
             r#"{
                 "general":{"orthogonalprojection":{"width":3840,"height":2160}},
@@ -762,7 +804,7 @@ mod tests {
                 "objects":[{
                     "id":"background",
                     "image":"models/background.json",
-                    "origin":"2005.98602 986.94743 0",
+                    "origin":"1920 1080 0",
                     "size":"3840 2160"
                 }]
             }"#,
@@ -907,7 +949,7 @@ mod tests {
         let assets = resolve_scene_2d_assets(&package, plan).unwrap();
         let draw = &assets.draws[0];
         assert_eq!(
-            draw.water_wave_mask.as_ref().unwrap().path,
+            draw.water_wave_masks[0].as_ref().unwrap().path,
             "materials/masks/wave.tex"
         );
         assert_eq!(
@@ -915,7 +957,7 @@ mod tests {
             "materials/masks/flow.tex"
         );
         assert_eq!(
-            draw.water_wave_normal.as_ref().unwrap().path,
+            draw.water_wave_normals[0].as_ref().unwrap().path,
             "materials/effects/normal.tex"
         );
         assert_eq!(

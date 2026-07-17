@@ -5,6 +5,9 @@ use serde_json::{Map, Value};
 use crate::error::SceneParseError;
 
 pub const MAX_SCENE_OBJECTS: usize = 16_384;
+pub const MAX_WATER_WAVE_EFFECTS: usize = 3;
+pub const MAX_SHAKE_EFFECTS: usize = 3;
+pub const MAX_PULSE_EFFECTS: usize = 3;
 
 /// Version-independent, data-only scene representation consumed by future runtimes.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -44,8 +47,11 @@ pub struct SceneNode {
     pub transform: SceneTransform,
     pub effects: Vec<String>,
     pub scroll: Option<ScrollEffect>,
-    pub water_wave: Option<WaterWaveEffect>,
+    pub water_waves: Vec<WaterWaveEffect>,
     pub water_flow: Option<WaterFlowEffect>,
+    pub shakes: Vec<ShakeEffect>,
+    pub pulses: Vec<PulseEffect>,
+    pub spin: Option<SpinEffect>,
     pub iris: Option<IrisEffect>,
     pub foliage_sway: Vec<FoliageSwayEffect>,
     pub shine: Option<ShineEffect>,
@@ -78,6 +84,33 @@ pub struct WaterFlowEffect {
     pub strength: f32,
     pub mask: Option<String>,
     pub phase: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShakeEffect {
+    pub speed: f32,
+    pub strength: f32,
+    pub bounds: Vec2,
+    pub friction: Vec2,
+    pub direction_map: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PulseEffect {
+    pub speed: f32,
+    pub phase: f32,
+    pub amount: f32,
+    pub bounds: Vec2,
+    pub power: f32,
+    pub tint_low: Vec3,
+    pub tint_high: Vec3,
+    pub mask: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpinEffect {
+    pub speed: f32,
+    pub center: Vec2,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -408,16 +441,22 @@ fn parse_node(
         .transpose()?
         .unwrap_or_default();
     let scroll = parse_scroll_effect(object.get("effects"), &path)?;
-    let water_wave = parse_water_wave_effect(object.get("effects"), &path)?;
+    let water_waves = parse_water_wave_effects(object.get("effects"), &path)?;
     let water_flow = parse_water_flow_effect(object.get("effects"), &path)?;
+    let shakes = parse_shake_effects(object.get("effects"), &path)?;
+    let pulses = parse_pulse_effects(object.get("effects"), &path)?;
+    let spin = parse_spin_effect(object.get("effects"), &path)?;
     let iris = parse_iris_effect(object.get("effects"), &path)?;
     let foliage_sway = parse_foliage_sway_effects(object.get("effects"), &path)?;
     let shine = parse_shine_effect(object.get("effects"), &path)?;
     for effect in &effects {
-        if effect != "effects/scroll/effect.json"
+        if !effect.ends_with("/scroll/effect.json")
             && effect != "effects/waterwaves/effect.json"
             && effect != "effects/waterripple/effect.json"
             && effect != "effects/waterflow/effect.json"
+            && effect != "effects/shake/effect.json"
+            && effect != "effects/pulse/effect.json"
+            && effect != "effects/spin/effect.json"
             && effect != "effects/iris/effect.json"
             && effect != "effects/foliagesway/effect.json"
             && effect != "effects/shine/effect.json"
@@ -477,8 +516,11 @@ fn parse_node(
         },
         effects,
         scroll,
-        water_wave,
+        water_waves,
         water_flow,
+        shakes,
+        pulses,
+        spin,
         iris,
         foliage_sway,
         shine,
@@ -662,6 +704,157 @@ fn first_effect_values<'a>(
         })
 }
 
+fn parse_shake_effects(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Vec<ShakeEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    let mut parsed = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/shake/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let values = first_effect_values(effect, path, index, "shake")?;
+        let bounds = values
+            .get("bounds")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].bounds"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 0.0, y: 1.0 });
+        let friction = values
+            .get("friction")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].friction"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 1.0, y: 1.0 });
+        let shake = ShakeEffect {
+            speed: optional_finite_number(values, "speed").unwrap_or(1.0),
+            strength: optional_finite_number(values, "strength").unwrap_or(0.1),
+            bounds,
+            friction,
+            direction_map: effect_texture(effect, index, 1)?,
+        };
+        if shake.speed < 0.0
+            || shake.strength < 0.0
+            || shake.bounds.y <= shake.bounds.x
+            || shake.friction.x <= 0.0
+            || shake.friction.y <= 0.0
+        {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "shake parameters are outside supported ranges".into(),
+            });
+        }
+        if parsed.len() < MAX_SHAKE_EFFECTS {
+            parsed.push(shake);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_pulse_effects(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Vec<PulseEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    let mut parsed = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/pulse/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let values = first_effect_values(effect, path, index, "pulse")?;
+        let bounds = values
+            .get("bounds")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].bounds"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 0.0, y: 1.0 });
+        let tint_low = values
+            .get("tintlow")
+            .map(|value| parse_vec3(&format!("{path}.effects[{index}].tintlow"), value))
+            .transpose()?
+            .unwrap_or(Vec3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            });
+        let tint_high = values
+            .get("tinthigh")
+            .map(|value| parse_vec3(&format!("{path}.effects[{index}].tinthigh"), value))
+            .transpose()?
+            .unwrap_or(Vec3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            });
+        let pulse = PulseEffect {
+            speed: optional_finite_number(values, "speed").unwrap_or(3.0),
+            phase: optional_finite_number(values, "phase").unwrap_or(0.0),
+            amount: optional_finite_number(values, "amount").unwrap_or(1.0),
+            bounds,
+            power: optional_finite_number(values, "power").unwrap_or(1.0),
+            tint_low,
+            tint_high,
+            mask: effect_texture(effect, index, 2)?,
+        };
+        if pulse.speed < 0.0
+            || pulse.amount < 0.0
+            || pulse.bounds.y <= pulse.bounds.x
+            || pulse.power <= 0.0
+        {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "pulse parameters are outside supported ranges".into(),
+            });
+        }
+        if parsed.len() < MAX_PULSE_EFFECTS {
+            parsed.push(pulse);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_spin_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<SpinEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/spin/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let values = first_effect_values(effect, path, index, "spin")?;
+        let center = values
+            .get("center")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].center"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 0.5, y: 0.5 });
+        return Ok(Some(SpinEffect {
+            speed: optional_finite_number(values, "speed").unwrap_or(1.0),
+            center,
+        }));
+    }
+    Ok(None)
+}
+
 fn parse_water_flow_effect(
     effects: Option<&Value>,
     path: &str,
@@ -713,13 +906,14 @@ fn parse_water_flow_effect(
     Ok(None)
 }
 
-fn parse_water_wave_effect(
+fn parse_water_wave_effects(
     effects: Option<&Value>,
     path: &str,
-) -> Result<Option<WaterWaveEffect>, SceneParseError> {
+) -> Result<Vec<WaterWaveEffect>, SceneParseError> {
     let Some(effects) = effects.and_then(Value::as_array) else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
+    let mut parsed = Vec::new();
     for (index, effect) in effects.iter().enumerate() {
         let Some(effect) = effect.as_object() else {
             continue;
@@ -754,14 +948,20 @@ fn parse_water_wave_effect(
                 detail: "waterwaves scale must be positive and strength non-negative".into(),
             });
         }
-        return Ok(Some(WaterWaveEffect {
+        let wave = WaterWaveEffect {
             direction,
             scale,
             speed,
             strength,
             mask: effect_texture(effect, index, 1)?,
             normal: None,
-        }));
+        };
+        if parsed.len() < MAX_WATER_WAVE_EFFECTS {
+            parsed.push(wave);
+        }
+    }
+    if !parsed.is_empty() {
+        return Ok(parsed);
     }
     for (index, effect) in effects.iter().enumerate() {
         let Some(effect) = effect.as_object() else {
@@ -798,16 +998,17 @@ fn parse_water_wave_effect(
                 detail: "waterripple scale must be positive and strength non-negative".into(),
             });
         }
-        return Ok(Some(WaterWaveEffect {
+        parsed.push(WaterWaveEffect {
             direction,
             scale,
             speed: animation_speed + scroll_speed,
             strength,
             mask: effect_texture(effect, index, 1)?,
             normal: effect_texture(effect, index, 2)?,
-        }));
+        });
+        break;
     }
-    Ok(None)
+    Ok(parsed)
 }
 
 fn effect_texture(
@@ -848,7 +1049,11 @@ fn parse_scroll_effect(
         let Some(effect) = effect.as_object() else {
             continue;
         };
-        if effect.get("file").and_then(Value::as_str) != Some("effects/scroll/effect.json") {
+        if !effect
+            .get("file")
+            .and_then(Value::as_str)
+            .is_some_and(|file| file.ends_with("/scroll/effect.json"))
+        {
             continue;
         }
         let visible = effect
@@ -1267,7 +1472,7 @@ mod tests {
     #[test]
     fn parses_enabled_real_scroll_effect_parameters() {
         let graph = parse_scene_graph(
-            r#"{"objects":[{"image":"clouds.json","effects":[{"file":"effects/scroll/effect.json","visible":true,"passes":[{"constantshadervalues":{"repeat":"2 1","speedx":-0.3,"speedy":0.2}}]}]}]}"#,
+            r#"{"objects":[{"image":"clouds.json","effects":[{"file":"effects/workshop/2098390419/scroll/effect.json","visible":true,"passes":[{"constantshadervalues":{"repeat":"2 1","speedx":-0.3,"speedy":0.2}}]}]}]}"#,
         )
         .unwrap();
         let scroll = graph.nodes[0].scroll.unwrap();
@@ -1278,12 +1483,34 @@ mod tests {
     }
 
     #[test]
+    fn parses_masked_shake_pulse_and_spin_effects() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"character.json","effects":[
+                {"file":"effects/pulse/effect.json","passes":[{"constantshadervalues":{"amount":1,"bounds":"0 1","phase":0.2,"power":1,"speed":3,"tintlow":"1 0.7 0.5","tinthigh":"1 1 1"},"textures":[null,null,"masks/pulse"]}]},
+                {"file":"effects/shake/effect.json","passes":[{"constantshadervalues":{"bounds":"0.2 1","friction":"1 2","speed":1.2,"strength":0.15},"textures":[null,"masks/direction"]}]},
+                {"file":"effects/spin/effect.json","passes":[{"constantshadervalues":{"center":"0.5 0.4","speed":0.5}}]}
+            ]}]}"#,
+        )
+        .unwrap();
+        let node = &graph.nodes[0];
+        assert_eq!(node.pulses.len(), 1);
+        assert_eq!(node.pulses[0].mask.as_deref(), Some("masks/pulse"));
+        assert_eq!(node.shakes.len(), 1);
+        assert_eq!(
+            node.shakes[0].direction_map.as_deref(),
+            Some("masks/direction")
+        );
+        assert_eq!(node.spin.unwrap().speed, 0.5);
+        assert!(graph.unsupported_features.is_empty());
+    }
+
+    #[test]
     fn parses_real_waterwaves_parameters() {
         let graph = parse_scene_graph(
             r#"{"objects":[{"image":"foreground.json","effects":[{"file":"effects/waterwaves/effect.json","visible":true,"passes":[{"constantshadervalues":{"direction":1.5772198,"scale":0.01,"speed":1.41,"strength":0.06}}]}]}]}"#,
         )
         .unwrap();
-        let wave = graph.nodes[0].water_wave.as_ref().unwrap();
+        let wave = &graph.nodes[0].water_waves[0];
         assert_eq!(wave.direction, 1.5772198);
         assert_eq!(wave.scale, 0.01);
         assert_eq!(wave.speed, 1.41);
@@ -1298,7 +1525,7 @@ mod tests {
         )
         .unwrap();
         let node = &graph.nodes[0];
-        let wave = node.water_wave.as_ref().unwrap();
+        let wave = &node.water_waves[0];
         assert_eq!(wave.speed, 0.11);
         assert_eq!(wave.mask.as_deref(), Some("masks/ripple"));
         assert_eq!(wave.normal.as_deref(), Some("effects/normal"));

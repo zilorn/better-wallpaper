@@ -383,12 +383,35 @@ fn run_niri_scene(
             .filter(|draw| {
                 draw.animation.is_some()
                     || draw.quad.scroll.is_some()
-                    || draw.quad.water_wave.is_some()
+                    || !draw.quad.water_waves.is_empty()
                     || draw.quad.water_flow.is_some()
+                    || !draw.quad.shakes.is_empty()
+                    || !draw.quad.pulses.is_empty()
+                    || draw.quad.spin.is_some()
                     || draw.quad.iris.is_some()
                     || !draw.quad.foliage_sway.is_empty()
                     || draw.quad.shine.is_some()
             })
+            .count(),
+        water_wave_effects = assets
+            .draws
+            .iter()
+            .map(|draw| draw.quad.water_waves.len())
+            .sum::<usize>(),
+        shake_effects = assets
+            .draws
+            .iter()
+            .map(|draw| draw.quad.shakes.len())
+            .sum::<usize>(),
+        pulse_effects = assets
+            .draws
+            .iter()
+            .map(|draw| draw.quad.pulses.len())
+            .sum::<usize>(),
+        spin_effects = assets
+            .draws
+            .iter()
+            .filter(|draw| draw.quad.spin.is_some())
             .count(),
         "scene assets uploaded to niri GPU"
     );

@@ -8,10 +8,16 @@ uniform float u_opacity;
 uniform float u_time;
 
 // Water wave: direction, scale, speed, strength.
-uniform vec4 u_water_wave;
-uniform sampler2D u_water_wave_mask;
+uniform vec4 u_water_wave0;
+uniform vec4 u_water_wave1;
+uniform vec4 u_water_wave2;
+uniform sampler2D u_water_wave_mask0;
+uniform sampler2D u_water_wave_mask1;
+uniform sampler2D u_water_wave_mask2;
 uniform sampler2D u_water_wave_normal;
-uniform float u_has_water_wave_mask;
+uniform float u_has_water_wave_mask0;
+uniform float u_has_water_wave_mask1;
+uniform float u_has_water_wave_mask2;
 uniform float u_has_water_wave_normal;
 
 // Water flow: phase scale, speed, strength.
@@ -43,6 +49,45 @@ uniform vec4 u_shine;
 uniform vec3 u_shine_color;
 uniform sampler2D u_shine_mask;
 uniform float u_has_shine_mask;
+
+// Direction-map shake: speed, strength, lower bound, upper bound.
+uniform vec4 u_shake0;
+uniform vec4 u_shake1;
+uniform vec4 u_shake2;
+uniform vec2 u_shake_friction0;
+uniform vec2 u_shake_friction1;
+uniform vec2 u_shake_friction2;
+uniform sampler2D u_shake_map0;
+uniform sampler2D u_shake_map1;
+uniform sampler2D u_shake_map2;
+uniform float u_has_shake_map0;
+uniform float u_has_shake_map1;
+uniform float u_has_shake_map2;
+
+// Color pulse: speed, phase, amount, power.
+uniform vec4 u_pulse0;
+uniform vec4 u_pulse1;
+uniform vec4 u_pulse2;
+uniform vec2 u_pulse_bounds0;
+uniform vec2 u_pulse_bounds1;
+uniform vec2 u_pulse_bounds2;
+uniform vec3 u_pulse_low0;
+uniform vec3 u_pulse_low1;
+uniform vec3 u_pulse_low2;
+uniform vec3 u_pulse_high0;
+uniform vec3 u_pulse_high1;
+uniform vec3 u_pulse_high2;
+uniform sampler2D u_pulse_mask0;
+uniform sampler2D u_pulse_mask1;
+uniform sampler2D u_pulse_mask2;
+uniform float u_has_pulse_mask0;
+uniform float u_has_pulse_mask1;
+uniform float u_has_pulse_mask2;
+
+// Texture-space spin: speed, center x/y.
+uniform vec3 u_spin;
+uniform float u_spin_aspect;
+uniform float u_has_spin;
 
 varying vec2 v_tex_coord;
 
@@ -134,27 +179,89 @@ vec2 applyIrisMovement(vec2 uv) {
     return uv + motion * u_iris_scale * 0.001 * mask;
 }
 
-vec2 applyWaterWave(vec2 uv) {
-    if (u_water_wave.w <= 0.0) {
+vec2 applyWaterWaveEffect(
+    vec2 uv,
+    vec4 wave,
+    sampler2D waveMask,
+    float hasMask
+) {
+    if (wave.w <= 0.0) {
         return uv;
     }
 
     float mask = mix(
         1.0,
-        texture2D(u_water_wave_mask, v_tex_coord).r,
-        u_has_water_wave_mask
+        texture2D(waveMask, v_tex_coord).r,
+        hasMask
     );
-    vec2 direction = directionFromAngle(u_water_wave.x);
-    float scale = max(u_water_wave.y, 0.01);
-    float frequency = TWO_PI / scale;
-    float phase = dot(uv, direction) * frequency + u_time * u_water_wave.z;
-    vec2 proceduralOffset = direction * sin(phase);
+    vec2 direction = vec2(-sin(wave.x), cos(wave.x));
+    vec2 lateral = vec2(direction.y, -direction.x);
+    float distance = u_time * wave.z
+                   + dot(uv - 0.5, direction) * max(wave.y, 0.01);
+    return uv + sin(distance) * lateral * wave.w * wave.w * mask;
+}
 
-    vec2 normalUv = v_tex_coord / scale
-                  + direction * u_time * u_water_wave.z * 0.02;
-    vec2 normalOffset = texture2D(u_water_wave_normal, normalUv).rg * 2.0 - 1.0;
-    vec2 offset = mix(proceduralOffset, normalOffset, u_has_water_wave_normal);
-    return uv + offset * u_water_wave.w * 0.01 * mask;
+vec2 applyWaterWaves(vec2 uv) {
+    uv = applyWaterWaveEffect(
+        uv, u_water_wave0, u_water_wave_mask0, u_has_water_wave_mask0
+    );
+    uv = applyWaterWaveEffect(
+        uv, u_water_wave1, u_water_wave_mask1, u_has_water_wave_mask1
+    );
+    uv = applyWaterWaveEffect(
+        uv, u_water_wave2, u_water_wave_mask2, u_has_water_wave_mask2
+    );
+    return uv;
+}
+
+vec2 applyShakeEffect(
+    vec2 uv,
+    vec4 shake,
+    vec2 friction,
+    sampler2D directionMap,
+    float hasMap
+) {
+    if (shake.y <= 0.0 || hasMap <= 0.0) {
+        return uv;
+    }
+    float oscillation = sin(u_time * shake.x) * 0.5 + 0.5;
+    float lower = clamp(shake.z, 0.0, 1.0);
+    float upper = max(shake.w, lower + 0.0001);
+    float amount = smoothstep(lower, upper, oscillation);
+    amount = mix(
+        1.0 - pow(1.0 - amount, max(friction.x, 0.01)),
+        pow(amount, max(friction.y, 0.01)),
+        step(0.0, cos(u_time * shake.x))
+    );
+    vec2 flow = (texture2D(directionMap, v_tex_coord).rg - vec2(0.498)) * 2.0;
+    return uv + amount * shake.y * shake.y * flow;
+}
+
+vec2 applyShakes(vec2 uv) {
+    uv = applyShakeEffect(
+        uv, u_shake0, u_shake_friction0, u_shake_map0, u_has_shake_map0
+    );
+    uv = applyShakeEffect(
+        uv, u_shake1, u_shake_friction1, u_shake_map1, u_has_shake_map1
+    );
+    uv = applyShakeEffect(
+        uv, u_shake2, u_shake_friction2, u_shake_map2, u_has_shake_map2
+    );
+    return uv;
+}
+
+vec2 applySpin(vec2 uv) {
+    if (u_has_spin <= 0.0) {
+        return uv;
+    }
+    vec2 centered = uv - u_spin.yz;
+    centered.x *= max(u_spin_aspect, 0.0001);
+    float angle = u_spin.x * u_time;
+    float sine = sin(angle);
+    float cosine = cos(angle);
+    centered = mat2(cosine, sine, -sine, cosine) * centered;
+    centered.x /= max(u_spin_aspect, 0.0001);
+    return centered + u_spin.yz;
 }
 
 vec2 applyWaterFlow(vec2 uv) {
@@ -162,24 +269,19 @@ vec2 applyWaterFlow(vec2 uv) {
         return uv;
     }
 
-    float mask = mix(
-        1.0,
-        texture2D(u_water_flow_mask, v_tex_coord).r,
-        u_has_water_flow_mask
-    );
-    float phase = u_time * u_water_flow.y;
     float phaseScale = max(u_water_flow.x, 0.01);
-    float frequency = TWO_PI * phaseScale;
-    vec2 proceduralOffset = vec2(
-        sin(uv.y * frequency + phase),
-        cos(uv.x * frequency - phase)
+    vec2 proceduralFlow = vec2(
+        sin(uv.y * TWO_PI * phaseScale),
+        cos(uv.x * TWO_PI * phaseScale)
     );
-
-    vec2 phaseUv = v_tex_coord * phaseScale
-                 + vec2(phase * 0.02, -phase * 0.015);
-    vec2 phaseOffset = texture2D(u_water_flow_phase, phaseUv).rg * 2.0 - 1.0;
-    vec2 offset = mix(proceduralOffset, phaseOffset, u_has_water_flow_phase);
-    return uv + offset * u_water_flow.z * 0.003 * mask;
+    vec2 mappedFlow = (texture2D(u_water_flow_mask, v_tex_coord).rg - vec2(0.498)) * 2.0;
+    vec2 flow = mix(proceduralFlow, mappedFlow, u_has_water_flow_mask);
+    float authoredPhase = texture2D(
+        u_water_flow_phase, v_tex_coord * phaseScale
+    ).r;
+    float phase = mix(0.0, authoredPhase, u_has_water_flow_phase);
+    float cycle = sin((u_time * u_water_flow.y + phase) * TWO_PI);
+    return uv + flow * cycle * u_water_flow.z * 0.05;
 }
 
 vec4 applyShine(vec4 color) {
@@ -202,13 +304,53 @@ vec4 applyShine(vec4 color) {
     return color;
 }
 
+vec4 applyPulseEffect(
+    vec4 color,
+    vec4 pulse,
+    vec2 bounds,
+    vec3 tintLow,
+    vec3 tintHigh,
+    sampler2D pulseMask,
+    float hasMask
+) {
+    if (pulse.z <= 0.0) {
+        return color;
+    }
+    float value = sin(u_time * pulse.x + pulse.y) * 0.5 + 0.5;
+    value = smoothstep(bounds.x, max(bounds.y, bounds.x + 0.0001), value);
+    value = pow(max(value * pulse.z, 0.0), max(pulse.w, 0.01));
+    vec3 tinted = color.rgb * mix(tintLow, tintHigh, value);
+    float mask = mix(1.0, texture2D(pulseMask, v_tex_coord).r, hasMask);
+    color.rgb = mix(color.rgb, tinted, mask);
+    return color;
+}
+
+vec4 applyPulses(vec4 color) {
+    color = applyPulseEffect(
+        color, u_pulse0, u_pulse_bounds0, u_pulse_low0, u_pulse_high0,
+        u_pulse_mask0, u_has_pulse_mask0
+    );
+    color = applyPulseEffect(
+        color, u_pulse1, u_pulse_bounds1, u_pulse_low1, u_pulse_high1,
+        u_pulse_mask1, u_has_pulse_mask1
+    );
+    color = applyPulseEffect(
+        color, u_pulse2, u_pulse_bounds2, u_pulse_low2, u_pulse_high2,
+        u_pulse_mask2, u_has_pulse_mask2
+    );
+    return color;
+}
+
 void main() {
-    vec2 uv = applyFoliageSway(v_tex_coord);
+    vec2 uv = applySpin(v_tex_coord);
+    uv = applyFoliageSway(uv);
     uv = applyIrisMovement(uv);
-    uv = applyWaterWave(uv);
+    uv = applyWaterWaves(uv);
+    uv = applyShakes(uv);
     uv = applyWaterFlow(uv);
 
     vec4 color = texture2D(u_texture, uv);
+    color = applyPulses(color);
     color = applyShine(color);
     gl_FragColor = vec4(color.rgb, color.a * u_opacity);
 }
