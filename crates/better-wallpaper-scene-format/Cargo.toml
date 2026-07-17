@@ -25,3 +25,7 @@ path = "src/bin/scene-inspect.rs"
 [[bin]]
 name = "scene-validate"
 path = "src/bin/scene-validate.rs"
+
+[[bin]]
+name = "pkg-unpack-test"
+path = "src/bin/pkg-unpack-test.rs"
