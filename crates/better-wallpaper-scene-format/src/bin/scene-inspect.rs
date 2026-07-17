@@ -1,14 +1,16 @@
 use std::{fs, path::PathBuf};
 
-use anyhow::{Context, Result};
-use better_wallpaper_scene_format::{PkgReader, TexTexture};
+use anyhow::{Context, Result, bail};
+use better_wallpaper_scene_format::{
+    PkgReader, SceneNodeKind, TexTexture, analyse_scene, compute_compatibility, parse_scene_graph,
+};
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[command(about = "Inspect a Wallpaper Engine scene package without extracting it")]
+#[command(about = "Inspect a Wallpaper Engine scene package or unpacked scene/TEX file")]
 struct Args {
-    /// Path to scene.pkg.
-    package: PathBuf,
+    /// Path to scene.pkg, an unpacked scene.json, or an unpacked .tex file.
+    input: PathBuf,
     /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
@@ -22,8 +24,95 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let data = fs::read(&args.package)
-        .with_context(|| format!("failed to read package {}", args.package.display()))?;
+    let data = fs::read(&args.input)
+        .with_context(|| format!("failed to read input {}", args.input.display()))?;
+    if args
+        .input
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("scene.json"))
+    {
+        if args.entry.is_some() || args.textures {
+            bail!("--entry and --textures cannot be used with an unpacked scene.json");
+        }
+        let scene_json = std::str::from_utf8(&data).context("scene.json is not valid UTF-8")?;
+        let metadata = analyse_scene(scene_json).context("scene metadata validation failed")?;
+        let graph = parse_scene_graph(scene_json).context("scene IR conversion failed")?;
+        let compatibility = compute_compatibility(&metadata);
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "path": args.input,
+                    "metadata": metadata,
+                    "compatibility": compatibility,
+                    "scene_graph": graph,
+                }))?
+            );
+        } else {
+            let image_nodes = graph
+                .nodes
+                .iter()
+                .filter(|node| matches!(node.kind, SceneNodeKind::Image(_)))
+                .count();
+            println!(
+                "{}\tobjects={}\timages={}\tunsupported={}\tcompatibility={:?}",
+                args.input.display(),
+                graph.nodes.len(),
+                image_nodes,
+                graph.unsupported_features.len(),
+                compatibility.level,
+            );
+        }
+        return Ok(());
+    }
+    if args
+        .input
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("tex"))
+    {
+        if args.entry.is_some() {
+            bail!("--entry cannot be used with an unpacked texture");
+        }
+        let texture = TexTexture::parse(&data).context("texture validation failed")?;
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "path": args.input,
+                    "width": texture.width,
+                    "height": texture.height,
+                    "storage_width": texture.texture_width,
+                    "storage_height": texture.texture_height,
+                    "format": format!("{:?}", texture.format),
+                    "embedded_format": texture.free_image_format.map(|value| format!("{value:?}")),
+                    "mip_levels": texture.mipmaps.iter().map(|mip| serde_json::json!({
+                        "width": mip.width,
+                        "height": mip.height,
+                        "decoded_bytes": mip.data.len(),
+                    })).collect::<Vec<_>>(),
+                    "frames": texture.frames.len(),
+                    "duration_seconds": texture.spritesheet_duration,
+                    "is_video": texture.is_video,
+                }))?
+            );
+        } else {
+            println!(
+                "{}\t{}x{}\tstorage={}x{}\tmips={}\tframes={}\tduration={:.3}s\tformat={:?}\tembedded={:?}\tvideo={}",
+                args.input.display(),
+                texture.width,
+                texture.height,
+                texture.texture_width,
+                texture.texture_height,
+                texture.mipmaps.len(),
+                texture.frames.len(),
+                texture.spritesheet_duration,
+                texture.format,
+                texture.free_image_format,
+                texture.is_video,
+            );
+        }
+        return Ok(());
+    }
     let package = PkgReader::parse(data).context("package validation failed")?;
     if let Some(entry) = args.entry {
         let package_entry = package

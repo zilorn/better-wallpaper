@@ -228,15 +228,15 @@ pub fn resolve_scene_2d_assets(
                     path: texture_path.clone(),
                     detail: error.to_string(),
                 })?;
-            let animation = sprite_animation(&parsed);
-            let storage_width = parsed.texture_width.max(parsed.width) as f32;
-            let storage_height = parsed.texture_height.max(parsed.height) as f32;
-            let uv = [
-                0.0,
-                0.0,
-                parsed.width as f32 / storage_width,
-                parsed.height as f32 / storage_height,
-            ];
+            debug!(
+                texture = %texture_path,
+                format = ?parsed.format,
+                embedded_format = ?parsed.free_image_format,
+                mip_levels = parsed.mipmaps.len(),
+                animated_frames = parsed.frames.len(),
+                is_video = parsed.is_video,
+                "Decoded scene texture"
+            );
             let texture =
                 parsed
                     .to_texture_image()
@@ -244,6 +244,23 @@ pub fn resolve_scene_2d_assets(
                         path: texture_path.clone(),
                         detail: error.to_string(),
                     })?;
+            let base_level =
+                texture
+                    .levels
+                    .first()
+                    .ok_or_else(|| Scene2dError::InvalidTexture {
+                        path: texture_path.clone(),
+                        detail: "texture has no uploadable base level".into(),
+                    })?;
+            let upload_width = base_level.width as f32;
+            let upload_height = base_level.height as f32;
+            let uv = [
+                0.0,
+                0.0,
+                parsed.width as f32 / upload_width,
+                parsed.height as f32 / upload_height,
+            ];
+            let animation = sprite_animation(&parsed, upload_width, upload_height);
             let water_wave_mask = quad
                 .water_wave
                 .as_ref()
@@ -318,9 +335,13 @@ fn load_effect_texture(
     Ok(Scene2dEffectTexture { path, texture })
 }
 
-fn sprite_animation(texture: &TexTexture) -> Option<SpriteAnimation> {
-    let width = texture.texture_width.max(texture.width) as f32;
-    let height = texture.texture_height.max(texture.height) as f32;
+fn sprite_animation(
+    texture: &TexTexture,
+    upload_width: f32,
+    upload_height: f32,
+) -> Option<SpriteAnimation> {
+    let width = upload_width;
+    let height = upload_height;
     if width <= 0.0 || height <= 0.0 || texture.frames.len() < 2 {
         return None;
     }
@@ -605,7 +626,7 @@ mod tests {
             spritesheet_frames: 2,
             spritesheet_duration: 1.0,
         };
-        let animation = sprite_animation(&texture).unwrap();
+        let animation = sprite_animation(&texture, 4.0, 2.0).unwrap();
         assert_eq!(animation.uv_at(0.25), [0.125, 0.25, 0.375, 0.75]);
         assert_eq!(animation.uv_at(0.75), [0.625, 0.25, 0.875, 0.75]);
     }
@@ -643,17 +664,38 @@ mod tests {
     }
 
     fn rgba_tex(width: u32, height: u32) -> Vec<u8> {
+        rgba_tex_with_storage(width, height, width, height)
+    }
+
+    fn rgba_tex_with_storage(
+        width: u32,
+        height: u32,
+        storage_width: u32,
+        storage_height: u32,
+    ) -> Vec<u8> {
         let mut bytes = b"TEXV0005\0TEXI0001\0".to_vec();
         bytes.extend_from_slice(&0u32.to_le_bytes());
         bytes.extend_from_slice(&0u32.to_le_bytes());
-        for value in [width, height, width, height, 0] {
+        for value in [storage_width, storage_height, width, height, 0] {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(b"TEXB0003\0");
-        for value in [13u32, 1, 1, width, height, 0, 0, width * height * 4] {
+        for value in [
+            13u32,
+            1,
+            1,
+            width,
+            height,
+            0,
+            0,
+            storage_width * storage_height * 4,
+        ] {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        bytes.resize(bytes.len() + (width * height * 4) as usize, 255);
+        bytes.resize(
+            bytes.len() + (storage_width * storage_height * 4) as usize,
+            255,
+        );
         bytes
     }
 
@@ -776,6 +818,33 @@ mod tests {
         assert_eq!(assets.draws[0].texture_path, "materials/bg.tex");
         assert_eq!(assets.draws[0].blend_mode, BlendMode::Translucent);
         assert_eq!(assets.draws[0].texture.levels[0].data.len(), 16);
+    }
+
+    #[test]
+    fn derives_uv_bounds_from_the_actual_uploaded_texture_size() {
+        let package = package(&[
+            (
+                "models/bg.json",
+                br#"{"material":"materials/bg.json"}"#.to_vec(),
+            ),
+            (
+                "materials/bg.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["bg"]}]}"#.to_vec(),
+            ),
+            ("materials/bg.tex", rgba_tex_with_storage(2, 2, 4, 4)),
+        ]);
+        let plan =
+            plan(r#"{"objects":[{"id":"bg","image":"models/bg.json","size":"100 100"}]}"#).unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(
+            (
+                assets.draws[0].texture.levels[0].width,
+                assets.draws[0].texture.levels[0].height
+            ),
+            (4, 4)
+        );
+        assert_eq!(assets.draws[0].uv, [0.0, 0.0, 0.5, 0.5]);
     }
 
     #[test]

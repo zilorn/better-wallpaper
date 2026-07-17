@@ -212,3 +212,16 @@
 - daemon 对两个桌面后端统一执行资产预检，并使用英语日志报告可提交 draw 数或降级原因
 - 新增完整最小包解析测试；workspace 103 项测试通过
 - 实际 GL 多纹理提交尚未实现，Plasma `scene_rendering_available` 仍为 false
+
+## 2026-07-17：完整解包场景纹理渲染修复
+
+- 使用 `scene.json` 及其 15 个残留 `.tex` 做真实样本验证：140 个对象、41 个图片层均可转为场景 IR
+- TEXB0003/TEXB0004 FreeImage 解析不再读取首张图后提前返回，完整保留连续 PNG/JPEG mip 链
+- PNG 解码按实际 RGB/RGBA/灰度通道规范化为 RGBA8，修复 RGB PNG 被错误写入 RGBA 缓冲区造成的通道错位
+- 新增 JPEG mip 解码；真实 5760×2880 主纹理及其 5 级 mip 全部通过尺寸与上传数据校验
+- 区分 TEXB0004 非视频 FreeImage 的真实头布局，真实 3157×3516 RGBA PNG 纹理及其 5 级 mip 可正确解析
+- 场景 UV 改为按实际 GPU 上传尺寸计算，内嵌图片不会再因 TEX 头中的 power-of-two padding 尺寸被错误裁切
+- GPU 保留作者 mip 并以 box filter 补齐到 1×1，支持时启用三线性采样，改善 4K/5.7K 场景缩放到 1080p 时的锯齿与闪烁；ES2 非 POT 限制下安全回退双线性
+- 纹理超过 `GL_MAX_TEXTURE_SIZE` 时自动从作者 mip 链选择首个硬件可上传级别，例如 5760×2880 在 4096 上限设备改用 2880×1440，而不是整层渲染失败
+- `scene-inspect` 可直接检查解包的 `scene.json` 和 `.tex`，支持文本摘要与 JSON 详情
+- 新增 TEXB0003/TEXB0004 多 mip RGB PNG 与 padded 上传 UV 回归测试；workspace 全部测试及相关 crate 严格 Clippy 通过

@@ -248,21 +248,18 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
 
     // General settings
     if let Some(general) = json.get("general") {
-        meta.bloom = general
-            .get("bloom")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        meta.bloom = general.get("bloom").and_then(bound_bool).unwrap_or(false);
         meta.parallax = general
             .get("cameraparallax")
-            .and_then(|v| v.as_bool())
+            .and_then(bound_bool)
             .unwrap_or(false);
         meta.shake = general
             .get("camerashake")
-            .and_then(|v| v.as_bool())
+            .and_then(bound_bool)
             .unwrap_or(false);
         meta.camera_fade = general
             .get("camerafade")
-            .and_then(|v| v.as_bool())
+            .and_then(bound_bool)
             .unwrap_or(false);
 
         if let Some(proj) = general.get("orthogonalprojection") {
@@ -337,10 +334,39 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
             {
                 meta.has_scene_script = true;
             }
+            if contains_script(obj, 0) {
+                meta.has_scene_script = true;
+            }
         }
     }
 
     Ok(meta)
+}
+
+fn bound_bool(value: &serde_json::Value) -> Option<bool> {
+    value
+        .as_bool()
+        .or_else(|| value.get("value").and_then(serde_json::Value::as_bool))
+}
+
+fn contains_script(value: &serde_json::Value, depth: usize) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    match value {
+        serde_json::Value::Object(object) => {
+            object
+                .get("script")
+                .is_some_and(|script| script.as_str().is_some_and(|script| !script.is_empty()))
+                || object
+                    .values()
+                    .any(|value| contains_script(value, depth + 1))
+        }
+        serde_json::Value::Array(values) => {
+            values.iter().any(|value| contains_script(value, depth + 1))
+        }
+        _ => false,
+    }
 }
 
 /// Compute compatibility based on scene metadata
@@ -430,6 +456,19 @@ mod tests {
         assert!(!meta.has_effects);
         assert_eq!(meta.orthogonal_width, Some(1080));
         assert_eq!(meta.orthogonal_height, Some(1920));
+    }
+
+    #[test]
+    fn detects_bound_general_flags_and_property_scripts() {
+        let meta = analyse_scene(
+            r#"{
+                "general":{"bloom":{"user":"hdr","value":true}},
+                "objects":[{"image":"models/bg.json","scale":{"script":"return value;","value":"1 1 1"}}]
+            }"#,
+        )
+        .unwrap();
+        assert!(meta.bloom);
+        assert!(meta.has_scene_script);
     }
 
     #[test]

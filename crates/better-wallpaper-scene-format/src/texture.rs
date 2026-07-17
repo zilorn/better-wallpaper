@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
 
 use crate::error::TexError;
 
@@ -331,9 +331,19 @@ fn alpha_mode(format: TexFormat) -> TextureAlphaMode {
 
 // ── Parser ──────────────────────────────────────────────────────────────────
 
-/// Decode a PNG byte buffer into RGBA8 pixels, validating dimensions.
+fn validated_rgba_size(width: u32, height: u32) -> Result<usize, TexError> {
+    let size = expected_mipmap_size(TexFormat::RGBA8888, width, height)?;
+    usize::try_from(size).map_err(|_| TexError::MipmapTooLarge {
+        size,
+        max: MAX_MIPMAP_SIZE,
+    })
+}
+
+/// Decode a PNG byte buffer into canonical RGBA8 pixels, validating dimensions.
 fn decode_png_to_rgba8(data: &[u8], expected_w: u32, expected_h: u32) -> Result<Vec<u8>, TexError> {
-    let decoder = png::Decoder::new(data);
+    let expected_size = validated_rgba_size(expected_w, expected_h)?;
+    let mut decoder = png::Decoder::new(data);
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder
         .read_info()
         .map_err(|e| TexError::InvalidData(format!("PNG decode: {e}")))?;
@@ -345,11 +355,127 @@ fn decode_png_to_rgba8(data: &[u8], expected_w: u32, expected_h: u32) -> Result<
             actual: (info.width as usize) * (info.height as usize) * 4,
         });
     }
-    let mut rgba = vec![0u8; (expected_w as usize) * (expected_h as usize) * 4];
-    reader
-        .next_frame(&mut rgba)
+    let mut decoded = vec![0_u8; reader.output_buffer_size()];
+    let output = reader
+        .next_frame(&mut decoded)
         .map_err(|e| TexError::InvalidData(format!("PNG frame: {e}")))?;
+    let decoded = &decoded[..output.buffer_size()];
+    let mut rgba = Vec::with_capacity(expected_size);
+    match output.color_type {
+        png::ColorType::Rgba => rgba.extend_from_slice(decoded),
+        png::ColorType::Rgb => {
+            for pixel in decoded.chunks_exact(3) {
+                rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
+            }
+        }
+        png::ColorType::Grayscale => {
+            for &value in decoded {
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+        png::ColorType::GrayscaleAlpha => {
+            for pixel in decoded.chunks_exact(2) {
+                rgba.extend_from_slice(&[pixel[0], pixel[0], pixel[0], pixel[1]]);
+            }
+        }
+        png::ColorType::Indexed => {
+            return Err(TexError::InvalidData(
+                "PNG palette was not expanded by the decoder".into(),
+            ));
+        }
+    }
+    if rgba.len() != expected_size {
+        return Err(TexError::InvalidMipmapDataSize {
+            level: 0,
+            expected: expected_size as u64,
+            actual: rgba.len(),
+        });
+    }
     Ok(rgba)
+}
+
+/// Decode a JPEG byte buffer into canonical RGBA8 pixels, validating dimensions.
+fn decode_jpeg_to_rgba8(
+    data: &[u8],
+    expected_w: u32,
+    expected_h: u32,
+) -> Result<Vec<u8>, TexError> {
+    let expected_size = validated_rgba_size(expected_w, expected_h)?;
+    let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(data));
+    decoder
+        .read_info()
+        .map_err(|e| TexError::InvalidData(format!("JPEG header: {e}")))?;
+    let info = decoder
+        .info()
+        .ok_or_else(|| TexError::InvalidData("JPEG is missing image metadata".into()))?;
+    if u32::from(info.width) != expected_w || u32::from(info.height) != expected_h {
+        return Err(TexError::InvalidMipmapDataSize {
+            level: 0,
+            expected: expected_size as u64,
+            actual: usize::from(info.width) * usize::from(info.height) * 4,
+        });
+    }
+    let decoded = decoder
+        .decode()
+        .map_err(|e| TexError::InvalidData(format!("JPEG decode: {e}")))?;
+    let mut rgba = Vec::with_capacity(expected_size);
+    match info.pixel_format {
+        jpeg_decoder::PixelFormat::L8 => {
+            for value in decoded {
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+        jpeg_decoder::PixelFormat::L16 => {
+            for pixel in decoded.chunks_exact(2) {
+                let value = pixel[0];
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+        }
+        jpeg_decoder::PixelFormat::RGB24 => {
+            for pixel in decoded.chunks_exact(3) {
+                rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
+            }
+        }
+        jpeg_decoder::PixelFormat::CMYK32 => {
+            for pixel in decoded.chunks_exact(4) {
+                let c = u16::from(pixel[0]);
+                let m = u16::from(pixel[1]);
+                let y = u16::from(pixel[2]);
+                let k = u16::from(pixel[3]);
+                rgba.extend_from_slice(&[
+                    (255 - (c + k).min(255)) as u8,
+                    (255 - (m + k).min(255)) as u8,
+                    (255 - (y + k).min(255)) as u8,
+                    255,
+                ]);
+            }
+        }
+    }
+    if rgba.len() != expected_size {
+        return Err(TexError::InvalidMipmapDataSize {
+            level: 0,
+            expected: expected_size as u64,
+            actual: rgba.len(),
+        });
+    }
+    Ok(rgba)
+}
+
+fn decode_embedded_image(
+    image_format: Option<FreeImageFormat>,
+    encoded: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<Option<Vec<u8>>, TexError> {
+    match image_format {
+        Some(FreeImageFormat::Png) if encoded.starts_with(b"\x89PNG\r\n\x1a\n") => {
+            decode_png_to_rgba8(encoded, width, height).map(Some)
+        }
+        Some(FreeImageFormat::Jpeg) if encoded.starts_with(&[0xff, 0xd8, 0xff]) => {
+            decode_jpeg_to_rgba8(encoded, width, height).map(Some)
+        }
+        _ => Ok(None),
+    }
 }
 
 impl TexTexture {
@@ -405,27 +531,21 @@ impl TexTexture {
 
         let mut free_image_format = None;
         let mut is_video_texb4 = false;
+        let mut image_count_override = None;
 
         if container_version == 4 {
-            let _image_count = read_u32_le(data, &mut offset)?;
+            let image_count = read_u32_le(data, &mut offset)?;
             let fif_raw = read_u32_le(data, &mut offset)?;
             is_video_texb4 = read_u32_le(data, &mut offset)? == 1;
-            let _ = fif_raw; // unused in parsing
-
-            if is_video_texb4 {
-                free_image_format = Some(FreeImageFormat::Mp4);
-            }
-
-            // TEXB0004 can fallback to TEXB0003 for non-video content
-            if !is_video_texb4 {
-                // image_count wasn't actually the right field here, re-read
-                // Actually for TEXB0004 parsing, the structure is different so let me adjust
-            }
+            image_count_override = Some(image_count);
+            free_image_format = if is_video_texb4 {
+                Some(FreeImageFormat::Mp4)
+            } else {
+                Some(FreeImageFormat::from(fif_raw))
+            };
         }
 
-        // For simplicity, TEXB0004 with video = MP4, otherwise it falls back to TEXB0003
-        let mut image_count_override = None;
-        if container_version == 3 || (container_version == 4 && !is_video_texb4) {
+        if container_version == 3 {
             // TEXB0003 has two layout variants in the wild:
             //   A) TEXB0003 freeimage_fmt image_count …  (our test fixtures)
             //   B) TEXB0003 image_count freeimage_fmt …  (many real scenes)
@@ -459,87 +579,6 @@ impl TexTexture {
             1
         };
 
-        // TEXB0003 FreeImage textures embed raw PNG/JPEG bytes rather than
-        // structured mipmap data. Decode each image into a single mip level.
-        if container_version == 3 && free_image_format.is_some() {
-            for _ in 0..image_count.min(16) {
-                // TEXB0003 FreeImage: skip one u32 (not a mip count), then
-                // read the single image's dimensions and data.
-                read_u32_le(data, &mut offset)?; // skip editor/version field
-                let _mip_w = read_u32_le(data, &mut offset)?;
-                let _mip_h = read_u32_le(data, &mut offset)?;
-                let compression = read_u32_le(data, &mut offset)?;
-                let uncompressed_size = read_i32_le(data, &mut offset)?;
-                let compressed_size = read_u32_le(data, &mut offset)?;
-
-                let actual_uncompressed = if compression == 0 {
-                    compressed_size as i32
-                } else {
-                    uncompressed_size
-                };
-                if actual_uncompressed > 0 {
-                    let uncomp_u64 = actual_uncompressed as u64;
-                    if uncomp_u64 > MAX_MIPMAP_SIZE {
-                        return Err(TexError::MipmapTooLarge {
-                            size: uncomp_u64,
-                            max: MAX_MIPMAP_SIZE,
-                        });
-                    }
-
-                    let encoded = if compression == 1 {
-                        let comp_size = compressed_size as usize;
-                        let comp_bytes = get_slice(data, &mut offset, comp_size)?;
-                        let max_uncomp = (comp_size as u64).saturating_mul(MAX_COMPRESSION_RATIO);
-                        if uncomp_u64 > max_uncomp {
-                            return Err(TexError::CompressionRatioExceeded {
-                                compressed: comp_size as u64,
-                                uncompressed: uncomp_u64,
-                            });
-                        }
-                        let mut decomp_buf = vec![0u8; actual_uncompressed as usize];
-                        lz4_flex::decompress_into(comp_bytes, &mut decomp_buf)
-                            .map_err(|e| TexError::Lz4Error(e.to_string()))?;
-                        decomp_buf
-                    } else {
-                        let raw = get_slice(data, &mut offset, compressed_size as usize)?;
-                        raw.to_vec()
-                    };
-                    let decoded = if matches!(free_image_format, Some(FreeImageFormat::Png))
-                        && encoded.starts_with(b"\x89PNG\r\n\x1a\n")
-                    {
-                        format = TexFormat::RGBA8888;
-                        decode_png_to_rgba8(&encoded, width, height)?
-                    } else {
-                        encoded
-                    };
-                    mipmaps.push(Mipmap {
-                        width,
-                        height,
-                        data: Arc::from(decoded),
-                        json: None,
-                    });
-                    return Ok(TexTexture {
-                        format,
-                        width,
-                        height,
-                        texture_width,
-                        texture_height,
-                        flags,
-                        mipmaps,
-                        frames: Vec::new(),
-                        is_animated: false,
-                        container_version,
-                        free_image_format,
-                        is_video: false,
-                        spritesheet_cols: 0,
-                        spritesheet_rows: 0,
-                        spritesheet_frames: 0,
-                        spritesheet_duration: 0.0,
-                    });
-                }
-            }
-        }
-
         let mut frames = Vec::new();
         let mut spritesheet_cols = 0u32;
         let mut spritesheet_rows = 0u32;
@@ -550,8 +589,10 @@ impl TexTexture {
             let mip_count = read_u32_le(data, &mut offset)?;
 
             for _mip_idx in 0..mip_count {
-                // TEXB0004 has extra header data
-                if container_version == 4 {
+                // Video-flavoured TEXB0004 entries carry editor metadata before
+                // the payload. Non-video TEXB0004 FreeImage mip chains use the
+                // same per-mip layout as TEXB0003.
+                if container_version == 4 && is_video_texb4 {
                     // skip 3 uint32 fields (editor metadata)
                     read_u32_le(data, &mut offset)?;
                     read_u32_le(data, &mut offset)?;
@@ -619,18 +660,17 @@ impl TexTexture {
                     let raw = get_slice(data, &mut offset, actual_uncompressed as usize)?;
                     raw.to_vec()
                 };
-                // FreeImage PNG payloads may themselves be LZ4-compressed.
-                // Detect the image after container decompression so both
-                // storage variants produce the same canonical RGBA8 layout.
-                let data_slice: Arc<[u8]> =
-                    if matches!(free_image_format, Some(FreeImageFormat::Png))
-                        && encoded.starts_with(b"\x89PNG\r\n\x1a\n")
-                    {
-                        format = TexFormat::RGBA8888;
-                        Arc::from(decode_png_to_rgba8(&encoded, mip_w, mip_h)?)
-                    } else {
-                        Arc::from(encoded)
-                    };
+                // FreeImage payloads may themselves be LZ4-compressed. Decode
+                // every concatenated mip image instead of returning after the
+                // first payload, preserving the complete GPU mip chain.
+                let data_slice: Arc<[u8]> = if let Some(decoded) =
+                    decode_embedded_image(free_image_format, &encoded, mip_w, mip_h)?
+                {
+                    format = TexFormat::RGBA8888;
+                    Arc::from(decoded)
+                } else {
+                    Arc::from(encoded)
+                };
 
                 mipmaps.push(Mipmap {
                     width: mip_w,
@@ -800,6 +840,56 @@ fn get_slice<'a>(data: &'a [u8], offset: &mut usize, size: usize) -> Result<&'a 
 mod tests {
     use super::*;
 
+    fn rgb_png(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut encoded, width, height);
+            encoder.set_color(png::ColorType::Rgb);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().unwrap();
+            writer.write_image_data(pixels).unwrap();
+        }
+        encoded
+    }
+
+    fn build_embedded_png_tex(container_version: u32) -> Vec<u8> {
+        let mips = [
+            (2_u32, 1_u32, rgb_png(2, 1, &[10, 20, 30, 40, 50, 60])),
+            (1_u32, 1_u32, rgb_png(1, 1, &[70, 80, 90])),
+        ];
+        let mut buf = b"TEXV0005\0TEXI0001\0".to_vec();
+        buf.extend(0_u32.to_le_bytes());
+        buf.extend(2_u32.to_le_bytes());
+        for value in [2_u32, 1, 2, 1, 0] {
+            buf.extend(value.to_le_bytes());
+        }
+        match container_version {
+            3 => {
+                buf.extend(b"TEXB0003\0");
+                // Observed layout: image count precedes the FreeImage format.
+                buf.extend(1_u32.to_le_bytes());
+                buf.extend(13_u32.to_le_bytes());
+            }
+            4 => {
+                buf.extend(b"TEXB0004\0");
+                buf.extend(1_u32.to_le_bytes());
+                buf.extend(13_u32.to_le_bytes());
+                buf.extend(0_u32.to_le_bytes());
+            }
+            _ => unreachable!(),
+        }
+        buf.extend((mips.len() as u32).to_le_bytes());
+        for (width, height, png) in mips {
+            buf.extend(width.to_le_bytes());
+            buf.extend(height.to_le_bytes());
+            buf.extend(0_u32.to_le_bytes());
+            buf.extend(0_i32.to_le_bytes());
+            buf.extend((png.len() as u32).to_le_bytes());
+            buf.extend(png);
+        }
+        buf
+    }
+
     fn build_tex_rgba8(width: u32, height: u32) -> Vec<u8> {
         let mut buf = Vec::new();
         // TEXV0005
@@ -843,6 +933,25 @@ mod tests {
         assert_eq!(tex.width, 64);
         assert_eq!(tex.height, 64);
         assert_eq!(tex.mipmaps.len(), 1);
+    }
+
+    #[test]
+    fn decodes_every_rgb_png_mip_in_texb3_and_texb4() {
+        for container_version in [3, 4] {
+            let tex = TexTexture::parse(&build_embedded_png_tex(container_version)).unwrap();
+            assert_eq!(tex.container_version, container_version);
+            assert_eq!(tex.format, TexFormat::RGBA8888);
+            assert_eq!(tex.free_image_format, Some(FreeImageFormat::Png));
+            assert_eq!(tex.mipmaps.len(), 2);
+            assert_eq!(
+                tex.mipmaps[0].data.as_ref(),
+                &[10, 20, 30, 255, 40, 50, 60, 255]
+            );
+            assert_eq!(tex.mipmaps[1].data.as_ref(), &[70, 80, 90, 255]);
+            let image = tex.to_texture_image().unwrap();
+            assert_eq!((image.levels[0].width, image.levels[0].height), (2, 1));
+            assert_eq!((image.levels[1].width, image.levels[1].height), (1, 1));
+        }
     }
 
     #[test]

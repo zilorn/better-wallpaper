@@ -16,6 +16,7 @@ tracing.workspace = true
 zerocopy.workspace = true
 
 lz4_flex = "0.11"
+jpeg-decoder = { version = "0.3", default-features = false }
 png = "0.17"
 
 [[bin]]

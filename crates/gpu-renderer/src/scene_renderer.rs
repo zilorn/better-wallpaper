@@ -10,6 +10,8 @@ pub struct SceneGpuRenderer {
     vbo: glow::Buffer,
     textures: HashMap<String, GpuTextureState>,
     output_size: (u32, u32),
+    supports_npot_mipmaps: bool,
+    max_texture_size: u32,
 }
 
 #[allow(dead_code)]
@@ -27,6 +29,11 @@ const MAX_GPU_TEXTURES: usize = 256;
 impl SceneGpuRenderer {
     pub fn new(gl: glow::Context, output_width: u32, output_height: u32) -> Result<Self, String> {
         unsafe {
+            let version = gl.get_parameter_string(glow::VERSION);
+            let supports_npot_mipmaps = !version.contains("OpenGL ES")
+                || version.contains("OpenGL ES 3")
+                || gl.supported_extensions().contains("GL_OES_texture_npot");
+            let max_texture_size = gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE).max(1) as u32;
             let program = compile_program(&gl, VERTEX_SHADER, FRAGMENT_SHADER)?;
             let vbo = gl
                 .create_buffer()
@@ -37,6 +44,8 @@ impl SceneGpuRenderer {
                 vbo,
                 textures: HashMap::new(),
                 output_size: (output_width, output_height),
+                supports_npot_mipmaps,
+                max_texture_size,
             })
         }
     }
@@ -92,7 +101,35 @@ impl SceneGpuRenderer {
     }
 
     unsafe fn upload_texture(&mut self, image: &TextureImage) -> Result<GpuTextureState, String> {
-        let base = image.levels.first().ok_or("texture has no mipmap levels")?;
+        let source_base = image.levels.first().ok_or("texture has no mipmap levels")?;
+        let first_supported =
+            first_supported_mip(image, self.max_texture_size).ok_or_else(|| {
+                format!(
+                    "texture has no mip level within GPU limit {}x{}",
+                    self.max_texture_size, self.max_texture_size
+                )
+            })?;
+        let upload_image = TextureImage {
+            format: image.format,
+            color_space: image.color_space,
+            alpha_mode: image.alpha_mode,
+            levels: image.levels[first_supported..].to_vec(),
+        };
+        let base = upload_image
+            .levels
+            .first()
+            .ok_or("texture has no supported mipmap levels")?;
+        if first_supported > 0 {
+            debug!(
+                source_width = source_base.width,
+                source_height = source_base.height,
+                upload_width = base.width,
+                upload_height = base.height,
+                gpu_max_texture_size = self.max_texture_size,
+                skipped_mip_levels = first_supported,
+                "Selected a smaller scene texture mip for GPU compatibility"
+            );
+        }
         let gl_tex = unsafe {
             self.gl
                 .create_texture()
@@ -122,11 +159,11 @@ impl SceneGpuRenderer {
             );
         }
 
-        let result = match image.format {
+        let result = match upload_image.format {
             TexFormat::DXT1 | TexFormat::DXT3 | TexFormat::DXT5 | TexFormat::BC7 => unsafe {
-                self.upload_compressed_mipmaps(gl_tex, image)
+                self.upload_compressed_mipmaps(gl_tex, &upload_image)
             },
-            _ => unsafe { self.upload_rgba8_mipmaps(gl_tex, image) },
+            _ => unsafe { self.upload_rgba8_mipmaps(gl_tex, &upload_image) },
         };
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, None);
@@ -174,6 +211,15 @@ impl SceneGpuRenderer {
                 );
             }
         }
+        if self.can_use_mipmaps(image) && mip_chain_is_complete(image) {
+            unsafe {
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MIN_FILTER,
+                    glow::LINEAR_MIPMAP_LINEAR as i32,
+                );
+            }
+        }
         Ok(())
     }
 
@@ -182,6 +228,7 @@ impl SceneGpuRenderer {
         _tex: glow::Texture,
         image: &TextureImage,
     ) -> Result<(), String> {
+        let mut last_rgba = None;
         for (level, mip) in image.levels.iter().enumerate() {
             let rgba = convert_to_rgba8(image.format, &mip.data, mip.width, mip.height);
             unsafe {
@@ -197,8 +244,52 @@ impl SceneGpuRenderer {
                     Some(&rgba),
                 );
             }
+            if level + 1 == image.levels.len() {
+                last_rgba = Some(rgba.into_owned());
+            }
+        }
+        if self.can_use_mipmaps(image) && mip_chain_is_contiguous(image) {
+            let last = image.levels.last().ok_or("texture has no mipmap levels")?;
+            let mut width = last.width;
+            let mut height = last.height;
+            let mut rgba = last_rgba.ok_or("texture has no decoded mipmap data")?;
+            let mut level = image.levels.len() as i32;
+            while width > 1 || height > 1 {
+                let (next_width, next_height, next_rgba) = downsample_rgba8(&rgba, width, height);
+                unsafe {
+                    self.gl.tex_image_2d(
+                        glow::TEXTURE_2D,
+                        level,
+                        glow::RGBA as i32,
+                        next_width as i32,
+                        next_height as i32,
+                        0,
+                        glow::RGBA,
+                        glow::UNSIGNED_BYTE,
+                        Some(&next_rgba),
+                    );
+                }
+                width = next_width;
+                height = next_height;
+                rgba = next_rgba;
+                level += 1;
+            }
+            unsafe {
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MIN_FILTER,
+                    glow::LINEAR_MIPMAP_LINEAR as i32,
+                );
+            }
         }
         Ok(())
+    }
+
+    fn can_use_mipmaps(&self, image: &TextureImage) -> bool {
+        image.levels.first().is_some_and(|base| {
+            self.supports_npot_mipmaps
+                || (base.width.is_power_of_two() && base.height.is_power_of_two())
+        })
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -533,6 +624,59 @@ fn convert_to_rgba8(
     }
 }
 
+fn mip_chain_is_contiguous(image: &TextureImage) -> bool {
+    image.levels.windows(2).all(|levels| {
+        levels[1].width == (levels[0].width / 2).max(1)
+            && levels[1].height == (levels[0].height / 2).max(1)
+    })
+}
+
+fn first_supported_mip(image: &TextureImage, max_texture_size: u32) -> Option<usize> {
+    image
+        .levels
+        .iter()
+        .position(|level| level.width <= max_texture_size && level.height <= max_texture_size)
+}
+
+fn mip_chain_is_complete(image: &TextureImage) -> bool {
+    mip_chain_is_contiguous(image)
+        && image
+            .levels
+            .last()
+            .is_some_and(|level| level.width == 1 && level.height == 1)
+}
+
+fn downsample_rgba8(data: &[u8], width: u32, height: u32) -> (u32, u32, Vec<u8>) {
+    let next_width = (width / 2).max(1);
+    let next_height = (height / 2).max(1);
+    let mut output = Vec::with_capacity((next_width * next_height * 4) as usize);
+    for y in 0..next_height {
+        for x in 0..next_width {
+            let mut sums = [0_u32; 4];
+            let mut samples = 0_u32;
+            let start_x = x * width / next_width;
+            let end_x = (x + 1) * width / next_width;
+            let start_y = y * height / next_height;
+            let end_y = (y + 1) * height / next_height;
+            for source_y in start_y..end_y {
+                for source_x in start_x..end_x {
+                    let offset = ((source_y * width + source_x) * 4) as usize;
+                    if let Some(pixel) = data.get(offset..offset + 4) {
+                        for channel in 0..4 {
+                            sums[channel] += u32::from(pixel[channel]);
+                        }
+                        samples += 1;
+                    }
+                }
+            }
+            for sum in sums {
+                output.push((sum / samples.max(1)) as u8);
+            }
+        }
+    }
+    (next_width, next_height, output)
+}
+
 fn convert_float_to_rgba8(format: TexFormat, data: &[u8], pixel_count: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(pixel_count * 4);
     match format {
@@ -639,8 +783,14 @@ unsafe fn compile_program(
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_to_rgba8, scene_vertices, scroll_uv};
-    use better_wallpaper_scene_format::{ScrollEffect, TexFormat};
+    use std::sync::Arc;
+
+    use super::{
+        convert_to_rgba8, downsample_rgba8, first_supported_mip, scene_vertices, scroll_uv,
+    };
+    use better_wallpaper_scene_format::{
+        ScrollEffect, TexFormat, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
+    };
 
     #[test]
     fn interleaves_scene_positions_with_quad_texture_coordinates() {
@@ -687,5 +837,38 @@ mod tests {
             scroll_uv([0.0, 0.0, 1.0, 1.0], effect, 2.0),
             [0.5, 0.0, 2.5, 1.0]
         );
+    }
+
+    #[test]
+    fn downsamples_high_resolution_scene_textures_with_box_filtering() {
+        let pixels = [
+            0, 0, 0, 255, 100, 0, 0, 255, 0, 100, 0, 255, 100, 100, 0, 255,
+        ];
+        let (width, height, downsampled) = downsample_rgba8(&pixels, 2, 2);
+        assert_eq!((width, height), (1, 1));
+        assert_eq!(downsampled, [50, 50, 0, 255]);
+
+        let odd_pixels = [0, 0, 0, 255, 90, 0, 0, 255, 180, 0, 0, 255];
+        let (_, _, odd_downsampled) = downsample_rgba8(&odd_pixels, 3, 1);
+        assert_eq!(odd_downsampled, [90, 0, 0, 255]);
+    }
+
+    #[test]
+    fn selects_a_smaller_authored_mip_for_limited_gpus() {
+        let image = TextureImage {
+            format: TexFormat::RGBA8888,
+            color_space: TextureColorSpace::Unknown,
+            alpha_mode: TextureAlphaMode::Unknown,
+            levels: [(5760, 2880), (2880, 1440), (1440, 720)]
+                .into_iter()
+                .map(|(width, height)| TextureMipLevel {
+                    width,
+                    height,
+                    data: Arc::from([]),
+                })
+                .collect(),
+        };
+        assert_eq!(first_supported_mip(&image, 4096), Some(1));
+        assert_eq!(first_supported_mip(&image, 1024), None);
     }
 }
