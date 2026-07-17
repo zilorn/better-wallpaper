@@ -13,6 +13,7 @@ Better Wallpaper：Linux 视频壁纸程序，支持niri，Plasma
 - 安装脚本在`packaging/install.sh`。
 - 重要：绝对禁止使用子agent。
 - 运行日志看`journalctl --user -u better-wallpaper.service`，注意筛选日志，防止日志过长。
+- 检验：`cargo clippy`通过。
 
 ## 目标
 

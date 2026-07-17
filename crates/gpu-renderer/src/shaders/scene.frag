@@ -6,6 +6,9 @@ const float TWO_PI = 6.2831853;
 uniform sampler2D u_texture;
 uniform float u_opacity;
 uniform float u_time;
+// Maps a displacement in logical layer UV space into the potentially padded
+// storage UV space of the main texture.
+uniform vec2 u_texture_uv_scale;
 
 // Water wave: direction, scale, speed, strength.
 uniform vec4 u_water_wave0;
@@ -90,6 +93,7 @@ uniform float u_spin_aspect;
 uniform float u_has_spin;
 
 varying vec2 v_tex_coord;
+varying vec2 v_effect_coord;
 
 vec2 directionFromAngle(float angle) {
     return vec2(cos(angle), sin(angle));
@@ -122,7 +126,7 @@ vec2 applyFoliageSway(vec2 uv) {
     if (u_foliage0.w > 0.0) {
         float mask = mix(
             1.0,
-            texture2D(u_foliage_mask0, v_tex_coord).r,
+            texture2D(u_foliage_mask0, v_effect_coord).r,
             u_has_foliage_mask0
         );
         uv += calculateSwayOffset(
@@ -136,7 +140,7 @@ vec2 applyFoliageSway(vec2 uv) {
     if (u_foliage1.w > 0.0) {
         float mask = mix(
             1.0,
-            texture2D(u_foliage_mask1, v_tex_coord).r,
+            texture2D(u_foliage_mask1, v_effect_coord).r,
             u_has_foliage_mask1
         );
         uv += calculateSwayOffset(
@@ -173,7 +177,7 @@ vec2 applyIrisMovement(vec2 uv) {
 
     float mask = mix(
         1.0,
-        texture2D(u_iris_mask, v_tex_coord).r,
+        texture2D(u_iris_mask, v_effect_coord).r,
         u_has_iris_mask
     );
     return uv + motion * u_iris_scale * 0.001 * mask;
@@ -191,7 +195,7 @@ vec2 applyWaterWaveEffect(
 
     float mask = mix(
         1.0,
-        texture2D(waveMask, v_tex_coord).r,
+        texture2D(waveMask, v_effect_coord).r,
         hasMask
     );
     vec2 direction = vec2(-sin(wave.x), cos(wave.x));
@@ -233,7 +237,7 @@ vec2 applyShakeEffect(
         pow(amount, max(friction.y, 0.01)),
         step(0.0, cos(u_time * shake.x))
     );
-    vec2 flow = (texture2D(directionMap, v_tex_coord).rg - vec2(0.498)) * 2.0;
+    vec2 flow = (texture2D(directionMap, v_effect_coord).rg - vec2(0.498)) * 2.0;
     return uv + amount * shake.y * shake.y * flow;
 }
 
@@ -274,10 +278,10 @@ vec2 applyWaterFlow(vec2 uv) {
         sin(uv.y * TWO_PI * phaseScale),
         cos(uv.x * TWO_PI * phaseScale)
     );
-    vec2 mappedFlow = (texture2D(u_water_flow_mask, v_tex_coord).rg - vec2(0.498)) * 2.0;
+    vec2 mappedFlow = (texture2D(u_water_flow_mask, v_effect_coord).rg - vec2(0.498)) * 2.0;
     vec2 flow = mix(proceduralFlow, mappedFlow, u_has_water_flow_mask);
     float authoredPhase = texture2D(
-        u_water_flow_phase, v_tex_coord * phaseScale
+        u_water_flow_phase, v_effect_coord * phaseScale
     ).r;
     float phase = mix(0.0, authoredPhase, u_has_water_flow_phase);
     float cycle = sin((u_time * u_water_flow.y + phase) * TWO_PI);
@@ -291,13 +295,13 @@ vec4 applyShine(vec4 color) {
 
     vec2 direction = directionFromAngle(u_shine.x);
     float position = fract(
-        dot(v_tex_coord - 0.5, direction) - u_time * u_shine.y
+        dot(v_effect_coord - 0.5, direction) - u_time * u_shine.y
     );
     float width = clamp(u_shine.w * 0.2, 0.005, 0.45);
     float ray = 1.0 - smoothstep(0.0, width, abs(position - 0.5));
     float mask = mix(
         1.0,
-        texture2D(u_shine_mask, v_tex_coord).r,
+        texture2D(u_shine_mask, v_effect_coord).r,
         u_has_shine_mask
     );
     color.rgb += u_shine_color * ray * mask * u_shine.z * color.a;
@@ -320,7 +324,7 @@ vec4 applyPulseEffect(
     value = smoothstep(bounds.x, max(bounds.y, bounds.x + 0.0001), value);
     value = pow(max(value * pulse.z, 0.0), max(pulse.w, 0.01));
     vec3 tinted = color.rgb * mix(tintLow, tintHigh, value);
-    float mask = mix(1.0, texture2D(pulseMask, v_tex_coord).r, hasMask);
+    float mask = mix(1.0, texture2D(pulseMask, v_effect_coord).r, hasMask);
     color.rgb = mix(color.rgb, tinted, mask);
     return color;
 }
@@ -342,12 +346,15 @@ vec4 applyPulses(vec4 color) {
 }
 
 void main() {
-    vec2 uv = applySpin(v_tex_coord);
-    uv = applyFoliageSway(uv);
-    uv = applyIrisMovement(uv);
-    uv = applyWaterWaves(uv);
-    uv = applyShakes(uv);
-    uv = applyWaterFlow(uv);
+    // Effects and their masks are authored against the logical image bounds,
+    // not the padded dimensions used by the main TEX allocation.
+    vec2 effectUv = applySpin(v_effect_coord);
+    effectUv = applyFoliageSway(effectUv);
+    effectUv = applyIrisMovement(effectUv);
+    effectUv = applyWaterWaves(effectUv);
+    effectUv = applyShakes(effectUv);
+    effectUv = applyWaterFlow(effectUv);
+    vec2 uv = v_tex_coord + (effectUv - v_effect_coord) * u_texture_uv_scale;
 
     vec4 color = texture2D(u_texture, uv);
     color = applyPulses(color);

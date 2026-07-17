@@ -8,6 +8,7 @@ pub struct SceneGpuRenderer {
     gl: glow::Context,
     program: glow::Program,
     vbo: glow::Buffer,
+    index_buffer: glow::Buffer,
     textures: HashMap<String, GpuTextureState>,
     output_size: (u32, u32),
     supports_npot_mipmaps: bool,
@@ -38,10 +39,14 @@ impl SceneGpuRenderer {
             let vbo = gl
                 .create_buffer()
                 .map_err(|msg| format!("scene VBO allocate: {msg}"))?;
+            let index_buffer = gl
+                .create_buffer()
+                .map_err(|msg| format!("scene index buffer allocate: {msg}"))?;
             Ok(Self {
                 gl,
                 program,
                 vbo,
+                index_buffer,
                 textures: HashMap::new(),
                 output_size: (output_width, output_height),
                 supports_npot_mipmaps,
@@ -329,9 +334,17 @@ impl SceneGpuRenderer {
                 .gl
                 .get_attrib_location(self.program, "a_tex_coord")
                 .unwrap_or(1);
+            let effect_coord_loc = self
+                .gl
+                .get_attrib_location(self.program, "a_effect_coord")
+                .unwrap_or(2);
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
             let time_loc = self.gl.get_uniform_location(self.program, "u_time");
+            let texture_uv_scale_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_texture_uv_scale");
+            let layout_scale_loc = self.gl.get_uniform_location(self.program, "u_layout_scale");
             let water_wave_locs = (0..3)
                 .map(|index| {
                     self.gl
@@ -468,7 +481,11 @@ impl SceneGpuRenderer {
             let has_spin_loc = self.gl.get_uniform_location(self.program, "u_has_spin");
             self.gl.enable_vertex_attrib_array(position_loc);
             self.gl.enable_vertex_attrib_array(tex_coord_loc);
+            self.gl.enable_vertex_attrib_array(effect_coord_loc);
             self.gl.uniform_1_i32(sampler_loc.as_ref(), 0);
+            let layout_scale = scene_layout_scale(assets, self.output_size);
+            self.gl
+                .uniform_2_f32(layout_scale_loc.as_ref(), layout_scale[0], layout_scale[1]);
             for (location, unit) in water_wave_mask_locs.iter().zip([1, 9, 10]) {
                 self.gl.uniform_1_i32(location.as_ref(), unit);
             }
@@ -661,10 +678,6 @@ impl SceneGpuRenderer {
                     self.gl.uniform_3_f32(spin_loc.as_ref(), 0.0, 0.5, 0.5);
                     self.gl.uniform_1_f32(has_spin_loc.as_ref(), 0.0);
                 }
-                self.gl.uniform_1_f32(
-                    spin_aspect_loc.as_ref(),
-                    state.width as f32 / state.height.max(1) as f32,
-                );
                 bind_optional_texture(
                     &self.gl,
                     &self.textures,
@@ -797,10 +810,25 @@ impl SceneGpuRenderer {
                     .animation
                     .as_ref()
                     .map_or(draw.uv, |animation| animation.uv_at(elapsed_seconds));
+                let texture_uv_scale = [uv[2] - uv[0], uv[3] - uv[1]];
+                self.gl.uniform_2_f32(
+                    texture_uv_scale_loc.as_ref(),
+                    texture_uv_scale[0],
+                    texture_uv_scale[1],
+                );
+                self.gl.uniform_1_f32(
+                    spin_aspect_loc.as_ref(),
+                    state.width as f32 * texture_uv_scale[0].abs()
+                        / (state.height.max(1) as f32 * texture_uv_scale[1].abs().max(0.0001)),
+                );
                 if let Some(scroll) = draw.quad.scroll {
                     uv = scroll_uv(uv, scroll, elapsed_seconds);
                 }
-                let vertices = scene_vertices(&draw.quad.vertices, uv);
+                let vertices = if let Some(mesh) = &draw.mesh {
+                    puppet_vertices(mesh.positions_at(elapsed_seconds), &mesh.uv, uv)
+                } else {
+                    scene_vertices(&draw.quad.vertices, uv).to_vec()
+                };
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
                     vertices.len() * std::mem::size_of::<f32>(),
@@ -808,16 +836,41 @@ impl SceneGpuRenderer {
                 self.gl
                     .buffer_data_u8_slice(glow::ARRAY_BUFFER, vertex_bytes, glow::DYNAMIC_DRAW);
                 self.gl
-                    .vertex_attrib_pointer_f32(position_loc, 2, glow::FLOAT, false, 16, 0);
+                    .vertex_attrib_pointer_f32(position_loc, 2, glow::FLOAT, false, 24, 0);
                 self.gl
-                    .vertex_attrib_pointer_f32(tex_coord_loc, 2, glow::FLOAT, false, 16, 8);
-                self.gl.draw_arrays(glow::TRIANGLE_FAN, 0, 4);
+                    .vertex_attrib_pointer_f32(tex_coord_loc, 2, glow::FLOAT, false, 24, 8);
+                self.gl
+                    .vertex_attrib_pointer_f32(effect_coord_loc, 2, glow::FLOAT, false, 24, 16);
+                if let Some(mesh) = &draw.mesh {
+                    let index_bytes = std::slice::from_raw_parts(
+                        mesh.indices.as_ptr().cast::<u8>(),
+                        mesh.indices.len() * std::mem::size_of::<u16>(),
+                    );
+                    self.gl
+                        .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer));
+                    self.gl.buffer_data_u8_slice(
+                        glow::ELEMENT_ARRAY_BUFFER,
+                        index_bytes,
+                        glow::STATIC_DRAW,
+                    );
+                    self.gl.draw_elements(
+                        glow::TRIANGLES,
+                        mesh.indices.len() as i32,
+                        glow::UNSIGNED_SHORT,
+                        0,
+                    );
+                } else {
+                    self.gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+                    self.gl.draw_arrays(glow::TRIANGLE_FAN, 0, 4);
+                }
                 drawn += 1;
             }
             self.gl.disable(glow::BLEND);
             self.gl.disable_vertex_attrib_array(position_loc);
             self.gl.disable_vertex_attrib_array(tex_coord_loc);
+            self.gl.disable_vertex_attrib_array(effect_coord_loc);
             self.gl.bind_buffer(glow::ARRAY_BUFFER, None);
+            self.gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             self.gl.bind_texture(glow::TEXTURE_2D, None);
             self.gl.use_program(None);
         }
@@ -908,16 +961,58 @@ fn scroll_uv(
     ]
 }
 
-fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 16] {
+fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 24] {
     let [left, top, right, bottom] = uv;
     let tex_coords = [[left, top], [right, top], [right, bottom], [left, bottom]];
-    let mut vertices = [0.0; 16];
-    for (index, (position, tex_coord)) in positions.iter().zip(tex_coords).enumerate() {
-        let offset = index * 4;
+    let effect_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let mut vertices = [0.0; 24];
+    for (index, ((position, tex_coord), effect_coord)) in positions
+        .iter()
+        .zip(tex_coords)
+        .zip(effect_coords)
+        .enumerate()
+    {
+        let offset = index * 6;
         vertices[offset..offset + 2].copy_from_slice(position);
         vertices[offset + 2..offset + 4].copy_from_slice(&tex_coord);
+        vertices[offset + 4..offset + 6].copy_from_slice(&effect_coord);
     }
     vertices
+}
+
+fn puppet_vertices(
+    positions: &[[f32; 2]],
+    logical_uv: &[[f32; 2]],
+    storage_uv: [f32; 4],
+) -> Vec<f32> {
+    let width = storage_uv[2] - storage_uv[0];
+    let height = storage_uv[3] - storage_uv[1];
+    let mut vertices = Vec::with_capacity(positions.len().min(logical_uv.len()) * 6);
+    for (position, effect_coord) in positions.iter().zip(logical_uv) {
+        vertices.extend_from_slice(position);
+        vertices.push(storage_uv[0] + effect_coord[0] * width);
+        vertices.push(storage_uv[1] + effect_coord[1] * height);
+        vertices.extend_from_slice(effect_coord);
+    }
+    vertices
+}
+
+/// Correct a plan built before connecting to Wayland for the output's actual
+/// aspect ratio. Absolute resolution changes with the same aspect remain 1:1
+/// in NDC; only an aspect change needs an additional cover transform.
+fn scene_layout_scale(assets: &Scene2dAssets, output_size: (u32, u32)) -> [f32; 2] {
+    let [projection_width, projection_height] = assets.projection_size;
+    let [layout_width, layout_height] = assets.layout_viewport;
+    let output_width = output_size.0.max(1) as f32;
+    let output_height = output_size.1.max(1) as f32;
+    let layout_width = layout_width.max(1) as f32;
+    let layout_height = layout_height.max(1) as f32;
+    let layout_cover = (layout_width / projection_width).max(layout_height / projection_height);
+    let output_cover = (output_width / projection_width).max(output_height / projection_height);
+    [
+        (output_cover / output_width) / (layout_cover / layout_width),
+        (output_cover / output_height) / (layout_cover / layout_height),
+    ]
 }
 
 /// Convert a Wallpaper Engine texture payload to canonical RGBA8 for GPU upload.
@@ -1100,6 +1195,7 @@ impl Drop for SceneGpuRenderer {
         unsafe {
             self.clear_textures();
             self.gl.delete_buffer(self.vbo);
+            self.gl.delete_buffer(self.index_buffer);
             self.gl.delete_program(self.program);
         }
         debug!("scene gpu renderer resources released");
@@ -1150,19 +1246,22 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        convert_to_rgba8, downsample_rgba8, first_supported_mip, scene_vertices, scroll_uv,
+        convert_to_rgba8, downsample_rgba8, first_supported_mip, puppet_vertices,
+        scene_layout_scale, scene_vertices, scroll_uv,
     };
+    use better_wallpaper_renderer::Scene2dAssets;
     use better_wallpaper_scene_format::{
         ScrollEffect, TexFormat, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
     };
 
     #[test]
-    fn interleaves_scene_positions_with_quad_texture_coordinates() {
+    fn interleaves_scene_positions_with_storage_and_logical_coordinates() {
         let positions = [[-1.0, -0.5], [0.5, -0.5], [0.5, 1.0], [-1.0, 1.0]];
         assert_eq!(
             scene_vertices(&positions, [0.0, 0.0, 1.0, 1.0]),
             [
-                -1.0, -0.5, 0.0, 0.0, 0.5, -0.5, 1.0, 0.0, 0.5, 1.0, 1.0, 1.0, -1.0, 1.0, 0.0, 1.0,
+                -1.0, -0.5, 0.0, 0.0, 0.0, 0.0, 0.5, -0.5, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0, 1.0, 1.0,
+                1.0, 1.0, -1.0, 1.0, 0.0, 1.0, 0.0, 1.0,
             ]
         );
     }
@@ -1172,7 +1271,38 @@ mod tests {
         let positions = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
         let vertices = scene_vertices(&positions, [0.25, 0.5, 0.5, 1.0]);
         assert_eq!(&vertices[2..4], &[0.25, 0.5]);
-        assert_eq!(&vertices[10..12], &[0.5, 1.0]);
+        assert_eq!(&vertices[14..16], &[0.5, 1.0]);
+        assert_eq!(&vertices[4..6], &[0.0, 0.0]);
+        assert_eq!(&vertices[16..18], &[1.0, 1.0]);
+    }
+
+    #[test]
+    fn maps_puppet_logical_uvs_into_padded_texture_storage() {
+        let vertices = puppet_vertices(
+            &[[-0.5, 0.25], [0.75, -0.25]],
+            &[[0.0, 0.0], [1.0, 1.0]],
+            [0.0, 0.0, 0.898_437_5, 0.747_070_3],
+        );
+        assert_eq!(&vertices[0..6], &[-0.5, 0.25, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(
+            &vertices[6..12],
+            &[0.75, -0.25, 0.898_437_5, 0.747_070_3, 1.0, 1.0]
+        );
+    }
+
+    #[test]
+    fn updates_cover_transform_for_the_actual_output_aspect_ratio() {
+        let assets = Scene2dAssets {
+            draws: Vec::new(),
+            skipped_nodes: 0,
+            projection_size: [3840.0, 2160.0],
+            layout_viewport: [1920, 1080],
+        };
+        assert_eq!(scene_layout_scale(&assets, (3840, 2160)), [1.0, 1.0]);
+
+        let squareish = scene_layout_scale(&assets, (1280, 1024));
+        assert!((squareish[0] - 1.422_222_3).abs() < 0.0001);
+        assert!((squareish[1] - 1.0).abs() < 0.0001);
     }
 
     #[test]

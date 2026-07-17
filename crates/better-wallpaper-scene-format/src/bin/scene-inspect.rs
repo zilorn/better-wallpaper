@@ -2,7 +2,8 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
-    PkgReader, SceneNodeKind, TexTexture, analyse_scene, compute_compatibility, parse_scene_graph,
+    PkgReader, PuppetModel, SceneNodeKind, TexTexture, analyse_scene, compute_compatibility,
+    parse_scene_graph,
 };
 use clap::Parser;
 
@@ -109,6 +110,43 @@ fn main() -> Result<()> {
                 texture.format,
                 texture.free_image_format,
                 texture.is_video,
+            );
+        }
+        return Ok(());
+    }
+    if args
+        .input
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mdl"))
+    {
+        if args.entry.is_some() || args.textures {
+            bail!("--entry and --textures cannot be used with an unpacked puppet model");
+        }
+        let model = PuppetModel::parse(&data).context("puppet model validation failed")?;
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "path": args.input,
+                    "vertices": model.vertices.len(),
+                    "indices": model.indices.len(),
+                    "bones": model.bones.len(),
+                    "animations": model.animations.iter().map(|animation| serde_json::json!({
+                        "id": animation.id,
+                        "name": animation.name,
+                        "fps": animation.fps,
+                        "frames": animation.frame_count,
+                    })).collect::<Vec<_>>(),
+                }))?
+            );
+        } else {
+            println!(
+                "{}\tvertices={}\tindices={}\tbones={}\tanimations={}",
+                args.input.display(),
+                model.vertices.len(),
+                model.indices.len(),
+                model.bones.len(),
+                model.animations.len(),
             );
         }
         return Ok(());

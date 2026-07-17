@@ -16,6 +16,7 @@ pub mod ir;
 pub mod material;
 pub mod model;
 pub mod pkg;
+pub mod puppet;
 pub mod resource;
 pub mod scene;
 pub mod texture;
@@ -29,6 +30,9 @@ pub use ir::{
 pub use material::{BlendMode, MaterialDefinition, MaterialPass, parse_material_definition};
 pub use model::{ModelDefinition, parse_model_definition};
 pub use pkg::{PkgEntry, PkgReader};
+pub use puppet::{
+    PuppetAnimation, PuppetBone, PuppetError, PuppetModel, PuppetTransform, PuppetVertex,
+};
 pub use resource::{
     MAX_RESOURCE_CACHE_BYTES, MaterialManifest, MaterialResource, ModelManifest, ModelResource,
     ResourceCache, ResourceCacheError, ResourceCacheKey, ResourceDescriptor, ResourceKind,

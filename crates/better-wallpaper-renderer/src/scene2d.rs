@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use better_wallpaper_scene_format::{
-    BlendMode, MaterialManifest, ModelManifest, PkgReader, SceneGraph, SceneNodeKind, TexTexture,
-    TextureImage, resolve_texture_path,
+    BlendMode, MaterialManifest, ModelManifest, PkgReader, PuppetModel, SceneGraph, SceneNodeKind,
+    TexTexture, TextureImage, resolve_texture_path,
 };
 use thiserror::Error;
 use tracing::{debug, warn};
@@ -80,6 +80,8 @@ pub struct Scene2dQuad {
 pub struct Scene2dPlan {
     pub quads: Vec<Scene2dQuad>,
     pub skipped_nodes: usize,
+    pub projection_size: [f32; 2],
+    pub layout_viewport: [u32; 2],
 }
 
 /// A draw whose model/material/texture dependency chain has been fully resolved.
@@ -93,6 +95,7 @@ pub struct Scene2dDraw {
     /// Logical image bounds within a potentially padded GPU texture.
     pub uv: [f32; 4],
     pub animation: Option<SpriteAnimation>,
+    pub mesh: Option<Scene2dMesh>,
     pub water_wave_masks: Vec<Option<Scene2dEffectTexture>>,
     pub water_wave_normals: Vec<Option<Scene2dEffectTexture>>,
     pub water_flow_mask: Option<Scene2dEffectTexture>,
@@ -102,6 +105,27 @@ pub struct Scene2dDraw {
     pub shine_mask: Option<Scene2dEffectTexture>,
     pub shake_maps: Vec<Option<Scene2dEffectTexture>>,
     pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scene2dMesh {
+    /// NDC positions for every authored animation frame.
+    pub frames: Vec<Vec<[f32; 2]>>,
+    /// Logical, unpadded texture coordinates shared by all frames.
+    pub uv: Vec<[f32; 2]>,
+    pub indices: Vec<u16>,
+    pub fps: f32,
+}
+
+impl Scene2dMesh {
+    pub fn positions_at(&self, elapsed_seconds: f64) -> &[[f32; 2]] {
+        let index = if self.frames.len() <= 1 || self.fps <= 0.0 {
+            0
+        } else {
+            ((elapsed_seconds * f64::from(self.fps)).floor() as usize) % self.frames.len()
+        };
+        self.frames.get(index).map_or(&[], Vec::as_slice)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +169,10 @@ impl SpriteAnimation {
 pub struct Scene2dAssets {
     pub draws: Vec<Scene2dDraw>,
     pub skipped_nodes: usize,
+    /// Source canvas used to rebuild the cover transform for the real output.
+    pub projection_size: [f32; 2],
+    /// Viewport used when the backend-independent quad plan was built.
+    pub layout_viewport: [u32; 2],
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -175,6 +203,10 @@ pub enum Scene2dError {
     MissingTexture(String),
     #[error("scene texture {path} is invalid: {detail}")]
     InvalidTexture { path: String, detail: String },
+    #[error("scene puppet model is missing from package: {0}")]
+    MissingPuppet(String),
+    #[error("scene puppet model {path} is invalid: {detail}")]
+    InvalidPuppet { path: String, detail: String },
     #[error("scene asset manifest is invalid: {0}")]
     InvalidAssetManifest(String),
 }
@@ -203,6 +235,8 @@ pub fn resolve_scene_2d_assets(
 
     let mut draws = Vec::with_capacity(plan.quads.len());
     let mut skipped_nodes = plan.skipped_nodes;
+    let projection_size = plan.projection_size;
+    let layout_viewport = plan.layout_viewport;
     for quad in plan.quads {
         let resolved = (|| {
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
@@ -272,6 +306,12 @@ pub fn resolve_scene_2d_assets(
                 parsed.height as f32 / upload_height,
             ];
             let animation = sprite_animation(&parsed, upload_width, upload_height);
+            let mesh = model
+                .definition
+                .puppet
+                .as_deref()
+                .map(|path| load_puppet_mesh(package, path, &quad, parsed.width, parsed.height))
+                .transpose()?;
             let water_wave_masks = quad
                 .water_waves
                 .iter()
@@ -358,6 +398,7 @@ pub fn resolve_scene_2d_assets(
                 texture,
                 uv,
                 animation,
+                mesh,
                 water_wave_masks,
                 water_wave_normals,
                 water_flow_mask,
@@ -380,7 +421,88 @@ pub fn resolve_scene_2d_assets(
     Ok(Scene2dAssets {
         draws,
         skipped_nodes,
+        projection_size,
+        layout_viewport,
     })
+}
+
+fn load_puppet_mesh(
+    package: &PkgReader,
+    path: &str,
+    quad: &Scene2dQuad,
+    logical_width: u32,
+    logical_height: u32,
+) -> Result<Scene2dMesh, Scene2dError> {
+    let entry = package
+        .find(path)
+        .ok_or_else(|| Scene2dError::MissingPuppet(path.to_owned()))?;
+    let model = PuppetModel::parse(package.read_entry(entry)).map_err(|error| {
+        Scene2dError::InvalidPuppet {
+            path: path.to_owned(),
+            detail: error.to_string(),
+        }
+    })?;
+    let animation = model
+        .animations
+        .first()
+        .ok_or_else(|| Scene2dError::InvalidPuppet {
+            path: path.to_owned(),
+            detail: "puppet model has no animation pose".into(),
+        })?;
+    let mut frames = Vec::with_capacity(animation.frame_count);
+    for frame in 0..animation.frame_count {
+        let positions = model.skinned_positions(animation, frame).map_err(|error| {
+            Scene2dError::InvalidPuppet {
+                path: path.to_owned(),
+                detail: error.to_string(),
+            }
+        })?;
+        frames.push(
+            positions
+                .into_iter()
+                .map(|position| {
+                    puppet_position_to_ndc(
+                        quad.vertices,
+                        position,
+                        logical_width as f32,
+                        logical_height as f32,
+                    )
+                })
+                .collect(),
+        );
+    }
+    debug!(
+        puppet = path,
+        vertices = model.vertices.len(),
+        indices = model.indices.len(),
+        bones = model.bones.len(),
+        animation_id = animation.id,
+        animation = animation.name,
+        frames = animation.frame_count,
+        fps = animation.fps,
+        "Resolved animated puppet mesh"
+    );
+    Ok(Scene2dMesh {
+        frames,
+        uv: model.vertices.iter().map(|vertex| vertex.uv).collect(),
+        indices: model.indices,
+        fps: animation.fps,
+    })
+}
+
+fn puppet_position_to_ndc(
+    quad: [[f32; 2]; 4],
+    position: [f32; 3],
+    width: f32,
+    height: f32,
+) -> [f32; 2] {
+    let x = position[0] / width + 0.5;
+    // MDL geometry is Y-up while scene image bounds are Y-down.
+    let y = 0.5 - position[1] / height;
+    [
+        quad[0][0] + (quad[1][0] - quad[0][0]) * x + (quad[3][0] - quad[0][0]) * y,
+        quad[0][1] + (quad[1][1] - quad[0][1]) * x + (quad[3][1] - quad[0][1]) * y,
+    ]
 }
 
 fn load_effect_texture(
@@ -516,16 +638,29 @@ pub fn build_scene_2d_plan(
         });
     let center_x = projection.x * 0.5;
     let center_y = projection.y * 0.5;
-    let view = Mat3::scale(2.0 / projection.x, -2.0 / projection.y)
-        * Mat3::translation(-center_x, -center_y);
+    let viewport_width = options.viewport_width as f32;
+    let viewport_height = options.viewport_height as f32;
+    // Preserve project-canvas proportions on every output. `cover` matches
+    // wallpaper semantics: the scene fills the output and only the excess on
+    // the long axis is cropped. Scaling X and Y independently would distort
+    // authored layer positions on outputs whose aspect ratio differs from the
+    // scene projection.
+    let output_scale = (viewport_width / projection.x).max(viewport_height / projection.y);
+    let view = Mat3::scale(
+        2.0 * output_scale / viewport_width,
+        -2.0 * output_scale / viewport_height,
+    ) * Mat3::translation(-center_x, -center_y);
     debug!(
         projection_width = projection.x,
         projection_height = projection.y,
+        viewport_width,
+        viewport_height,
+        output_scale,
         editor_camera_x = editor_camera.x,
         editor_camera_y = editor_camera.y,
         view_center_x = center_x,
         view_center_y = center_y,
-        "Building scene layout in project canvas coordinates; editor camera pan ignored"
+        "Building aspect-preserving scene layout in project canvas coordinates; editor camera pan ignored"
     );
 
     let mut worlds = vec![None; graph.nodes.len()];
@@ -587,6 +722,8 @@ pub fn build_scene_2d_plan(
     Ok(Scene2dPlan {
         quads,
         skipped_nodes,
+        projection_size: [projection.x, projection.y],
+        layout_viewport: [options.viewport_width, options.viewport_height],
     })
 }
 
@@ -708,14 +845,22 @@ mod tests {
         assert_eq!(animation.uv_at(0.75), [0.625, 0.25, 0.875, 0.75]);
     }
 
-    fn plan(json: &str) -> Result<Scene2dPlan, Scene2dError> {
+    fn plan_at(
+        json: &str,
+        viewport_width: u32,
+        viewport_height: u32,
+    ) -> Result<Scene2dPlan, Scene2dError> {
         build_scene_2d_plan(
             &parse_scene_graph(json).unwrap(),
             Scene2dOptions {
-                viewport_width: 1920,
-                viewport_height: 1080,
+                viewport_width,
+                viewport_height,
             },
         )
+    }
+
+    fn plan(json: &str) -> Result<Scene2dPlan, Scene2dError> {
+        plan_at(json, 100, 100)
     }
 
     fn sized_string(value: &str) -> Vec<u8> {
@@ -797,7 +942,7 @@ mod tests {
 
     #[test]
     fn ignores_serialized_editor_camera_pan_for_runtime_layout() {
-        let result = plan(
+        let result = plan_at(
             r#"{
                 "general":{"orthogonalprojection":{"width":3840,"height":2160}},
                 "camera":{"center":"85.98602 -93.05257 -1"},
@@ -808,12 +953,39 @@ mod tests {
                     "size":"3840 2160"
                 }]
             }"#,
+            1920,
+            1080,
         )
         .unwrap();
 
         assert!((result.quads[0].vertices[0][0] + 1.0).abs() < 0.0001);
         assert!((result.quads[0].vertices[0][1] - 1.0).abs() < 0.0001);
         assert!((result.quads[0].vertices[2][0] - 1.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[2][1] + 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn preserves_projection_aspect_ratio_and_crops_to_fill_output() {
+        let result = plan_at(
+            r#"{
+                "general":{"orthogonalprojection":{"width":200,"height":100}},
+                "objects":[{
+                    "id":"background",
+                    "image":"models/background.json",
+                    "origin":"100 50 0",
+                    "size":"200 100"
+                }]
+            }"#,
+            100,
+            100,
+        )
+        .unwrap();
+
+        // A 2:1 scene covers a 1:1 output without stretching, so its sides are
+        // cropped while its full height remains visible.
+        assert!((result.quads[0].vertices[0][0] + 2.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[0][1] - 1.0).abs() < 0.0001);
+        assert!((result.quads[0].vertices[2][0] - 2.0).abs() < 0.0001);
         assert!((result.quads[0].vertices[2][1] + 1.0).abs() < 0.0001);
     }
 
