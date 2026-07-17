@@ -21,8 +21,8 @@ struct GpuTextureState {
     height: u32,
 }
 
-const VERTEX_SHADER: &str = "attribute vec2 a_position;\nattribute vec2 a_tex_coord;\nvarying vec2 v_tex_coord;\nvoid main() {\n    v_tex_coord = a_tex_coord;\n    gl_Position = vec4(a_position, 0.0, 1.0);\n}";
-const FRAGMENT_SHADER: &str = "precision highp float;\nuniform sampler2D u_texture;\nuniform sampler2D u_water_wave_mask;\nuniform sampler2D u_water_wave_normal;\nuniform sampler2D u_water_flow_mask;\nuniform sampler2D u_water_flow_phase;\nuniform float u_has_water_wave_mask;\nuniform float u_has_water_wave_normal;\nuniform float u_has_water_flow_mask;\nuniform float u_has_water_flow_phase;\nuniform float u_opacity;\nuniform float u_time;\nuniform vec4 u_water_wave;\nuniform vec3 u_water_flow;\nvarying vec2 v_tex_coord;\nvoid main() {\n    vec2 uv = v_tex_coord;\n    if (u_water_wave.w > 0.0) {\n        float mask = mix(1.0, texture2D(u_water_wave_mask, v_tex_coord).r, u_has_water_wave_mask);\n        vec2 direction = vec2(cos(u_water_wave.x), sin(u_water_wave.x));\n        float frequency = 6.2831853 / max(u_water_wave.y, 0.01);\n        float phase = dot(uv, direction) * frequency + u_time * u_water_wave.z;\n        vec2 procedural = direction * sin(phase);\n        vec2 normal_uv = v_tex_coord / max(u_water_wave.y, 0.01) + direction * u_time * u_water_wave.z * 0.02;\n        vec2 normal = texture2D(u_water_wave_normal, normal_uv).rg * 2.0 - 1.0;\n        uv += mix(procedural, normal, u_has_water_wave_normal) * u_water_wave.w * 0.01 * mask;\n    }\n    if (u_water_flow.z > 0.0) {\n        float mask = mix(1.0, texture2D(u_water_flow_mask, v_tex_coord).r, u_has_water_flow_mask);\n        float phase = u_time * u_water_flow.y;\n        float frequency = 6.2831853 * max(u_water_flow.x, 0.01);\n        vec2 procedural = vec2(sin(uv.y * frequency + phase), cos(uv.x * frequency - phase));\n        vec2 phase_uv = v_tex_coord * max(u_water_flow.x, 0.01) + vec2(phase * 0.02, -phase * 0.015);\n        vec2 phase_flow = texture2D(u_water_flow_phase, phase_uv).rg * 2.0 - 1.0;\n        uv += mix(procedural, phase_flow, u_has_water_flow_phase) * u_water_flow.z * 0.003 * mask;\n    }\n    vec4 color = texture2D(u_texture, uv);\n    gl_FragColor = vec4(color.rgb, color.a * u_opacity);\n}";
+const VERTEX_SHADER: &str = include_str!("shaders/scene.vert");
+const FRAGMENT_SHADER: &str = include_str!("shaders/scene.frag");
 
 const MAX_GPU_TEXTURES: usize = 256;
 
@@ -64,6 +64,15 @@ impl SceneGpuRenderer {
                 }
                 if let Some(phase) = &draw.water_flow_phase {
                     pending.push((&phase.path, &phase.texture));
+                }
+                if let Some(mask) = &draw.iris_mask {
+                    pending.push((&mask.path, &mask.texture));
+                }
+                for mask in draw.foliage_masks.iter().flatten() {
+                    pending.push((&mask.path, &mask.texture));
+                }
+                if let Some(mask) = &draw.shine_mask {
+                    pending.push((&mask.path, &mask.texture));
                 }
                 for (path, texture) in pending {
                     if self.textures.contains_key(path) {
@@ -343,6 +352,38 @@ impl SceneGpuRenderer {
             let has_water_flow_phase_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_has_water_flow_phase");
+            let iris_loc = self.gl.get_uniform_location(self.program, "u_iris");
+            let iris_scale_loc = self.gl.get_uniform_location(self.program, "u_iris_scale");
+            let iris_mask_loc = self.gl.get_uniform_location(self.program, "u_iris_mask");
+            let has_iris_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_iris_mask");
+            let foliage0_loc = self.gl.get_uniform_location(self.program, "u_foliage0");
+            let foliage0_extra_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_foliage0_extra");
+            let foliage1_loc = self.gl.get_uniform_location(self.program, "u_foliage1");
+            let foliage1_extra_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_foliage1_extra");
+            let foliage_mask0_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_foliage_mask0");
+            let foliage_mask1_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_foliage_mask1");
+            let has_foliage_mask0_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_foliage_mask0");
+            let has_foliage_mask1_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_foliage_mask1");
+            let shine_loc = self.gl.get_uniform_location(self.program, "u_shine");
+            let shine_color_loc = self.gl.get_uniform_location(self.program, "u_shine_color");
+            let shine_mask_loc = self.gl.get_uniform_location(self.program, "u_shine_mask");
+            let has_shine_mask_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_has_shine_mask");
             self.gl.enable_vertex_attrib_array(position_loc);
             self.gl.enable_vertex_attrib_array(tex_coord_loc);
             self.gl.uniform_1_i32(sampler_loc.as_ref(), 0);
@@ -350,6 +391,10 @@ impl SceneGpuRenderer {
             self.gl.uniform_1_i32(water_flow_mask_loc.as_ref(), 2);
             self.gl.uniform_1_i32(water_wave_normal_loc.as_ref(), 3);
             self.gl.uniform_1_i32(water_flow_phase_loc.as_ref(), 4);
+            self.gl.uniform_1_i32(iris_mask_loc.as_ref(), 5);
+            self.gl.uniform_1_i32(foliage_mask0_loc.as_ref(), 6);
+            self.gl.uniform_1_i32(foliage_mask1_loc.as_ref(), 7);
+            self.gl.uniform_1_i32(shine_mask_loc.as_ref(), 8);
             self.gl
                 .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
             for draw in &assets.draws {
@@ -411,6 +456,52 @@ impl SceneGpuRenderer {
                     self.gl
                         .uniform_3_f32(water_flow_loc.as_ref(), 1.0, 0.0, 0.0);
                 }
+                if let Some(iris) = &draw.quad.iris {
+                    self.gl.uniform_4_f32(
+                        iris_loc.as_ref(),
+                        iris.speed,
+                        iris.roughness,
+                        iris.noise_amount,
+                        iris.phase,
+                    );
+                    self.gl
+                        .uniform_2_f32(iris_scale_loc.as_ref(), iris.scale.x, iris.scale.y);
+                } else {
+                    self.gl.uniform_4_f32(iris_loc.as_ref(), 0.0, 0.2, 0.0, 0.0);
+                    self.gl.uniform_2_f32(iris_scale_loc.as_ref(), 1.0, 1.0);
+                }
+                set_foliage_uniforms(
+                    &self.gl,
+                    draw.quad.foliage_sway.first(),
+                    foliage0_loc.as_ref(),
+                    foliage0_extra_loc.as_ref(),
+                );
+                set_foliage_uniforms(
+                    &self.gl,
+                    draw.quad.foliage_sway.get(1),
+                    foliage1_loc.as_ref(),
+                    foliage1_extra_loc.as_ref(),
+                );
+                if let Some(shine) = &draw.quad.shine {
+                    self.gl.uniform_4_f32(
+                        shine_loc.as_ref(),
+                        shine.direction,
+                        shine.speed,
+                        shine.intensity,
+                        shine.length,
+                    );
+                    self.gl.uniform_3_f32(
+                        shine_color_loc.as_ref(),
+                        shine.color.x,
+                        shine.color.y,
+                        shine.color.z,
+                    );
+                } else {
+                    self.gl
+                        .uniform_4_f32(shine_loc.as_ref(), 0.0, 0.0, 0.0, 0.1);
+                    self.gl
+                        .uniform_3_f32(shine_color_loc.as_ref(), 1.0, 1.0, 1.0);
+                }
                 bind_optional_texture(
                     &self.gl,
                     &self.textures,
@@ -440,6 +531,46 @@ impl SceneGpuRenderer {
                         .map(|texture| texture.path.as_str()),
                     has_water_wave_normal_loc.as_ref(),
                     true,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE5,
+                    draw.iris_mask.as_ref().map(|texture| texture.path.as_str()),
+                    has_iris_mask_loc.as_ref(),
+                    false,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE6,
+                    draw.foliage_masks
+                        .first()
+                        .and_then(Option::as_ref)
+                        .map(|texture| texture.path.as_str()),
+                    has_foliage_mask0_loc.as_ref(),
+                    false,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE7,
+                    draw.foliage_masks
+                        .get(1)
+                        .and_then(Option::as_ref)
+                        .map(|texture| texture.path.as_str()),
+                    has_foliage_mask1_loc.as_ref(),
+                    false,
+                );
+                bind_optional_texture(
+                    &self.gl,
+                    &self.textures,
+                    glow::TEXTURE8,
+                    draw.shine_mask
+                        .as_ref()
+                        .map(|texture| texture.path.as_str()),
+                    has_shine_mask_loc.as_ref(),
+                    false,
                 );
                 bind_optional_texture(
                     &self.gl,
@@ -498,6 +629,29 @@ impl SceneGpuRenderer {
             for (_, state) in self.textures.drain() {
                 self.gl.delete_texture(state.texture);
             }
+        }
+    }
+}
+
+unsafe fn set_foliage_uniforms(
+    gl: &glow::Context,
+    effect: Option<&better_wallpaper_scene_format::FoliageSwayEffect>,
+    effect_location: Option<&glow::UniformLocation>,
+    extra_location: Option<&glow::UniformLocation>,
+) {
+    unsafe {
+        if let Some(effect) = effect {
+            gl.uniform_4_f32(
+                effect_location,
+                effect.direction,
+                effect.scale,
+                effect.speed,
+                effect.strength,
+            );
+            gl.uniform_3_f32(extra_location, effect.phase, effect.power, effect.ratio);
+        } else {
+            gl.uniform_4_f32(effect_location, 0.0, 0.05, 0.0, 0.0);
+            gl.uniform_3_f32(extra_location, 0.5, 1.0, 0.3);
         }
     }
 }

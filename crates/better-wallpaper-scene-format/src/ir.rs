@@ -46,6 +46,9 @@ pub struct SceneNode {
     pub scroll: Option<ScrollEffect>,
     pub water_wave: Option<WaterWaveEffect>,
     pub water_flow: Option<WaterFlowEffect>,
+    pub iris: Option<IrisEffect>,
+    pub foliage_sway: Vec<FoliageSwayEffect>,
+    pub shine: Option<ShineEffect>,
     /// Fields retained by name so unsupported input cannot silently change rendering.
     pub unknown_fields: Vec<String>,
 }
@@ -75,6 +78,38 @@ pub struct WaterFlowEffect {
     pub strength: f32,
     pub mask: Option<String>,
     pub phase: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IrisEffect {
+    pub speed: f32,
+    pub roughness: f32,
+    pub noise_amount: f32,
+    pub phase: f32,
+    pub scale: Vec2,
+    pub mask: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FoliageSwayEffect {
+    pub direction: f32,
+    pub scale: f32,
+    pub speed: f32,
+    pub strength: f32,
+    pub phase: f32,
+    pub power: f32,
+    pub ratio: f32,
+    pub mask: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShineEffect {
+    pub direction: f32,
+    pub speed: f32,
+    pub intensity: f32,
+    pub length: f32,
+    pub color: Vec3,
+    pub mask: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -176,28 +211,48 @@ fn apply_property_overrides(
             }
         }
         Value::Object(object) => {
-            let binding = object.get("user").and_then(Value::as_str).and_then(|key| {
+            let binding = object.get("user").and_then(|user| match user {
+                Value::String(key) => Some((key.as_str(), None)),
+                Value::Object(user) => user
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|key| (key, user.get("condition").and_then(Value::as_str))),
+                _ => None,
+            });
+            let binding = binding.and_then(|(key, condition)| {
                 properties
                     .get(key)
-                    .map(|value| (key.to_owned(), value.clone()))
+                    .map(|value| (key.to_owned(), condition.map(str::to_owned), value.clone()))
             });
-            if let Some((key, override_value)) = binding
+            if let Some((key, condition, override_value)) = binding
                 && let Some(fallback) = object.get_mut("value")
             {
                 *fallback = match fallback {
-                    Value::Bool(_) => Value::Bool(override_value.parse().map_err(|_| {
-                        SceneParseError::InvalidValue {
-                            field: format!("scene.properties.{key}"),
-                            detail: "expected true or false".into(),
-                        }
-                    })?),
-                    Value::Number(_) => {
-                        let number = override_value.parse::<f64>().map_err(|_| {
-                            SceneParseError::InvalidValue {
-                                field: format!("scene.properties.{key}"),
-                                detail: "expected a finite number".into(),
+                    Value::Bool(_) => Value::Bool(if let Some(condition) = condition {
+                        override_value == condition
+                    } else {
+                        match override_value.as_str() {
+                            "true" | "1" => true,
+                            "false" | "0" => false,
+                            _ => {
+                                return Err(SceneParseError::InvalidValue {
+                                    field: format!("scene.properties.{key}"),
+                                    detail: "expected true, false, 1, or 0".into(),
+                                });
                             }
-                        })?;
+                        }
+                    }),
+                    Value::Number(_) => {
+                        let number = match override_value.as_str() {
+                            "true" => 1.0,
+                            "false" => 0.0,
+                            _ => override_value.parse::<f64>().map_err(|_| {
+                                SceneParseError::InvalidValue {
+                                    field: format!("scene.properties.{key}"),
+                                    detail: "expected a finite number or boolean".into(),
+                                }
+                            })?,
+                        };
                         if !number.is_finite() {
                             return Err(SceneParseError::InvalidValue {
                                 field: format!("scene.properties.{key}"),
@@ -355,11 +410,17 @@ fn parse_node(
     let scroll = parse_scroll_effect(object.get("effects"), &path)?;
     let water_wave = parse_water_wave_effect(object.get("effects"), &path)?;
     let water_flow = parse_water_flow_effect(object.get("effects"), &path)?;
+    let iris = parse_iris_effect(object.get("effects"), &path)?;
+    let foliage_sway = parse_foliage_sway_effects(object.get("effects"), &path)?;
+    let shine = parse_shine_effect(object.get("effects"), &path)?;
     for effect in &effects {
         if effect != "effects/scroll/effect.json"
             && effect != "effects/waterwaves/effect.json"
             && effect != "effects/waterripple/effect.json"
             && effect != "effects/waterflow/effect.json"
+            && effect != "effects/iris/effect.json"
+            && effect != "effects/foliagesway/effect.json"
+            && effect != "effects/shine/effect.json"
         {
             mark(unsupported, &path, &format!("effect: {effect}"));
         }
@@ -418,8 +479,187 @@ fn parse_node(
         scroll,
         water_wave,
         water_flow,
+        iris,
+        foliage_sway,
+        shine,
         unknown_fields,
     })
+}
+
+fn parse_iris_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<IrisEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/iris/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let values = first_effect_values(effect, path, index, "iris")?;
+        let scale = values
+            .get("scale")
+            .map(|value| parse_vec2(&format!("{path}.effects[{index}].scale"), value))
+            .transpose()?
+            .unwrap_or(Vec2 { x: 1.0, y: 1.0 });
+        let effect = IrisEffect {
+            speed: optional_finite_number(values, "speed").unwrap_or(1.0),
+            roughness: optional_finite_number(values, "rough").unwrap_or(0.2),
+            noise_amount: optional_finite_number(values, "noiseamount").unwrap_or(0.5),
+            phase: optional_finite_number(values, "phase").unwrap_or(0.0),
+            scale,
+            mask: effect_texture(effect, index, 1)?,
+        };
+        if effect.speed < 0.0
+            || !(0.0..=1.0).contains(&effect.roughness)
+            || effect.noise_amount < 0.0
+            || effect.scale.x <= 0.0
+            || effect.scale.y <= 0.0
+        {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "iris parameters are outside supported ranges".into(),
+            });
+        }
+        return Ok(Some(effect));
+    }
+    Ok(None)
+}
+
+fn parse_foliage_sway_effects(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Vec<FoliageSwayEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    let mut parsed = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/foliagesway/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let values = first_effect_values(effect, path, index, "foliage sway")?;
+        let sway = FoliageSwayEffect {
+            direction: optional_finite_number(values, "scrolldirection").unwrap_or(0.0),
+            scale: optional_finite_number(values, "scale").unwrap_or(0.05),
+            speed: optional_finite_number(values, "speeduv").unwrap_or(5.0),
+            strength: optional_finite_number(values, "strength").unwrap_or(0.4),
+            phase: optional_finite_number(values, "phase").unwrap_or(0.5),
+            power: optional_finite_number(values, "power").unwrap_or(1.0),
+            ratio: optional_finite_number(values, "ratio").unwrap_or(0.3),
+            mask: effect_texture(effect, index, 1)?,
+        };
+        if sway.scale < 0.0
+            || sway.speed < 0.0
+            || sway.strength < 0.0
+            || sway.power <= 0.0
+            || sway.ratio <= 0.0
+        {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "foliage sway parameters are outside supported ranges".into(),
+            });
+        }
+        if parsed.len() < 2 {
+            parsed.push(sway);
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_shine_effect(
+    effects: Option<&Value>,
+    path: &str,
+) -> Result<Option<ShineEffect>, SceneParseError> {
+    let Some(effects) = effects.and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if effect.get("file").and_then(Value::as_str) != Some("effects/shine/effect.json")
+            || !effect_visible(effect)
+        {
+            continue;
+        }
+        let passes = effect
+            .get("passes")
+            .and_then(Value::as_array)
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "shine effect is missing passes".into(),
+            })?;
+        let values = passes
+            .iter()
+            .filter_map(|pass| pass.get("constantshadervalues").and_then(Value::as_object))
+            .find(|values| values.contains_key("rayintensity"))
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "shine effect is missing ray parameters".into(),
+            })?;
+        let color = values
+            .get("color")
+            .map(|value| parse_vec3(&format!("{path}.effects[{index}].color"), value))
+            .transpose()?
+            .unwrap_or(Vec3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            });
+        let shine = ShineEffect {
+            direction: optional_finite_number(values, "direction").unwrap_or(0.0),
+            speed: optional_finite_number(values, "speed").unwrap_or(0.0),
+            intensity: optional_finite_number(values, "rayintensity").unwrap_or(1.0),
+            length: optional_finite_number(values, "raylength").unwrap_or(0.1),
+            color,
+            mask: effect_texture(effect, index, 1)?,
+        };
+        if shine.intensity < 0.0 || shine.length <= 0.0 {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.effects[{index}]"),
+                detail: "shine intensity must be non-negative and length positive".into(),
+            });
+        }
+        return Ok(Some(shine));
+    }
+    Ok(None)
+}
+
+fn effect_visible(effect: &Map<String, Value>) -> bool {
+    effect
+        .get("visible")
+        .map(|value| unwrap_script_value(value).as_bool().unwrap_or(true))
+        .unwrap_or(true)
+}
+
+fn first_effect_values<'a>(
+    effect: &'a Map<String, Value>,
+    path: &str,
+    index: usize,
+    name: &str,
+) -> Result<&'a Map<String, Value>, SceneParseError> {
+    effect
+        .get("passes")
+        .and_then(Value::as_array)
+        .and_then(|passes| passes.first())
+        .and_then(|pass| pass.get("constantshadervalues"))
+        .and_then(Value::as_object)
+        .ok_or_else(|| SceneParseError::InvalidValue {
+            field: format!("{path}.effects[{index}]"),
+            detail: format!("{name} effect is missing constant shader values"),
+        })
 }
 
 fn parse_water_flow_effect(
@@ -654,6 +894,7 @@ fn parse_scroll_effect(
 fn optional_finite_number(object: &Map<String, Value>, field: &str) -> Option<f32> {
     object
         .get(field)
+        .map(unwrap_script_value)
         .and_then(Value::as_f64)
         .map(|value| value as f32)
         .filter(|value| value.is_finite())
@@ -959,6 +1200,68 @@ mod tests {
         assert!(graph.nodes[0].visible);
         assert_eq!(graph.nodes[0].transform.scale.unwrap().x, 2.0);
         assert_eq!(graph.nodes[0].transform.scale.unwrap().y, 3.0);
+    }
+
+    #[test]
+    fn applies_combo_conditions_from_object_style_user_bindings() {
+        let properties = BTreeMap::from([("mode".into(), "0".into())]);
+        let graph = parse_scene_graph_with_properties(
+            r#"{"objects":[{"image":"bg.json","visible":{"user":{"name":"mode","condition":"1"},"value":true}}]}"#,
+            &properties,
+        )
+        .unwrap();
+        assert!(!graph.nodes[0].visible);
+
+        let properties = BTreeMap::from([("mode".into(), "1".into())]);
+        let graph = parse_scene_graph_with_properties(
+            r#"{"objects":[{"image":"bg.json","visible":{"user":{"name":"mode","condition":"1"},"value":false}}]}"#,
+            &properties,
+        )
+        .unwrap();
+        assert!(graph.nodes[0].visible);
+
+        let properties = BTreeMap::from([("enabled".into(), "false".into())]);
+        let graph = parse_scene_graph_with_properties(
+            r#"{"objects":[{"image":"bg.json","alpha":{"user":"enabled","value":1.0}}]}"#,
+            &properties,
+        )
+        .unwrap();
+        assert_eq!(graph.nodes[0].transform.opacity, Some(0.0));
+    }
+
+    #[test]
+    fn parses_masked_iris_foliage_and_shine_animations() {
+        let properties = BTreeMap::from([("eye_speed".into(), "0.75".into())]);
+        let graph = parse_scene_graph_with_properties(
+            r#"{"objects":[{"image":"models/scene.json","effects":[
+                {"file":"effects/shine/effect.json","passes":[
+                    {"constantshadervalues":{"noiseamount":0.4},"textures":[null,"masks/shine"]},
+                    {"constantshadervalues":{"color":"0.8 0.5 0.4","direction":1.1,"rayintensity":0.24,"raylength":0.42,"speed":0.2}}
+                ]},
+                {"file":"effects/iris/effect.json","passes":[{"constantshadervalues":{"noiseamount":0.5,"phase":0,"rough":0.2,"scale":"1 1","speed":{"user":"eye_speed","value":0.44}},"textures":[null,"masks/iris"]}]},
+                {"file":"effects/foliagesway/effect.json","passes":[{"constantshadervalues":{"phase":0.5,"power":1,"ratio":0.3,"scale":0.05,"scrolldirection":2.2,"speeduv":2.29,"strength":0.59},"textures":[null,"masks/foliage-a"]}]},
+                {"file":"effects/foliagesway/effect.json","passes":[{"constantshadervalues":{"phase":0.4,"power":1.2,"ratio":0.4,"scale":0.06,"scrolldirection":0.4,"speeduv":2.48,"strength":0.68},"textures":[null,"masks/foliage-b"]}]}
+            ]}]}"#,
+            &properties,
+        )
+        .unwrap();
+        let node = &graph.nodes[0];
+        assert_eq!(node.iris.as_ref().unwrap().speed, 0.75);
+        assert_eq!(
+            node.iris.as_ref().unwrap().mask.as_deref(),
+            Some("masks/iris")
+        );
+        assert_eq!(node.foliage_sway.len(), 2);
+        assert_eq!(
+            node.foliage_sway[1].mask.as_deref(),
+            Some("masks/foliage-b")
+        );
+        assert_eq!(node.shine.as_ref().unwrap().intensity, 0.24);
+        assert_eq!(
+            node.shine.as_ref().unwrap().mask.as_deref(),
+            Some("masks/shine")
+        );
+        assert!(graph.unsupported_features.is_empty());
     }
 
     #[test]

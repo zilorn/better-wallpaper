@@ -384,6 +384,10 @@ fn run_niri_scene(
                 draw.animation.is_some()
                     || draw.quad.scroll.is_some()
                     || draw.quad.water_wave.is_some()
+                    || draw.quad.water_flow.is_some()
+                    || draw.quad.iris.is_some()
+                    || !draw.quad.foliage_sway.is_empty()
+                    || draw.quad.shine.is_some()
             })
             .count(),
         "scene assets uploaded to niri GPU"

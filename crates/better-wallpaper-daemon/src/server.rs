@@ -972,7 +972,7 @@ fn scan_wallpaper_engine_library(
                 continue;
             }
         };
-        let scene_properties = if wallpaper_type == WallpaperType::Scene {
+        let mut scene_properties = if wallpaper_type == WallpaperType::Scene {
             match parse_project_properties(&descriptor_json) {
                 Ok(properties) => properties
                     .into_iter()
@@ -986,6 +986,12 @@ fn scan_wallpaper_engine_library(
         } else {
             Vec::new()
         };
+        scene_properties.sort_by(|left, right| {
+            left.order
+                .unwrap_or(u32::MAX)
+                .cmp(&right.order.unwrap_or(u32::MAX))
+                .then_with(|| left.key.cmp(&right.key))
+        });
 
         let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
             WallpaperType::Scene => {

@@ -68,6 +68,9 @@ pub struct Scene2dQuad {
     pub scroll: Option<better_wallpaper_scene_format::ScrollEffect>,
     pub water_wave: Option<better_wallpaper_scene_format::WaterWaveEffect>,
     pub water_flow: Option<better_wallpaper_scene_format::WaterFlowEffect>,
+    pub iris: Option<better_wallpaper_scene_format::IrisEffect>,
+    pub foliage_sway: Vec<better_wallpaper_scene_format::FoliageSwayEffect>,
+    pub shine: Option<better_wallpaper_scene_format::ShineEffect>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +94,9 @@ pub struct Scene2dDraw {
     pub water_wave_normal: Option<Scene2dEffectTexture>,
     pub water_flow_mask: Option<Scene2dEffectTexture>,
     pub water_flow_phase: Option<Scene2dEffectTexture>,
+    pub iris_mask: Option<Scene2dEffectTexture>,
+    pub foliage_masks: Vec<Option<Scene2dEffectTexture>>,
+    pub shine_mask: Option<Scene2dEffectTexture>,
 }
 
 #[derive(Debug, Clone)]
@@ -285,6 +291,29 @@ pub fn resolve_scene_2d_assets(
                 .and_then(|effect| effect.phase.as_deref())
                 .map(|path| load_effect_texture(package, path))
                 .transpose()?;
+            let iris_mask = quad
+                .iris
+                .as_ref()
+                .and_then(|effect| effect.mask.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
+            let foliage_masks = quad
+                .foliage_sway
+                .iter()
+                .map(|effect| {
+                    effect
+                        .mask
+                        .as_deref()
+                        .map(|path| load_effect_texture(package, path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let shine_mask = quad
+                .shine
+                .as_ref()
+                .and_then(|effect| effect.mask.as_deref())
+                .map(|path| load_effect_texture(package, path))
+                .transpose()?;
             Ok(Scene2dDraw {
                 quad,
                 blend_mode: pass.blend_mode.clone(),
@@ -296,6 +325,9 @@ pub fn resolve_scene_2d_assets(
                 water_wave_normal,
                 water_flow_mask,
                 water_flow_phase,
+                iris_mask,
+                foliage_masks,
+                shine_mask,
             })
         })();
         match resolved {
@@ -505,6 +537,9 @@ pub fn build_scene_2d_plan(
             scroll: node.scroll,
             water_wave: node.water_wave.clone(),
             water_flow: node.water_flow.clone(),
+            iris: node.iris.clone(),
+            foliage_sway: node.foliage_sway.clone(),
+            shine: node.shine.clone(),
         });
     }
     Ok(Scene2dPlan {
@@ -886,6 +921,50 @@ mod tests {
         assert_eq!(
             draw.water_flow_phase.as_ref().unwrap().path,
             "materials/effects/phase.tex"
+        );
+    }
+
+    #[test]
+    fn resolves_iris_foliage_and_shine_masks_as_shared_draw_assets() {
+        let package = package(&[
+            (
+                "models/animated.json",
+                br#"{"material":"materials/animated.json"}"#.to_vec(),
+            ),
+            (
+                "materials/animated.json",
+                br#"{"passes":[{"blending":"translucent","shader":"genericimage4","textures":["animated"]}]}"#.to_vec(),
+            ),
+            ("materials/animated.tex", rgba_tex(2, 2)),
+            ("materials/masks/iris.tex", rgba_tex(2, 2)),
+            ("materials/masks/foliage-a.tex", rgba_tex(2, 2)),
+            ("materials/masks/foliage-b.tex", rgba_tex(2, 2)),
+            ("materials/masks/shine.tex", rgba_tex(2, 2)),
+        ]);
+        let plan = plan(
+            r#"{"objects":[{"id":"animated","image":"models/animated.json","size":"100 100","effects":[
+                {"file":"effects/iris/effect.json","passes":[{"constantshadervalues":{"speed":1,"scale":"1 1"},"textures":[null,"masks/iris"]}]},
+                {"file":"effects/foliagesway/effect.json","passes":[{"constantshadervalues":{"speeduv":2,"strength":0.5},"textures":[null,"masks/foliage-a"]}]},
+                {"file":"effects/foliagesway/effect.json","passes":[{"constantshadervalues":{"speeduv":3,"strength":0.4},"textures":[null,"masks/foliage-b"]}]},
+                {"file":"effects/shine/effect.json","passes":[{"constantshadervalues":{},"textures":[null,"masks/shine"]},{"constantshadervalues":{"rayintensity":0.2,"raylength":0.4}}]}
+            ]}]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        let draw = &assets.draws[0];
+        assert_eq!(
+            draw.iris_mask.as_ref().unwrap().path,
+            "materials/masks/iris.tex"
+        );
+        assert_eq!(draw.foliage_masks.len(), 2);
+        assert_eq!(
+            draw.foliage_masks[1].as_ref().unwrap().path,
+            "materials/masks/foliage-b.tex"
+        );
+        assert_eq!(
+            draw.shine_mask.as_ref().unwrap().path,
+            "materials/masks/shine.tex"
         );
     }
 

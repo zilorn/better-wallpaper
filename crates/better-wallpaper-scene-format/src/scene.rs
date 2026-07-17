@@ -59,6 +59,7 @@ pub struct SceneMetadata {
     pub has_custom_shaders: bool,
     pub has_scene_script: bool,
     pub has_effects: bool,
+    pub unsupported_effects: Vec<String>,
     pub object_types: Vec<String>,
 }
 
@@ -316,13 +317,13 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
                 meta.has_effects = true;
                 for eff in effects {
                     if let Some(file) = eff.get("file").and_then(|v| v.as_str()) {
-                        if file.contains("shader")
-                            || file.contains("bloom")
-                            || file.contains("godrays")
-                        {
-                            // These are standard effects
-                        } else {
+                        if is_supported_effect(file) {
+                            continue;
+                        }
+                        if file.contains("/workshop/") || !file.starts_with("effects/") {
                             meta.has_custom_shaders = true;
+                        } else if !meta.unsupported_effects.iter().any(|effect| effect == file) {
+                            meta.unsupported_effects.push(file.to_owned());
                         }
                     }
                 }
@@ -341,6 +342,19 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
     }
 
     Ok(meta)
+}
+
+fn is_supported_effect(file: &str) -> bool {
+    matches!(
+        file,
+        "effects/scroll/effect.json"
+            | "effects/waterwaves/effect.json"
+            | "effects/waterripple/effect.json"
+            | "effects/waterflow/effect.json"
+            | "effects/iris/effect.json"
+            | "effects/foliagesway/effect.json"
+            | "effects/shine/effect.json"
+    )
 }
 
 fn bound_bool(value: &serde_json::Value) -> Option<bool> {
@@ -391,6 +405,11 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
     if meta.has_custom_shaders {
         unsupported.push("Custom shaders (planned for L4)".into());
     }
+    unsupported.extend(
+        meta.unsupported_effects
+            .iter()
+            .map(|effect| format!("Unsupported effect: {effect}")),
+    );
 
     if meta.bloom {
         warnings.push("Bloom effect enabled (will be ignored until L3)".into());
@@ -497,6 +516,27 @@ mod tests {
         let meta = analyse_scene(MINIMAL_SCENE).unwrap();
         let compat = compute_compatibility(&meta);
         assert_eq!(compat.level, CompatibilityLevel::L1);
+    }
+
+    #[test]
+    fn distinguishes_supported_builtin_and_unknown_effects() {
+        let meta = analyse_scene(
+            r#"{"objects":[{"image":"models/bg.json","effects":[
+                {"file":"effects/iris/effect.json"},
+                {"file":"effects/foliagesway/effect.json"},
+                {"file":"effects/twirl/effect.json"}
+            ]}]}"#,
+        )
+        .unwrap();
+        assert!(!meta.has_custom_shaders);
+        assert_eq!(meta.unsupported_effects, ["effects/twirl/effect.json"]);
+        let compatibility = compute_compatibility(&meta);
+        assert!(
+            compatibility
+                .unsupported_features
+                .iter()
+                .any(|feature| feature.contains("effects/twirl/effect.json"))
+        );
     }
 
     #[test]
