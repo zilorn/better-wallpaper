@@ -8,8 +8,9 @@
 - 字号会按场景画布高度与 1080p 设计视口的比例换算到场景坐标；3840×2160 场景不再把文字二次缩小，实际输出分辨率变化时仍保持一致的相对尺寸。
 - Scene Sound IR 支持字符串或单元素数组资源、loop/once、音量与初始静音；基础背景音乐不再被统一判定为不兼容，高级随机/定时播放字段仍明确报告为 unsupported。
 - niri 场景会安全提取包内背景音乐并复用 FFmpeg + Rodio 播放，首帧提交后启动，跟随全局静音、暂停、取消和热重载，循环结束时自动 seek 回开头；音频失败不会阻断画面。
+- 严格识别 `registerAudioBuffers` 场景脚本模式但不执行 JavaScript；通过 PulseAudio/PipeWire 默认输出 monitor 捕获整个桌面声音，生成带平滑的 64 段对数频谱并驱动 GPU 柱状响应。
 - `models/util/solidlayer.json` 无需包内模型即可生成实心纹理；识别 `getSeconds() / 60` 模式后按系统秒数更新 X 方向进度。
-- 真实场景  的 headless 验证识别 1 条包内循环 FLAC 背景音乐和 5 个可提交 draw；64 柱频谱响应仍未实现。
+- 真实场景 `2893997853` 的 headless 验证包含 1 条 24-bit/48kHz 双声道循环 FLAC、64 个频谱柱和 68 个可提交 draw；实际 FLAC 完整解码为 10,856,960 个交错采样。
 - workspace 测试全部通过，workspace 全 target 严格 Clippy (`-D warnings`) 通过。
 
 ## 2026-07-04 Library API 500 修复与水效果遮罩

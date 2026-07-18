@@ -46,6 +46,8 @@ pub struct SceneNode {
     pub kind: SceneNodeKind,
     pub transform: SceneTransform,
     pub dynamic_scale: Option<DynamicScaleKind>,
+    #[serde(default)]
+    pub audio_visualizer: Option<SceneAudioVisualizer>,
     pub effects: Vec<String>,
     pub scroll: Option<ScrollEffect>,
     pub water_waves: Vec<WaterWaveEffect>,
@@ -58,6 +60,18 @@ pub struct SceneNode {
     pub shine: Option<ShineEffect>,
     /// Fields retained by name so unsupported input cannot silently change rendering.
     pub unknown_fields: Vec<String>,
+}
+
+/// A safely recognized, script-authored desktop audio spectrum.
+///
+/// The original script is never executed. This configuration is only emitted
+/// when the parser recognizes the complete, bounded spectrum pattern.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SceneAudioVisualizer {
+    pub bins: usize,
+    pub bar_width: f32,
+    pub height_scale: f32,
+    pub spacing: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -492,6 +506,14 @@ fn parse_node(
     let iris = parse_iris_effect(object.get("effects"), &path)?;
     let foliage_sway = parse_foliage_sway_effects(object.get("effects"), &path)?;
     let shine = parse_shine_effect(object.get("effects"), &path)?;
+    let audio_visualizer = parse_audio_visualizer(object.get("visible"));
+    if object.get("visible").and_then(script_source).is_some() && audio_visualizer.is_none() {
+        mark(
+            unsupported,
+            &format!("{path}.visible.script"),
+            "unrecognized visible script",
+        );
+    }
     for effect in &effects {
         if !effect.ends_with("/scroll/effect.json")
             && effect != "effects/waterwaves/effect.json"
@@ -558,6 +580,7 @@ fn parse_node(
                 .transpose()?,
         },
         dynamic_scale: parse_dynamic_scale(object.get("scale")),
+        audio_visualizer,
         effects,
         scroll,
         water_waves,
@@ -707,6 +730,86 @@ fn script_source(value: &Value) -> Option<&str> {
         .as_object()
         .and_then(|object| object.get("script"))
         .and_then(Value::as_str)
+}
+
+fn parse_audio_visualizer(visible: Option<&Value>) -> Option<SceneAudioVisualizer> {
+    let visible = visible?.as_object()?;
+    let script = visible.get("script")?.as_str()?;
+    let bins = parse_script_call_usize(script, "engine.registerAudioBuffers")?;
+    if !(8..=128).contains(&bins)
+        || !script_contains_ignoring_ascii_whitespace(script, "audioData.average[i]")
+        || !script_contains_ignoring_ascii_whitespace(script, "createLayer(")
+    {
+        return None;
+    }
+
+    let properties = visible.get("scriptproperties")?.as_object()?;
+    let bar_width = bounded_script_property(properties, "barWidth", 0.0..=100.0)?;
+    let height_scale = bounded_script_property(properties, "scaleY", 0.0..=500.0)?;
+    let spacing = bounded_script_property(properties, "originX", -500.0..=500.0)?;
+    Some(SceneAudioVisualizer {
+        bins,
+        bar_width,
+        height_scale,
+        spacing,
+    })
+}
+
+fn bounded_script_property(
+    properties: &Map<String, Value>,
+    name: &str,
+    range: std::ops::RangeInclusive<f32>,
+) -> Option<f32> {
+    let value = properties.get(name).map(unwrap_script_value)?;
+    let value = value.as_f64()? as f32;
+    (value.is_finite() && range.contains(&value)).then_some(value)
+}
+
+fn parse_script_call_usize(script: &str, callee: &str) -> Option<usize> {
+    let mut remaining = script;
+    while let Some(offset) = remaining.find(callee) {
+        let after_name = &remaining[offset + callee.len()..];
+        let after_name = after_name.trim_start_matches(char::is_whitespace);
+        let Some(after_open) = after_name.strip_prefix('(') else {
+            remaining = after_name;
+            continue;
+        };
+        let after_open = after_open.trim_start_matches(char::is_whitespace);
+        let digit_count = after_open
+            .as_bytes()
+            .iter()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+        if digit_count == 0 {
+            remaining = after_open;
+            continue;
+        }
+        let (digits, after_digits) = after_open.split_at(digit_count);
+        if after_digits
+            .trim_start_matches(char::is_whitespace)
+            .starts_with(')')
+        {
+            return digits.parse().ok();
+        }
+        remaining = after_digits;
+    }
+    None
+}
+
+fn script_contains_ignoring_ascii_whitespace(script: &str, pattern: &str) -> bool {
+    let pattern = pattern.as_bytes();
+    let mut matched = 0;
+    for byte in script.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
+        if byte == pattern[matched] {
+            matched += 1;
+            if matched == pattern.len() {
+                return true;
+            }
+        } else {
+            matched = usize::from(byte == pattern[0]);
+        }
+    }
+    false
 }
 
 fn parse_iris_effect(
@@ -1464,6 +1567,35 @@ fn mark(unsupported: &mut BTreeSet<UnsupportedFeature>, path: &str, feature: &st
 mod tests {
     use super::*;
 
+    fn audio_visualizer_scene(bins: usize, bar_width: f64, scale_y: f64, origin_x: f64) -> String {
+        serde_json::json!({
+            "objects": [{
+                "id": 12,
+                "name": "Audio spectrum",
+                "image": "models/util/solidlayer.json",
+                "visible": {
+                    "script": format!(r#"
+                        'use strict';
+                        const audioData = engine.registerAudioBuffers( {bins} );
+                        const bars = [];
+                        for (let i = 0; i < {bins}; ++i) {{
+                            const bar = thisScene.createLayer('models/util/solidlayer.json');
+                            bar.scale.y = audioData.average[ i ] * scaleY;
+                            bars.push(bar);
+                        }}
+                    "#),
+                    "scriptproperties": {
+                        "barWidth": {"order": 1, "type": "slider", "value": bar_width},
+                        "scaleY": {"order": 2, "type": "slider", "value": scale_y},
+                        "originX": {"order": 3, "type": "slider", "value": origin_x}
+                    },
+                    "value": true
+                }
+            }]
+        })
+        .to_string()
+    }
+
     #[test]
     fn produces_deterministic_ir_and_reports_unknown_fields() {
         let graph = parse_scene_graph(
@@ -1497,6 +1629,88 @@ mod tests {
         let first = serde_json::to_string_pretty(&graph).unwrap();
         let second = serde_json::to_string_pretty(&graph).unwrap();
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn recognizes_complete_audio_visualizer_visible_script_without_executing_it() {
+        let graph = parse_scene_graph(&audio_visualizer_scene(64, 14.5, 320.0, -7.25)).unwrap();
+
+        assert_eq!(
+            graph.nodes[0].audio_visualizer,
+            Some(SceneAudioVisualizer {
+                bins: 64,
+                bar_width: 14.5,
+                height_scale: 320.0,
+                spacing: -7.25,
+            })
+        );
+        assert!(graph.unsupported_features.is_empty());
+    }
+
+    #[test]
+    fn requires_the_complete_audio_visualizer_pattern() {
+        let complete = audio_visualizer_scene(64, 10.0, 100.0, 5.0);
+        for missing in [
+            "engine.registerAudioBuffers",
+            "audioData.average[ i ]",
+            "thisScene.createLayer",
+        ] {
+            let scene = complete.replacen(missing, "missingFeature", 1);
+            let graph = parse_scene_graph(&scene).unwrap();
+            assert_eq!(
+                graph.nodes[0].audio_visualizer, None,
+                "accepted script without {missing}"
+            );
+            assert!(graph.unsupported_features.iter().any(|feature| {
+                feature.path == "objects[0].visible.script"
+                    && feature.feature == "unrecognized visible script"
+            }));
+        }
+
+        for missing in ["barWidth", "scaleY", "originX"] {
+            let mut scene: Value = serde_json::from_str(&complete).unwrap();
+            scene["objects"][0]["visible"]["scriptproperties"]
+                .as_object_mut()
+                .unwrap()
+                .remove(missing);
+            let graph = parse_scene_graph(&scene.to_string()).unwrap();
+            assert_eq!(
+                graph.nodes[0].audio_visualizer, None,
+                "accepted script without {missing}"
+            );
+            assert!(graph.unsupported_features.iter().any(|feature| {
+                feature.path == "objects[0].visible.script"
+                    && feature.feature == "unrecognized visible script"
+            }));
+        }
+    }
+
+    #[test]
+    fn enforces_audio_visualizer_safety_boundaries() {
+        for (bins, bar_width, scale_y, origin_x) in
+            [(8, 0.0, 0.0, -500.0), (128, 100.0, 500.0, 500.0)]
+        {
+            let graph =
+                parse_scene_graph(&audio_visualizer_scene(bins, bar_width, scale_y, origin_x))
+                    .unwrap();
+            assert!(graph.nodes[0].audio_visualizer.is_some());
+        }
+
+        for (bins, bar_width, scale_y, origin_x) in [
+            (7, 10.0, 100.0, 0.0),
+            (129, 10.0, 100.0, 0.0),
+            (64, -0.01, 100.0, 0.0),
+            (64, 100.01, 100.0, 0.0),
+            (64, 10.0, -0.01, 0.0),
+            (64, 10.0, 500.01, 0.0),
+            (64, 10.0, 100.0, -500.01),
+            (64, 10.0, 100.0, 500.01),
+        ] {
+            let graph =
+                parse_scene_graph(&audio_visualizer_scene(bins, bar_width, scale_y, origin_x))
+                    .unwrap();
+            assert_eq!(graph.nodes[0].audio_visualizer, None);
+        }
     }
 
     #[test]

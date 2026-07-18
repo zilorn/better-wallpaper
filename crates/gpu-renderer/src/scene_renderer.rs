@@ -897,6 +897,13 @@ impl SceneGpuRenderer {
                 if draw.quad.dynamic_scale == Some(DynamicScaleKind::ClockSecondX) {
                     apply_clock_second_scale(&mut vertices, local_date_time().second as f32 / 60.0);
                 }
+                if let Some(response) = draw.quad.audio_response {
+                    let amplitude = assets
+                        .audio_spectrum
+                        .as_ref()
+                        .map_or(0.0, |spectrum| spectrum.get(response.bin));
+                    apply_centered_y_scale(&mut vertices, amplitude * response.height_scale);
+                }
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
                     vertices.len() * std::mem::size_of::<f32>(),
@@ -1039,6 +1046,16 @@ fn apply_clock_second_scale(vertices: &mut [f32], fraction: f32) {
         let left_y = vertices[left + 1];
         vertices[right] = left_x + (vertices[right] - left_x) * fraction;
         vertices[right + 1] = left_y + (vertices[right + 1] - left_y) * fraction;
+    }
+}
+
+fn apply_centered_y_scale(vertices: &mut [f32], scale: f32) {
+    if vertices.len() < 24 {
+        return;
+    }
+    let center = (vertices[1] + vertices[13]) * 0.5;
+    for index in [1, 7, 13, 19] {
+        vertices[index] = center + (vertices[index] - center) * scale.max(0.0);
     }
 }
 
@@ -1392,9 +1409,9 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        LocalDateTime, apply_clock_second_scale, convert_to_rgba8, downsample_rgba8,
-        dynamic_text_label, first_supported_mip, puppet_vertices, scene_layout_scale,
-        scene_vertices, scroll_uv,
+        LocalDateTime, apply_centered_y_scale, apply_clock_second_scale, convert_to_rgba8,
+        downsample_rgba8, dynamic_text_label, first_supported_mip, puppet_vertices,
+        scene_layout_scale, scene_vertices, scroll_uv,
     };
     use better_wallpaper_renderer::Scene2dAssets;
     use better_wallpaper_scene_format::{
@@ -1454,6 +1471,17 @@ mod tests {
     }
 
     #[test]
+    fn audio_response_scales_a_quad_around_its_center() {
+        let positions = [[-1.0, -0.1], [1.0, -0.1], [1.0, 0.1], [-1.0, 0.1]];
+        let mut vertices = scene_vertices(&positions, [0.0, 0.0, 1.0, 1.0]);
+        apply_centered_y_scale(&mut vertices, 2.0);
+        assert!((vertices[1] + 0.2).abs() < 0.0001);
+        assert!((vertices[7] + 0.2).abs() < 0.0001);
+        assert!((vertices[13] - 0.2).abs() < 0.0001);
+        assert!((vertices[19] - 0.2).abs() < 0.0001);
+    }
+
+    #[test]
     fn maps_puppet_logical_uvs_into_padded_texture_storage() {
         let vertices = puppet_vertices(
             &[[-0.5, 0.25], [0.75, -0.25]],
@@ -1474,6 +1502,7 @@ mod tests {
             skipped_nodes: 0,
             projection_size: [3840.0, 2160.0],
             layout_viewport: [1920, 1080],
+            audio_spectrum: None,
         };
         assert_eq!(scene_layout_scale(&assets, (3840, 2160)), [1.0, 1.0]);
 

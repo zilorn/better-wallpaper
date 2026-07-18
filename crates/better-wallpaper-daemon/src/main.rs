@@ -10,7 +10,10 @@ use better_wallpaper_core::{
     BackendKind, ConfigStore, PlaybackControl, WallpaperType,
     desktop::{ProcessEnvironment, detect_desktop, select_backend},
 };
-use better_wallpaper_daemon::{LogLevelController, LogStore, playback, server};
+use better_wallpaper_daemon::{
+    LogLevelController, LogStore, desktop_audio::DesktopAudioCapture, playback,
+    scene_audio::PreparedSceneAudio, server,
+};
 use better_wallpaper_kde::run_kde_controlled;
 use better_wallpaper_renderer::{
     NvidiaVulkanContext, Scene2dOptions, build_scene_2d_plan, resolve_scene_2d_assets,
@@ -349,18 +352,43 @@ struct PreparedScene {
     resolved_draw_count: usize,
     assets: Option<better_wallpaper_renderer::Scene2dAssets>,
     asset_error: Option<String>,
-    audio: better_wallpaper_daemon::scene_audio::PreparedSceneAudio,
+    audio: PreparedSceneAudio,
 }
 
 fn run_niri_scene(
-    assets: better_wallpaper_renderer::Scene2dAssets,
-    scene_audio: better_wallpaper_daemon::scene_audio::PreparedSceneAudio,
-    play_audio: bool,
+    mut assets: better_wallpaper_renderer::Scene2dAssets,
+    scene_audio: PreparedSceneAudio,
+    play_background_audio: bool,
     output_names: &[String],
     scene_config: &better_wallpaper_core::SceneConfig,
     control: PlaybackControl,
 ) -> Result<()> {
     use std::time::Duration;
+
+    let audio_response_draws = assets
+        .draws
+        .iter()
+        .filter(|draw| draw.quad.audio_response.is_some())
+        .count();
+    let spectrum = Arc::new(better_wallpaper_renderer::SceneAudioSpectrum::default());
+    let desktop_audio_capture = if scene_config.audio_processing && audio_response_draws > 0 {
+        match DesktopAudioCapture::start(Arc::clone(&spectrum)) {
+            Ok(capture) => {
+                assets.audio_spectrum = Some(spectrum);
+                Some(capture)
+            }
+            Err(error) => {
+                warn!(%error, "desktop audio response unavailable; rendering without spectrum data");
+                None
+            }
+        }
+    } else {
+        info!(
+            enabled = scene_config.audio_processing,
+            audio_response_draws, "desktop audio response capture not started"
+        );
+        None
+    };
 
     let mut backends = if output_names.is_empty() {
         vec![
@@ -385,6 +413,7 @@ fn run_niri_scene(
             )
         })?;
     }
+    let mut background_audio = scene_audio.start(play_background_audio);
     info!(
         output_count = backends.len(),
         draw_count = assets.draws.len(),
@@ -438,6 +467,8 @@ fn run_niri_scene(
         mouse = scene_config.mouse,
         parallax = scene_config.parallax,
         audio_processing = scene_config.audio_processing,
+        audio_response_draws,
+        background_tracks = background_audio.active_track_count(),
         particle_limit = scene_config.particle_limit,
         property_override_count = scene_config.properties.len(),
         "scene runtime configuration applied"
@@ -446,12 +477,14 @@ fn run_niri_scene(
     let mut scene_elapsed = Duration::ZERO;
     let mut previous_tick = std::time::Instant::now();
     let mut was_paused = false;
-    let mut audio = scene_audio.start(play_audio);
     while !control.is_cancelled() {
         let frame_start = std::time::Instant::now();
         let delta = frame_start.saturating_duration_since(previous_tick);
         previous_tick = frame_start;
         let paused = control.is_paused();
+        if let Some(capture) = &desktop_audio_capture {
+            capture.set_paused(paused);
+        }
         if !paused {
             scene_elapsed = scene_elapsed.saturating_add(delta);
         }
@@ -475,13 +508,13 @@ fn run_niri_scene(
         }
         // Start only after a complete frame has reached every output, and keep
         // pause state synchronized with the scene clock thereafter.
-        audio.set_paused(paused);
+        background_audio.set_paused(paused);
         let elapsed = frame_start.elapsed();
         if elapsed < frame_interval {
             std::thread::sleep(frame_interval - elapsed);
         }
     }
-    drop(audio);
+    drop(background_audio);
     drop(scene_audio);
     drop(backends);
     drop(assets);
@@ -514,7 +547,7 @@ fn prepare_scene(
         &scene_config.properties,
     )
     .context("failed to parse scene graph")?;
-    let audio = better_wallpaper_daemon::scene_audio::PreparedSceneAudio::prepare(&package, &graph);
+    let audio = PreparedSceneAudio::prepare(&package, &graph);
     let plan = build_scene_2d_plan(
         &graph,
         Scene2dOptions {

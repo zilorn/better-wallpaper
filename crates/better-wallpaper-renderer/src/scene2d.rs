@@ -1,7 +1,10 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
 };
 
 use better_wallpaper_scene_format::{
@@ -80,6 +83,7 @@ pub struct Scene2dQuad {
     pub resource: String,
     pub text: Option<SceneText>,
     pub dynamic_scale: Option<DynamicScaleKind>,
+    pub audio_response: Option<SceneAudioResponse>,
     pub layout_transform: Mat3,
     /// Quad corners in NDC, ordered top-left, top-right, bottom-right, bottom-left.
     pub vertices: [[f32; 2]; 4],
@@ -93,6 +97,39 @@ pub struct Scene2dQuad {
     pub iris: Option<better_wallpaper_scene_format::IrisEffect>,
     pub foliage_sway: Vec<better_wallpaper_scene_format::FoliageSwayEffect>,
     pub shine: Option<better_wallpaper_scene_format::ShineEffect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SceneAudioResponse {
+    pub bin: usize,
+    pub height_scale: f32,
+}
+
+#[derive(Debug)]
+pub struct SceneAudioSpectrum {
+    bins: [AtomicU32; 64],
+}
+
+impl Default for SceneAudioSpectrum {
+    fn default() -> Self {
+        Self {
+            bins: std::array::from_fn(|_| AtomicU32::new(0.0_f32.to_bits())),
+        }
+    }
+}
+
+impl SceneAudioSpectrum {
+    pub fn set(&self, values: &[f32; 64]) {
+        for (bin, value) in self.bins.iter().zip(values) {
+            bin.store(value.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+        }
+    }
+
+    pub fn get(&self, index: usize) -> f32 {
+        self.bins
+            .get(index)
+            .map_or(0.0, |value| f32::from_bits(value.load(Ordering::Acquire)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +230,7 @@ pub struct Scene2dAssets {
     pub projection_size: [f32; 2],
     /// Viewport used when the backend-independent quad plan was built.
     pub layout_viewport: [u32; 2],
+    pub audio_spectrum: Option<Arc<SceneAudioSpectrum>>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -493,6 +531,7 @@ pub fn resolve_scene_2d_assets(
         skipped_nodes,
         projection_size,
         layout_viewport,
+        audio_spectrum: None,
     })
 }
 
@@ -1080,12 +1119,59 @@ pub fn build_scene_2d_plan(
         if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
             return Err(Scene2dError::InvalidOpacity(node.id.clone()));
         }
+        if let Some(visualizer) = node.audio_visualizer {
+            let origin = node
+                .transform
+                .origin
+                .unwrap_or(better_wallpaper_scene_format::Vec3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                });
+            let rotation = node.transform.angles.map_or(0.0, |angles| angles.z);
+            let parent_world = node
+                .parent
+                .as_deref()
+                .map(|parent| worlds[indexes[parent]].unwrap_or(Mat3::IDENTITY))
+                .unwrap_or(Mat3::IDENTITY);
+            for bin in 0..visualizer.bins {
+                let local =
+                    Mat3::translation(origin.x + visualizer.spacing * (bin + 1) as f32, origin.y)
+                        * Mat3::rotation(rotation)
+                        * Mat3::scale(visualizer.bar_width, 1.0);
+                let transform = view * parent_world * local;
+                quads.push(Scene2dQuad {
+                    node_id: format!("{}-audio-{bin}", node.id),
+                    resource: resource.clone(),
+                    text: None,
+                    dynamic_scale: None,
+                    audio_response: Some(SceneAudioResponse {
+                        bin,
+                        height_scale: visualizer.height_scale,
+                    }),
+                    layout_transform: transform,
+                    vertices: quad_vertices(transform, size.x, size.y),
+                    opacity,
+                    scroll: node.scroll,
+                    water_waves: node.water_waves.clone(),
+                    water_flow: node.water_flow.clone(),
+                    shakes: node.shakes.clone(),
+                    pulses: node.pulses.clone(),
+                    spin: node.spin,
+                    iris: node.iris.clone(),
+                    foliage_sway: node.foliage_sway.clone(),
+                    shine: node.shine.clone(),
+                });
+            }
+            continue;
+        }
         let transform = view * worlds[index].unwrap_or(Mat3::IDENTITY);
         quads.push(Scene2dQuad {
             node_id: node.id.clone(),
             resource,
             text,
             dynamic_scale: node.dynamic_scale,
+            audio_response: None,
             layout_transform: transform,
             vertices: quad_vertices(transform, size.x, size.y),
             opacity,
@@ -1319,6 +1405,34 @@ mod tests {
         assert_eq!(result.quads[0].vertices[2], [0.0, -1.0]);
         assert_eq!(result.quads[1].resource, "models/b.json");
         assert_eq!(result.quads[1].opacity, 0.5);
+    }
+
+    #[test]
+    fn expands_a_recognized_audio_visualizer_into_spectrum_bars() {
+        let result = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":100,"height":100}},
+                "objects":[{
+                    "id":"spectrum",
+                    "image":"models/bar.json",
+                    "origin":"10 20 0",
+                    "size":"4 4",
+                    "visible":{
+                        "script":"let audioData=engine.registerAudioBuffers(64); audioData.average[i]; thisScene.createLayer('models/bar.json');",
+                        "scriptproperties":{"barWidth":5,"scaleY":50,"originX":2},
+                        "value":true
+                    }
+                }]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(result.quads.len(), 64);
+        assert_eq!(result.quads[0].audio_response.unwrap().bin, 0);
+        assert_eq!(result.quads[63].audio_response.unwrap().bin, 63);
+        assert_eq!(result.quads[0].audio_response.unwrap().height_scale, 50.0);
+        let first_center = (result.quads[0].vertices[0][0] + result.quads[0].vertices[1][0]) * 0.5;
+        let second_center = (result.quads[1].vertices[0][0] + result.quads[1].vertices[1][0]) * 0.5;
+        assert!((second_center - first_center - 0.04).abs() < 0.0001);
     }
 
     #[test]

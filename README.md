@@ -72,15 +72,16 @@ compositor 输出。当前阶段仍需继续验证热插拔和 compositor 断线
 ### 依赖
 
 完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、CMake、`pkg-config`，以及
-ALSA、FFmpeg、Wayland 和 Qt 6 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）；
-Plasma 6 插件要求 Qt 6.6 或更高版本。
+ALSA、FFmpeg、Wayland 和 Qt 6 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
+以及 `parec`（通过 PipeWire/PulseAudio 默认输出 monitor 提供桌面音频响应）；Plasma 6 插件要求
+Qt 6.6 或更高版本。
 
 Debian/Ubuntu：
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  build-essential clang cmake pkg-config ffmpeg \
+  build-essential clang cmake pkg-config ffmpeg pulseaudio-utils \
   libasound2-dev libwayland-dev \
   libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
   libavutil-dev libswresample-dev libswscale-dev \
@@ -91,7 +92,7 @@ Arch Linux（所有依赖均在官方仓库中）：
 
 ```bash
 sudo pacman -S --needed \
-  base-devel clang cmake pkgconf ffmpeg \
+  base-devel clang cmake pkgconf ffmpeg libpulse \
   alsa-lib wayland \
   qt6-base qt6-declarative qt6-multimedia
 ```
@@ -102,7 +103,7 @@ Fedora（FFmpeg 开发包要求系统已启用提供完整 FFmpeg 的仓库）�
 
 ```bash
 sudo dnf install \
-  @development-tools clang cmake pkgconf-pkg-config ffmpeg ffmpeg-devel \
+  @development-tools clang cmake pkgconf-pkg-config ffmpeg ffmpeg-devel pulseaudio-utils \
   alsa-lib-devel wayland-devel \
   qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel
 ```
