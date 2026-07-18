@@ -261,6 +261,7 @@ pub fn run_niri(
 }
 
 /// 在 niri background layer 上播放视频，并响应来自管理接口的暂停和取消命令。
+#[allow(clippy::too_many_arguments)]
 pub fn run_niri_controlled(
     path: PathBuf,
     loop_playback: bool,

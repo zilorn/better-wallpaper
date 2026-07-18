@@ -94,28 +94,6 @@ fn ui_open_command(url: &str) -> Command {
     command
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn browser_launch_does_not_inherit_graphics_overrides() {
-        let command = ui_open_command("http://127.0.0.1:1234");
-        assert_eq!(command.get_program(), "xdg-open");
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![std::ffi::OsStr::new("http://127.0.0.1:1234")]
-        );
-        let removed = command
-            .get_envs()
-            .filter_map(|(name, value)| value.is_none().then_some(name))
-            .collect::<Vec<_>>();
-        for name in GRAPHICS_ENV_OVERRIDES {
-            assert!(removed.contains(&std::ffi::OsStr::new(name)));
-        }
-    }
-}
-
 impl Tray for WallpaperTray {
     const MENU_ON_ACTIVATE: bool = true;
 
@@ -194,5 +172,27 @@ impl Tray for WallpaperTray {
     fn watcher_offline(&self, reason: ksni::OfflineReason) -> bool {
         warn!(?reason, "system tray watcher unavailable");
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browser_launch_does_not_inherit_graphics_overrides() {
+        let command = ui_open_command("http://127.0.0.1:1234");
+        assert_eq!(command.get_program(), "xdg-open");
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec![std::ffi::OsStr::new("http://127.0.0.1:1234")]
+        );
+        let removed = command
+            .get_envs()
+            .filter_map(|(name, value)| value.is_none().then_some(name))
+            .collect::<Vec<_>>();
+        for name in GRAPHICS_ENV_OVERRIDES {
+            assert!(removed.contains(&std::ffi::OsStr::new(name)));
+        }
     }
 }

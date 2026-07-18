@@ -112,10 +112,10 @@ fn strip_ansi_escapes(buf: &[u8]) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
-        if c == '\x1b' || c == '\u{001b}' {
+        if c == '\x1b' {
             // ESC character - skip CSI sequences: ESC[...m or ESC[K
             // Also handles OSC sequences: ESC]...BEL
-            while let Some(n) = chars.next() {
+            for n in chars.by_ref() {
                 if n == 'm' || n == 'K' || n == '\x07' {
                     break;
                 }

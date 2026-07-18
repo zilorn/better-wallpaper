@@ -7,5 +7,6 @@ license.workspace = true
 [dependencies]
 ash.workspace = true
 better-wallpaper-scene-format = { path = "../better-wallpaper-scene-format" }
+fontdue.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

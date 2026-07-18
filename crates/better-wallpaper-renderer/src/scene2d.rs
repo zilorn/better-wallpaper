@@ -1,11 +1,27 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use better_wallpaper_scene_format::{
-    BlendMode, MaterialManifest, ModelManifest, PkgReader, PuppetModel, SceneGraph, SceneNodeKind,
-    TexTexture, TextureImage, resolve_texture_path,
+    BlendMode, DynamicScaleKind, DynamicTextKind, MaterialManifest, ModelManifest, PkgReader,
+    PuppetModel, SceneGraph, SceneNodeKind, SceneText, TexFormat, TexTexture, TextureAlphaMode,
+    TextureColorSpace, TextureImage, TextureMipLevel, resolve_texture_path,
 };
 use thiserror::Error;
 use tracing::{debug, warn};
+
+#[derive(Debug, Clone)]
+pub struct SceneFontRender {
+    pub font: Arc<fontdue::Font>,
+    pub source: String,
+    pub fallback: Option<Arc<fontdue::Font>>,
+    pub fallback_source: Option<String>,
+    pub pixel_size: f32,
+    pub color: better_wallpaper_scene_format::Vec3,
+    pub dynamic: Option<DynamicTextKind>,
+}
 
 /// Column-major affine 2D matrix. Points are multiplied as `matrix * [x, y, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,6 +78,9 @@ pub struct Scene2dOptions {
 pub struct Scene2dQuad {
     pub node_id: String,
     pub resource: String,
+    pub text: Option<SceneText>,
+    pub dynamic_scale: Option<DynamicScaleKind>,
+    pub layout_transform: Mat3,
     /// Quad corners in NDC, ordered top-left, top-right, bottom-right, bottom-left.
     pub vertices: [[f32; 2]; 4],
     pub opacity: f32,
@@ -92,6 +111,7 @@ pub struct Scene2dDraw {
     pub blend_mode: BlendMode,
     pub texture_path: String,
     pub texture: TextureImage,
+    pub text_render: Option<SceneFontRender>,
     /// Logical image bounds within a potentially padded GPU texture.
     pub uv: [f32; 4],
     pub animation: Option<SpriteAnimation>,
@@ -209,6 +229,8 @@ pub enum Scene2dError {
     InvalidPuppet { path: String, detail: String },
     #[error("scene asset manifest is invalid: {0}")]
     InvalidAssetManifest(String),
+    #[error("scene font {font} could not be loaded: {detail}")]
+    InvalidFont { font: String, detail: String },
 }
 
 /// Resolves a validated draw plan into immutable texture payloads without
@@ -237,8 +259,55 @@ pub fn resolve_scene_2d_assets(
     let mut skipped_nodes = plan.skipped_nodes;
     let projection_size = plan.projection_size;
     let layout_viewport = plan.layout_viewport;
+    // Text point sizes are authored for the output/design viewport, while the
+    // node transform below operates in project-canvas coordinates. Convert the
+    // requested size back into canvas pixels before projection so a 2160p
+    // scene does not make text half-sized on a 1080p output.
+    let text_resolution_scale = (projection_size[1] / layout_viewport[1] as f32).clamp(0.25, 8.0);
     for quad in plan.quads {
         let resolved = (|| {
+            if let Some(text) = &quad.text {
+                let initial = match text.dynamic {
+                    Some(DynamicTextKind::Clock) => "00:00",
+                    Some(DynamicTextKind::Date) => "0000 | 00 | 00 | 星期日",
+                    None => &text.value,
+                };
+                let font_render =
+                    resolve_scene_font(package, text, initial, text_resolution_scale)?;
+                let texture = font_text_texture(initial, &font_render);
+                let mut text_quad = quad.clone();
+                let level = texture
+                    .levels
+                    .first()
+                    .expect("font renderer always creates a base level");
+                text_quad.vertices = quad_vertices(
+                    text_quad.layout_transform,
+                    level.width as f32,
+                    level.height as f32,
+                );
+                debug!(
+                    node = %quad.node_id,
+                    dynamic = ?text.dynamic,
+                    requested_font = %text.font,
+                    selected_font = %font_render.source,
+                    fallback_font = ?font_render.fallback_source,
+                    point_size = text.point_size,
+                    resolution_scale = text_resolution_scale,
+                    raster_pixel_size = font_render.pixel_size,
+                    rendered_width = level.width,
+                    rendered_height = level.height,
+                    "Prepared scene text with a font file renderer"
+                );
+                return Ok(procedural_draw(text_quad, texture, Some(font_render)));
+            }
+            if quad.resource == "models/util/solidlayer.json" {
+                debug!(node = %quad.node_id, "Prepared built-in solid scene layer");
+                return Ok(procedural_draw(
+                    quad.clone(),
+                    solid_color_texture([255, 255, 255, 255]),
+                    None,
+                ));
+            }
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
                 Scene2dError::MissingModel {
                     node: quad.node_id.clone(),
@@ -396,6 +465,7 @@ pub fn resolve_scene_2d_assets(
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
                 texture,
+                text_render: None,
                 uv,
                 animation,
                 mesh,
@@ -424,6 +494,314 @@ pub fn resolve_scene_2d_assets(
         projection_size,
         layout_viewport,
     })
+}
+
+fn procedural_draw(
+    quad: Scene2dQuad,
+    texture: TextureImage,
+    text_render: Option<SceneFontRender>,
+) -> Scene2dDraw {
+    let texture_path = quad.resource.clone();
+    Scene2dDraw {
+        quad,
+        blend_mode: BlendMode::Translucent,
+        texture_path,
+        texture,
+        text_render,
+        uv: [0.0, 0.0, 1.0, 1.0],
+        animation: None,
+        mesh: None,
+        water_wave_masks: Vec::new(),
+        water_wave_normals: Vec::new(),
+        water_flow_mask: None,
+        water_flow_phase: None,
+        iris_mask: None,
+        foliage_masks: Vec::new(),
+        shine_mask: None,
+        shake_maps: Vec::new(),
+        pulse_masks: Vec::new(),
+    }
+}
+
+fn solid_color_texture(color: [u8; 4]) -> TextureImage {
+    TextureImage {
+        format: TexFormat::RGBA8888,
+        color_space: TextureColorSpace::Srgb,
+        alpha_mode: TextureAlphaMode::Straight,
+        levels: vec![TextureMipLevel {
+            width: 1,
+            height: 1,
+            data: Arc::from(color),
+        }],
+    }
+}
+
+fn resolve_scene_font(
+    package: &PkgReader,
+    text: &SceneText,
+    label: &str,
+    resolution_scale: f32,
+) -> Result<SceneFontRender, Scene2dError> {
+    let pixel_size = (text.point_size * 2.0 * resolution_scale).clamp(8.0, 512.0);
+    let settings = |collection_index| fontdue::FontSettings {
+        collection_index,
+        scale: pixel_size,
+        ..fontdue::FontSettings::default()
+    };
+    if let Some(entry) = package.find(&text.font) {
+        let font = fontdue::Font::from_bytes(package.read_entry(entry), settings(0)).map_err(
+            |detail| Scene2dError::InvalidFont {
+                font: text.font.clone(),
+                detail: detail.into(),
+            },
+        )?;
+        return Ok(SceneFontRender {
+            font: Arc::new(font),
+            source: format!("package:{}", text.font),
+            fallback: load_cjk_fallback(label, pixel_size),
+            fallback_source: cjk_fallback_source(label),
+            pixel_size,
+            color: text.color,
+            dynamic: text.dynamic,
+        });
+    }
+
+    let candidates = system_font_candidates(&text.font, label);
+    let mut errors = Vec::new();
+    for (path, collection_index) in candidates {
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        match fontdue::Font::from_bytes(bytes, settings(collection_index)) {
+            Ok(font) => {
+                if text.font.contains('/') || text.font.contains('\\') {
+                    if path.to_string_lossy().contains("wallpaper_engine/assets") {
+                        debug!(
+                            requested_font = %text.font,
+                            asset_font = %path.display(),
+                            "Resolved missing package font from Wallpaper Engine assets"
+                        );
+                    } else {
+                        warn!(
+                            requested_font = %text.font,
+                            fallback_font = %path.display(),
+                            "Scene font resource is missing; using a system font file"
+                        );
+                    }
+                }
+                return Ok(SceneFontRender {
+                    font: Arc::new(font),
+                    source: path.display().to_string(),
+                    fallback: load_cjk_fallback(label, pixel_size),
+                    fallback_source: cjk_fallback_source(label),
+                    pixel_size,
+                    color: text.color,
+                    dynamic: text.dynamic,
+                });
+            }
+            Err(error) => errors.push(format!("{}: {error}", path.display())),
+        }
+    }
+    Err(Scene2dError::InvalidFont {
+        font: text.font.clone(),
+        detail: errors.join("; "),
+    })
+}
+
+fn system_font_candidates(requested: &str, label: &str) -> Vec<(PathBuf, u32)> {
+    let needs_cjk = label
+        .chars()
+        .any(|character| matches!(character as u32, 0x2E80..=0x9FFF | 0xF900..=0xFAFF));
+    let mut candidates = Vec::new();
+    if !requested.starts_with("systemfont_")
+        && let Some(user_home) = std::env::var_os("HOME").map(PathBuf::from)
+    {
+        for steam_root in [
+            user_home.join(".local/share/Steam"),
+            user_home.join(".steam/steam"),
+            user_home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+        ] {
+            candidates.push((
+                steam_root
+                    .join("steamapps/common/wallpaper_engine/assets")
+                    .join(requested),
+                0,
+            ));
+        }
+    }
+    if needs_cjk {
+        candidates.push((
+            PathBuf::from("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"),
+            2,
+        ));
+        candidates.push((
+            PathBuf::from("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+            2,
+        ));
+    }
+    let requested_lower = requested.to_ascii_lowercase();
+    if requested_lower.contains("arial") || requested_lower.contains("sans") {
+        candidates.push((
+            PathBuf::from("/usr/share/fonts/liberation/LiberationSans-Regular.ttf"),
+            0,
+        ));
+    }
+    if requested_lower.contains("mono") || requested_lower.contains("monofur") {
+        candidates.push((
+            PathBuf::from("/usr/share/fonts/noto/NotoSansMono-Regular.ttf"),
+            0,
+        ));
+    }
+    candidates.extend([
+        (
+            PathBuf::from("/usr/share/fonts/noto/NotoSans-Regular.ttf"),
+            0,
+        ),
+        (
+            PathBuf::from("/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf"),
+            0,
+        ),
+    ]);
+    candidates
+}
+
+fn cjk_fallback_path(label: &str) -> Option<(PathBuf, u32)> {
+    label
+        .chars()
+        .any(|character| matches!(character as u32, 0x2E80..=0x9FFF | 0xF900..=0xFAFF))
+        .then(|| {
+            (
+                PathBuf::from("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"),
+                2,
+            )
+        })
+        .filter(|(path, _)| path.is_file())
+}
+
+fn load_cjk_fallback(label: &str, pixel_size: f32) -> Option<Arc<fontdue::Font>> {
+    let (path, collection_index) = cjk_fallback_path(label)?;
+    let bytes = std::fs::read(path).ok()?;
+    fontdue::Font::from_bytes(
+        bytes,
+        fontdue::FontSettings {
+            collection_index,
+            scale: pixel_size.max(8.0),
+            ..fontdue::FontSettings::default()
+        },
+    )
+    .ok()
+    .map(Arc::new)
+}
+
+fn cjk_fallback_source(label: &str) -> Option<String> {
+    cjk_fallback_path(label).map(|(path, _)| path.display().to_string())
+}
+
+/// Rasterizes text using the selected TTF/TTC font and its real line metrics.
+pub fn font_text_texture(text: &str, render: &SceneFontRender) -> TextureImage {
+    let characters = text.chars().take(256).collect::<Vec<_>>();
+    let mut glyphs = Vec::with_capacity(characters.len());
+    let mut pen_x = 0.0_f32;
+    let mut previous: Option<(char, bool)> = None;
+    let line = render.font.horizontal_line_metrics(render.pixel_size);
+    let mut top = line.map_or(0.0, |metrics| -metrics.ascent);
+    let mut bottom = line.map_or(render.pixel_size, |metrics| -metrics.descent);
+    if let Some(fallback_line) = render
+        .fallback
+        .as_ref()
+        .and_then(|font| font.horizontal_line_metrics(render.pixel_size))
+    {
+        top = top.min(-fallback_line.ascent);
+        bottom = bottom.max(-fallback_line.descent);
+    }
+    let mut left = 0.0_f32;
+    for character in characters {
+        let use_fallback = render.font.lookup_glyph_index(character) == 0
+            && render
+                .fallback
+                .as_ref()
+                .is_some_and(|font| font.lookup_glyph_index(character) != 0);
+        let font = if use_fallback {
+            render.fallback.as_deref().unwrap_or(&render.font)
+        } else {
+            &render.font
+        };
+        if let Some((previous, previous_fallback)) = previous
+            && previous_fallback == use_fallback
+        {
+            pen_x += font
+                .horizontal_kern(previous, character, render.pixel_size)
+                .unwrap_or(0.0);
+        }
+        let (metrics, bitmap) = font.rasterize(character, render.pixel_size);
+        let glyph_left = pen_x + metrics.xmin as f32;
+        let glyph_top = -(metrics.ymin as f32 + metrics.height as f32);
+        left = left.min(glyph_left);
+        top = top.min(glyph_top);
+        bottom = bottom.max(-metrics.ymin as f32);
+        glyphs.push((glyph_left, glyph_top, metrics, bitmap));
+        pen_x += metrics.advance_width;
+        previous = Some((character, use_fallback));
+    }
+    let right = glyphs.iter().fold(pen_x, |right, (x, _, metrics, _)| {
+        right.max(*x + metrics.width as f32)
+    });
+    let width = (right.ceil() - left.floor()).max(1.0) as usize;
+    let height = (bottom.ceil() - top.floor()).max(1.0) as usize;
+    let origin_x = -left.floor();
+    let origin_y = -top.floor();
+    let color = [
+        (render.color.x.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (render.color.y.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (render.color.z.clamp(0.0, 1.0) * 255.0).round() as u8,
+    ];
+    let mut pixels = vec![0_u8; width * height * 4];
+    for (glyph_x, glyph_y, metrics, bitmap) in glyphs {
+        let start_x = (origin_x + glyph_x).round() as isize;
+        let start_y = (origin_y + glyph_y).round() as isize;
+        for y in 0..metrics.height {
+            for x in 0..metrics.width {
+                let target_x = start_x + x as isize;
+                let target_y = start_y + y as isize;
+                if target_x < 0
+                    || target_y < 0
+                    || target_x >= width as isize
+                    || target_y >= height as isize
+                {
+                    continue;
+                }
+                let alpha = bitmap[y * metrics.width + x];
+                let offset = (target_y as usize * width + target_x as usize) * 4;
+                pixels[offset..offset + 3].copy_from_slice(&color);
+                pixels[offset + 3] = alpha;
+            }
+        }
+    }
+    TextureImage {
+        format: TexFormat::RGBA8888,
+        color_space: TextureColorSpace::Srgb,
+        alpha_mode: TextureAlphaMode::Straight,
+        levels: vec![TextureMipLevel {
+            width: width as u32,
+            height: height as u32,
+            data: Arc::from(pixels),
+        }],
+    }
+}
+
+fn quad_vertices(transform: Mat3, width: f32, height: f32) -> [[f32; 2]; 4] {
+    let half_x = width * 0.5;
+    let half_y = height * 0.5;
+    [
+        transform.transform_point([-half_x, half_y]),
+        transform.transform_point([half_x, half_y]),
+        transform.transform_point([half_x, -half_y]),
+        transform.transform_point([-half_x, -half_y]),
+    ]
 }
 
 fn load_puppet_mesh(
@@ -648,7 +1026,7 @@ pub fn build_scene_2d_plan(
     let output_scale = (viewport_width / projection.x).max(viewport_height / projection.y);
     let view = Mat3::scale(
         2.0 * output_scale / viewport_width,
-        -2.0 * output_scale / viewport_height,
+        2.0 * output_scale / viewport_height,
     ) * Mat3::translation(-center_x, -center_y);
     debug!(
         projection_width = projection.x,
@@ -680,9 +1058,16 @@ pub fn build_scene_2d_plan(
     let mut quads = Vec::new();
     let mut skipped_nodes = 0;
     for (index, node) in graph.nodes.iter().enumerate() {
-        let SceneNodeKind::Image(resource) = &node.kind else {
-            skipped_nodes += 1;
-            continue;
+        let (resource, text) = match &node.kind {
+            SceneNodeKind::Image(resource) => (resource.clone(), None),
+            SceneNodeKind::Text(text) => (
+                format!("__better_wallpaper/text/{}", node.id),
+                Some(text.clone()),
+            ),
+            _ => {
+                skipped_nodes += 1;
+                continue;
+            }
         };
         if !visible[index].unwrap_or(false) {
             continue;
@@ -696,17 +1081,13 @@ pub fn build_scene_2d_plan(
             return Err(Scene2dError::InvalidOpacity(node.id.clone()));
         }
         let transform = view * worlds[index].unwrap_or(Mat3::IDENTITY);
-        let half_x = size.x * 0.5;
-        let half_y = size.y * 0.5;
         quads.push(Scene2dQuad {
             node_id: node.id.clone(),
-            resource: resource.clone(),
-            vertices: [
-                transform.transform_point([-half_x, -half_y]),
-                transform.transform_point([half_x, -half_y]),
-                transform.transform_point([half_x, half_y]),
-                transform.transform_point([-half_x, half_y]),
-            ],
+            resource,
+            text,
+            dynamic_scale: node.dynamic_scale,
+            layout_transform: transform,
+            vertices: quad_vertices(transform, size.x, size.y),
             opacity,
             scroll: node.scroll,
             water_waves: node.water_waves.clone(),
@@ -941,6 +1322,96 @@ mod tests {
     }
 
     #[test]
+    fn resolves_text_and_builtin_solid_layers_without_package_assets() {
+        let plan = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":200,"height":100}},
+                "objects":[
+                    {"id":1,"text":{"script":"new Date().getHours(); new Date().getMinutes();","value":"12:34"},"color":"0.5 0.75 1","origin":"100 30 0","size":"80 20"},
+                    {"id":2,"image":"models/util/solidlayer.json","origin":"100 70 0","size":"100 2","scale":{"script":"new Date().getSeconds() / 60","value":"1 1 1"}}
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(plan.quads.len(), 2);
+        assert_eq!(
+            plan.quads[1].dynamic_scale,
+            Some(DynamicScaleKind::ClockSecondX)
+        );
+
+        let assets = resolve_scene_2d_assets(&package(&[]), plan).unwrap();
+        assert_eq!(assets.draws.len(), 2);
+        assert_eq!(
+            assets.draws[0]
+                .text_render
+                .as_ref()
+                .and_then(|render| render.dynamic),
+            Some(DynamicTextKind::Clock)
+        );
+        assert!(assets.draws[0].texture.levels[0].height >= 32);
+        assert_eq!(assets.draws[1].texture.levels[0].data.as_ref(), &[255; 4]);
+    }
+
+    #[test]
+    fn font_text_texture_is_bounded_and_preserves_color() {
+        let text = SceneText {
+            value: "1".repeat(300),
+            dynamic: None,
+            color: better_wallpaper_scene_format::Vec3 {
+                x: 0.25,
+                y: 0.5,
+                z: 1.0,
+            },
+            font: "systemfont_arial".into(),
+            point_size: 32.0,
+        };
+        let package = package(&[]);
+        let render = resolve_scene_font(&package, &text, &text.value, 1.0).unwrap();
+        let texture = font_text_texture(&text.value, &render);
+        let bounded = font_text_texture(&"1".repeat(256), &render);
+        let level = &texture.levels[0];
+        assert_eq!(level.width, bounded.levels[0].width);
+        assert!(
+            level
+                .data
+                .chunks_exact(4)
+                .any(|pixel| pixel[0..3] == [64, 128, 255] && pixel[3] > 0)
+        );
+    }
+
+    #[test]
+    fn text_size_is_stable_across_scene_canvas_resolutions() {
+        fn resolved_text_height(scene_width: u32, scene_height: u32) -> f32 {
+            let json = format!(
+                r#"{{
+                    "general":{{"orthogonalprojection":{{"width":{scene_width},"height":{scene_height}}}}},
+                    "objects":[{{
+                        "id":"clock",
+                        "font":"systemfont_arial",
+                        "pointsize":32,
+                        "text":{{"value":"12:34"}},
+                        "origin":"{} {} 0",
+                        "size":"100 40"
+                    }}]
+                }}"#,
+                scene_width / 2,
+                scene_height / 2
+            );
+            let plan = plan_at(&json, 1920, 1080).unwrap();
+            let assets = resolve_scene_2d_assets(&package(&[]), plan).unwrap();
+            let vertices = assets.draws[0].quad.vertices;
+            (vertices[0][1] - vertices[3][1]).abs()
+        }
+
+        let full_hd = resolved_text_height(1920, 1080);
+        let ultra_hd = resolved_text_height(3840, 2160);
+        assert!(
+            (full_hd - ultra_hd).abs() < 0.002,
+            "text height changed across canvas resolutions: {full_hd} vs {ultra_hd}"
+        );
+    }
+
+    #[test]
     fn ignores_serialized_editor_camera_pan_for_runtime_layout() {
         let result = plan_at(
             r#"{
@@ -1006,8 +1477,21 @@ mod tests {
         .unwrap();
 
         let top_left = result.quads[0].vertices[0];
-        assert!((top_left[0] - 0.1).abs() < 0.0001);
-        assert!((top_left[1] - 0.2).abs() < 0.0001);
+        assert!((top_left[0] + 0.1).abs() < 0.0001);
+        assert!((top_left[1] + 0.2).abs() < 0.0001);
+    }
+
+    #[test]
+    fn maps_scene_y_from_bottom_to_top() {
+        let result = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":100,"height":100}},
+                "objects":[{"image":"models/a.json","origin":"50 90 0","size":"10 10"}]
+            }"#,
+        )
+        .unwrap();
+        let center_y = (result.quads[0].vertices[0][1] + result.quads[0].vertices[2][1]) * 0.5;
+        assert!((center_y - 0.8).abs() < 0.0001);
     }
 
     #[test]

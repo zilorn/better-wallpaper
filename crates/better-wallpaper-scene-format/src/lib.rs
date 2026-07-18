@@ -23,9 +23,10 @@ pub mod texture;
 
 pub use error::{FormatError, PkgError, SceneParseError, TexError};
 pub use ir::{
-    FoliageSwayEffect, IrisEffect, PulseEffect, SceneCamera, SceneGraph, SceneNode, SceneNodeKind,
-    SceneTransform, ScrollEffect, ShakeEffect, ShineEffect, SpinEffect, UnsupportedFeature, Vec2,
-    Vec3, WaterFlowEffect, WaterWaveEffect, parse_scene_graph, parse_scene_graph_with_properties,
+    DynamicScaleKind, DynamicTextKind, FoliageSwayEffect, IrisEffect, PulseEffect, SceneCamera,
+    SceneGraph, SceneNode, SceneNodeKind, SceneText, SceneTransform, ScrollEffect, ShakeEffect,
+    ShineEffect, SpinEffect, UnsupportedFeature, Vec2, Vec3, WaterFlowEffect, WaterWaveEffect,
+    parse_scene_graph, parse_scene_graph_with_properties,
 };
 pub use material::{BlendMode, MaterialDefinition, MaterialPass, parse_material_definition};
 pub use model::{ModelDefinition, parse_model_definition};

@@ -72,6 +72,7 @@ struct PlaybackPayload {
 }
 
 impl ApiState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<RwLock<AppConfig>>,
         store: ConfigStore,
@@ -801,7 +802,7 @@ fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntr
             Ok(path) if visited.insert(path.clone()) => path,
             _ => continue,
         };
-        if engine_roots.iter().any(|root| canonical == *root) {
+        if engine_roots.contains(&canonical) {
             continue;
         }
         let children = match fs::read_dir(&canonical) {
@@ -877,10 +878,10 @@ fn wallpaper_engine_roots(home: &Path) -> Vec<PathBuf> {
         };
         for line in contents.lines() {
             let fields = line.split('"').collect::<Vec<_>>();
-            if fields.get(1).is_some_and(|field| field.trim() == "path") {
-                if let Some(path) = fields.get(3).filter(|path| !path.is_empty()) {
-                    libraries.push(PathBuf::from(path.replace("\\\\", "\\")));
-                }
+            if fields.get(1).is_some_and(|field| field.trim() == "path")
+                && let Some(path) = fields.get(3).filter(|path| !path.is_empty())
+            {
+                libraries.push(PathBuf::from(path.replace("\\\\", "\\")));
             }
         }
     }

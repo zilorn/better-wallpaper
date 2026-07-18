@@ -45,6 +45,7 @@ pub struct SceneNode {
     pub visible: bool,
     pub kind: SceneNodeKind,
     pub transform: SceneTransform,
+    pub dynamic_scale: Option<DynamicScaleKind>,
     pub effects: Vec<String>,
     pub scroll: Option<ScrollEffect>,
     pub water_waves: Vec<WaterWaveEffect>,
@@ -152,9 +153,31 @@ pub enum SceneNodeKind {
     Model(String),
     Sound(String),
     Particle(String),
-    Text,
+    Text(SceneText),
     Container,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicTextKind {
+    Clock,
+    Date,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SceneText {
+    pub value: String,
+    pub dynamic: Option<DynamicTextKind>,
+    pub color: Vec3,
+    pub font: String,
+    pub point_size: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicScaleKind {
+    ClockSecondX,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -355,6 +378,8 @@ fn parse_node(
         "colorBlendMode",
         "container",
         "effects",
+        "font",
+        "horizontalalign",
         "id",
         "image",
         "instanceoverride",
@@ -363,12 +388,14 @@ fn parse_node(
         "parallaxDepth",
         "parent",
         "particle",
+        "pointsize",
         "scale",
         "size",
         "sound",
         "text",
         "transform",
         "visible",
+        "verticalalign",
     ];
     let path = format!("objects[{index}]");
     let unknown_fields = object
@@ -398,9 +425,8 @@ fn parse_node(
     } else if let Some(resource) = string_resource(object, "sound", &path)? {
         mark(unsupported, &path, "sound object");
         SceneNodeKind::Sound(resource)
-    } else if object.contains_key("text") {
-        mark(unsupported, &path, "text object");
-        SceneNodeKind::Text
+    } else if let Some(text) = object.get("text") {
+        SceneNodeKind::Text(parse_scene_text(object, text, &path)?)
     } else if let Some(resource) = string_resource(object, "image", &path)? {
         if resource.ends_with(".mdl") {
             mark(unsupported, &path, &format!("Spriter model: {resource}"));
@@ -514,6 +540,7 @@ fn parse_node(
                 })
                 .transpose()?,
         },
+        dynamic_scale: parse_dynamic_scale(object.get("scale")),
         effects,
         scroll,
         water_waves,
@@ -526,6 +553,85 @@ fn parse_node(
         shine,
         unknown_fields,
     })
+}
+
+fn parse_scene_text(
+    object: &Map<String, Value>,
+    text: &Value,
+    path: &str,
+) -> Result<SceneText, SceneParseError> {
+    let value = unwrap_script_value(text)
+        .as_str()
+        .ok_or_else(|| SceneParseError::InvalidValue {
+            field: format!("{path}.text"),
+            detail: "expected text or a script-driven text value".into(),
+        })?
+        .to_owned();
+    if value.chars().count() > 256 {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.text"),
+            detail: "text exceeds the 256 character safety limit".into(),
+        });
+    }
+    let script = script_source(text).unwrap_or_default();
+    let dynamic = if script.contains("getHours()") && script.contains("getMinutes()") {
+        Some(DynamicTextKind::Clock)
+    } else if script.contains("getFullYear()")
+        && script.contains("getMonth()")
+        && script.contains("getDate()")
+    {
+        Some(DynamicTextKind::Date)
+    } else {
+        None
+    };
+    let color = object
+        .get("color")
+        .map(|value| parse_vec3(&format!("{path}.color"), value))
+        .transpose()?
+        .unwrap_or(Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        });
+    let font = object
+        .get("font")
+        .and_then(Value::as_str)
+        .unwrap_or("systemfont_sans")
+        .to_owned();
+    if font.contains('/') || font.contains('\\') {
+        validate_resource_path(&font)?;
+    }
+    let point_size = object
+        .get("pointsize")
+        .map(|value| number_value(&format!("{path}.pointsize"), value))
+        .transpose()?
+        .unwrap_or(32.0);
+    if !(1.0..=512.0).contains(&point_size) {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.pointsize"),
+            detail: "point size must be within 1..=512".into(),
+        });
+    }
+    Ok(SceneText {
+        value,
+        dynamic,
+        color,
+        font,
+        point_size,
+    })
+}
+
+fn parse_dynamic_scale(value: Option<&Value>) -> Option<DynamicScaleKind> {
+    let script = value.and_then(script_source)?;
+    (script.contains("getSeconds()") && script.contains("/ 60"))
+        .then_some(DynamicScaleKind::ClockSecondX)
+}
+
+fn script_source(value: &Value) -> Option<&str> {
+    value
+        .as_object()
+        .and_then(|object| object.get("script"))
+        .and_then(Value::as_str)
 }
 
 fn parse_iris_effect(
@@ -1380,6 +1486,41 @@ mod tests {
         assert_eq!(origin.x, 1920.0);
         assert_eq!(origin.y, 1080.0);
         assert_eq!(origin.z, 0.0);
+    }
+
+    #[test]
+    fn recognizes_safe_native_clock_date_and_second_patterns() {
+        let graph = parse_scene_graph(
+            r#"{
+                "objects":[
+                    {"id":1,"name":"Clock","text":{"script":"new Date().getHours(); new Date().getMinutes();","value":"12:34"},"size":"100 30"},
+                    {"id":2,"name":"Date","font":"fonts/date.ttf","pointsize":28,"text":{"script":"new Date().getFullYear(); new Date().getMonth(); new Date().getDate();","value":"2021 | 02 | 01"},"size":"200 30"},
+                    {"id":3,"image":"models/util/solidlayer.json","scale":{"script":"value.x = new Date().getSeconds() / 60;","value":"1 1 1"},"size":"100 2"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let SceneNodeKind::Text(clock) = &graph.nodes[0].kind else {
+            panic!("clock should parse as text");
+        };
+        assert_eq!(clock.dynamic, Some(DynamicTextKind::Clock));
+        let SceneNodeKind::Text(date) = &graph.nodes[1].kind else {
+            panic!("date should parse as text");
+        };
+        assert_eq!(date.dynamic, Some(DynamicTextKind::Date));
+        assert_eq!(date.font, "fonts/date.ttf");
+        assert_eq!(date.point_size, 28.0);
+        assert_eq!(
+            graph.nodes[2].dynamic_scale,
+            Some(DynamicScaleKind::ClockSecondX)
+        );
+        assert!(
+            graph
+                .unsupported_features
+                .iter()
+                .all(|feature| feature.feature != "text object")
+        );
     }
 
     #[test]

@@ -1,5 +1,7 @@
-use better_wallpaper_renderer::Scene2dAssets;
-use better_wallpaper_scene_format::{BlendMode, TexFormat, TextureImage};
+use better_wallpaper_renderer::{Scene2dAssets, font_text_texture};
+use better_wallpaper_scene_format::{
+    BlendMode, DynamicScaleKind, DynamicTextKind, TexFormat, TextureImage,
+};
 use glow::HasContext;
 use std::collections::HashMap;
 use tracing::{debug, trace, warn};
@@ -20,6 +22,7 @@ struct GpuTextureState {
     texture: glow::Texture,
     width: u32,
     height: u32,
+    dynamic_label: Option<String>,
 }
 
 const VERTEX_SHADER: &str = include_str!("shaders/scene.vert");
@@ -202,6 +205,7 @@ impl SceneGpuRenderer {
             texture: gl_tex,
             width: base.width,
             height: base.height,
+            dynamic_label: None,
         })
     }
 
@@ -316,7 +320,11 @@ impl SceneGpuRenderer {
         self.output_size = (width, height);
     }
 
-    pub fn draw_scene(&self, assets: &Scene2dAssets, elapsed_seconds: f64) -> Result<(), String> {
+    pub fn draw_scene(
+        &mut self,
+        assets: &Scene2dAssets,
+        elapsed_seconds: f64,
+    ) -> Result<(), String> {
         let start = std::time::Instant::now();
         let mut drawn = 0u32;
         unsafe {
@@ -505,6 +513,63 @@ impl SceneGpuRenderer {
             self.gl
                 .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
             for draw in &assets.draws {
+                if let Some(render) = draw
+                    .text_render
+                    .as_ref()
+                    .filter(|render| render.dynamic.is_some())
+                {
+                    let local = local_date_time();
+                    let label = dynamic_text_label(
+                        render.dynamic.expect("filtered dynamic text renderer"),
+                        local,
+                    );
+                    let texture = font_text_texture(&label, render);
+                    let level = texture
+                        .levels
+                        .first()
+                        .ok_or("dynamic text texture has no base level")?;
+                    let state = self
+                        .textures
+                        .get_mut(&draw.texture_path)
+                        .ok_or("dynamic text GPU texture is missing")?;
+                    if state.dynamic_label.as_deref() != Some(&label) {
+                        self.gl.active_texture(glow::TEXTURE0);
+                        self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_MIN_FILTER,
+                            glow::LINEAR as i32,
+                        );
+                        if state.width == level.width && state.height == level.height {
+                            self.gl.tex_sub_image_2d(
+                                glow::TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                level.width as i32,
+                                level.height as i32,
+                                glow::RGBA,
+                                glow::UNSIGNED_BYTE,
+                                glow::PixelUnpackData::Slice(&level.data),
+                            );
+                        } else {
+                            self.gl.tex_image_2d(
+                                glow::TEXTURE_2D,
+                                0,
+                                glow::RGBA as i32,
+                                level.width as i32,
+                                level.height as i32,
+                                0,
+                                glow::RGBA,
+                                glow::UNSIGNED_BYTE,
+                                Some(&level.data),
+                            );
+                            state.width = level.width;
+                            state.height = level.height;
+                        }
+                        state.dynamic_label = Some(label);
+                    }
+                }
                 let Some(state) = self.textures.get(&draw.texture_path) else {
                     continue;
                 };
@@ -824,11 +889,14 @@ impl SceneGpuRenderer {
                 if let Some(scroll) = draw.quad.scroll {
                     uv = scroll_uv(uv, scroll, elapsed_seconds);
                 }
-                let vertices = if let Some(mesh) = &draw.mesh {
+                let mut vertices = if let Some(mesh) = &draw.mesh {
                     puppet_vertices(mesh.positions_at(elapsed_seconds), &mesh.uv, uv)
                 } else {
                     scene_vertices(&draw.quad.vertices, uv).to_vec()
                 };
+                if draw.quad.dynamic_scale == Some(DynamicScaleKind::ClockSecondX) {
+                    apply_clock_second_scale(&mut vertices, local_date_time().second as f32 / 60.0);
+                }
                 let vertex_bytes: &[u8] = std::slice::from_raw_parts(
                     vertices.as_ptr().cast::<u8>(),
                     vertices.len() * std::mem::size_of::<f32>(),
@@ -893,6 +961,84 @@ impl SceneGpuRenderer {
                 self.gl.delete_texture(state.texture);
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LocalDateTime {
+    year: i32,
+    month: i32,
+    day: i32,
+    weekday: i32,
+    hour: i32,
+    minute: i32,
+    second: i32,
+}
+
+fn local_date_time() -> LocalDateTime {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs() as libc::time_t);
+    let timestamp = seconds;
+    let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
+    let result = unsafe { libc::localtime_r(&timestamp, local.as_mut_ptr()) };
+    if result.is_null() {
+        return LocalDateTime {
+            year: 1970,
+            month: 1,
+            day: 1,
+            weekday: 4,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        };
+    }
+    let local = unsafe { local.assume_init() };
+    LocalDateTime {
+        year: local.tm_year + 1900,
+        month: local.tm_mon + 1,
+        day: local.tm_mday,
+        weekday: local.tm_wday,
+        hour: local.tm_hour,
+        minute: local.tm_min,
+        second: local.tm_sec,
+    }
+}
+
+fn dynamic_text_label(kind: DynamicTextKind, local: LocalDateTime) -> String {
+    match kind {
+        DynamicTextKind::Clock => format!("{:02}:{:02}", local.hour, local.minute),
+        DynamicTextKind::Date => {
+            let weekday = [
+                "星期日",
+                "星期一",
+                "星期二",
+                "星期三",
+                "星期四",
+                "星期五",
+                "星期六",
+            ]
+            .get(local.weekday as usize)
+            .copied()
+            .unwrap_or("星期日");
+            format!(
+                "{:04} | {:02} | {:02} | {weekday}",
+                local.year, local.month, local.day
+            )
+        }
+    }
+}
+
+fn apply_clock_second_scale(vertices: &mut [f32], fraction: f32) {
+    if vertices.len() < 24 {
+        return;
+    }
+    let fraction = fraction.clamp(0.0, 1.0);
+    for (left, right) in [(0, 6), (18, 12)] {
+        let left_x = vertices[left];
+        let left_y = vertices[left + 1];
+        vertices[right] = left_x + (vertices[right] - left_x) * fraction;
+        vertices[right + 1] = left_y + (vertices[right + 1] - left_y) * fraction;
     }
 }
 
@@ -1246,12 +1392,14 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        convert_to_rgba8, downsample_rgba8, first_supported_mip, puppet_vertices,
-        scene_layout_scale, scene_vertices, scroll_uv,
+        LocalDateTime, apply_clock_second_scale, convert_to_rgba8, downsample_rgba8,
+        dynamic_text_label, first_supported_mip, puppet_vertices, scene_layout_scale,
+        scene_vertices, scroll_uv,
     };
     use better_wallpaper_renderer::Scene2dAssets;
     use better_wallpaper_scene_format::{
-        ScrollEffect, TexFormat, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
+        DynamicTextKind, ScrollEffect, TexFormat, TextureAlphaMode, TextureColorSpace,
+        TextureImage, TextureMipLevel,
     };
 
     #[test]
@@ -1274,6 +1422,35 @@ mod tests {
         assert_eq!(&vertices[14..16], &[0.5, 1.0]);
         assert_eq!(&vertices[4..6], &[0.0, 0.0]);
         assert_eq!(&vertices[16..18], &[1.0, 1.0]);
+    }
+
+    #[test]
+    fn formats_native_clock_and_date_labels() {
+        let local = LocalDateTime {
+            year: 2026,
+            month: 7,
+            day: 18,
+            weekday: 6,
+            hour: 9,
+            minute: 47,
+            second: 30,
+        };
+        assert_eq!(dynamic_text_label(DynamicTextKind::Clock, local), "09:47");
+        assert_eq!(
+            dynamic_text_label(DynamicTextKind::Date, local),
+            "2026 | 07 | 18 | 星期六"
+        );
+    }
+
+    #[test]
+    fn clock_second_scale_anchors_the_left_edge() {
+        let positions = [[-1.0, -0.1], [1.0, -0.1], [1.0, 0.1], [-1.0, 0.1]];
+        let mut vertices = scene_vertices(&positions, [0.0, 0.0, 1.0, 1.0]);
+        apply_clock_second_scale(&mut vertices, 0.25);
+        assert_eq!(&vertices[0..2], &[-1.0, -0.1]);
+        assert_eq!(&vertices[6..8], &[-0.5, -0.1]);
+        assert_eq!(&vertices[12..14], &[-0.5, 0.1]);
+        assert_eq!(&vertices[18..20], &[-1.0, 0.1]);
     }
 
     #[test]

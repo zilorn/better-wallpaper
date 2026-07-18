@@ -390,8 +390,8 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
 
     // L1 checks (2D images, transforms)
     if meta.has_text {
-        // Text is L2 in the plan
-        unsupported.push("Text objects (planned for L1/L2)".into());
+        warnings
+            .push("Text objects require a package, Wallpaper Engine asset, or system font".into());
     }
     if meta.has_sounds {
         unsupported.push("Sound objects (planned for L2)".into());
