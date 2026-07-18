@@ -226,9 +226,10 @@ fn run_playback(
             draw_count = prepared.plan.quads.len(),
             resolved_draw_count = prepared.resolved_draw_count,
             skipped_nodes = prepared.plan.skipped_nodes,
+            background_tracks = prepared.audio.track_count(),
             "scene wallpaper validated with shared 2D render semantics"
         );
-        if let Some(error) = prepared.asset_error {
+        if let Some(error) = prepared.asset_error.as_deref() {
             warn!(?backend, %error, "scene assets are not ready for GPU submission");
             if backend == BackendKind::Kde {
                 run_kde_controlled(control.clone());
@@ -244,7 +245,14 @@ fn run_playback(
                     .filter(|o| o.enabled)
                     .map(|o| o.name.clone())
                     .collect();
-                run_niri_scene(assets, &output_names, &scene_config, control.clone())?;
+                run_niri_scene(
+                    assets,
+                    prepared.audio,
+                    !config.wallpaper.muted,
+                    &output_names,
+                    &scene_config,
+                    control.clone(),
+                )?;
             }
             BackendKind::Kde => {
                 warn!("KDE Plasma scene rendering is not yet implemented through the GPU path");
@@ -341,10 +349,13 @@ struct PreparedScene {
     resolved_draw_count: usize,
     assets: Option<better_wallpaper_renderer::Scene2dAssets>,
     asset_error: Option<String>,
+    audio: better_wallpaper_daemon::scene_audio::PreparedSceneAudio,
 }
 
 fn run_niri_scene(
     assets: better_wallpaper_renderer::Scene2dAssets,
+    scene_audio: better_wallpaper_daemon::scene_audio::PreparedSceneAudio,
+    play_audio: bool,
     output_names: &[String],
     scene_config: &better_wallpaper_core::SceneConfig,
     control: PlaybackControl,
@@ -435,6 +446,7 @@ fn run_niri_scene(
     let mut scene_elapsed = Duration::ZERO;
     let mut previous_tick = std::time::Instant::now();
     let mut was_paused = false;
+    let mut audio = scene_audio.start(play_audio);
     while !control.is_cancelled() {
         let frame_start = std::time::Instant::now();
         let delta = frame_start.saturating_duration_since(previous_tick);
@@ -461,11 +473,16 @@ fn run_niri_scene(
                     )
                 })?;
         }
+        // Start only after a complete frame has reached every output, and keep
+        // pause state synchronized with the scene clock thereafter.
+        audio.set_paused(paused);
         let elapsed = frame_start.elapsed();
         if elapsed < frame_interval {
             std::thread::sleep(frame_interval - elapsed);
         }
     }
+    drop(audio);
+    drop(scene_audio);
     drop(backends);
     drop(assets);
     info!("niri scene rendering stopped and GPU/CPU resources released");
@@ -497,6 +514,7 @@ fn prepare_scene(
         &scene_config.properties,
     )
     .context("failed to parse scene graph")?;
+    let audio = better_wallpaper_daemon::scene_audio::PreparedSceneAudio::prepare(&package, &graph);
     let plan = build_scene_2d_plan(
         &graph,
         Scene2dOptions {
@@ -515,6 +533,7 @@ fn prepare_scene(
         resolved_draw_count,
         asset_error,
         assets,
+        audio,
     })
 }
 

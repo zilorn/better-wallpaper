@@ -253,13 +253,10 @@ impl ResourceManifest {
         for (index, node) in graph.nodes.iter().enumerate() {
             let source = format!("objects[{index}]");
             let resource = match &node.kind {
-                SceneNodeKind::Image(path)
-                | SceneNodeKind::Sound(path)
-                | SceneNodeKind::Particle(path)
-                    if !path.is_empty() =>
-                {
+                SceneNodeKind::Image(path) | SceneNodeKind::Particle(path) if !path.is_empty() => {
                     Some(path)
                 }
+                SceneNodeKind::Sound(sound) if !sound.resource.is_empty() => Some(&sound.resource),
                 _ => None,
             };
             if let Some(path) = resource {

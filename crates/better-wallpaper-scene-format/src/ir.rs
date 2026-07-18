@@ -151,11 +151,26 @@ pub struct ShineEffect {
 pub enum SceneNodeKind {
     Image(String),
     Model(String),
-    Sound(String),
+    Sound(SceneSound),
     Particle(String),
     Text(SceneText),
     Container,
     Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SceneSound {
+    pub resource: String,
+    pub playback_mode: SoundPlaybackMode,
+    pub volume: f32,
+    pub start_silent: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoundPlaybackMode {
+    Loop,
+    Once,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -388,14 +403,17 @@ fn parse_node(
         "parallaxDepth",
         "parent",
         "particle",
+        "playbackmode",
         "pointsize",
         "scale",
         "size",
         "sound",
+        "startsilent",
         "text",
         "transform",
         "visible",
         "verticalalign",
+        "volume",
     ];
     let path = format!("objects[{index}]");
     let unknown_fields = object
@@ -423,8 +441,7 @@ fn parse_node(
         }
         SceneNodeKind::Container
     } else if let Some(resource) = string_resource(object, "sound", &path)? {
-        mark(unsupported, &path, "sound object");
-        SceneNodeKind::Sound(resource)
+        SceneNodeKind::Sound(parse_scene_sound(object, resource, &path, unsupported)?)
     } else if let Some(text) = object.get("text") {
         SceneNodeKind::Text(parse_scene_text(object, text, &path)?)
     } else if let Some(resource) = string_resource(object, "image", &path)? {
@@ -552,6 +569,64 @@ fn parse_node(
         foliage_sway,
         shine,
         unknown_fields,
+    })
+}
+
+fn parse_scene_sound(
+    object: &Map<String, Value>,
+    resource: String,
+    path: &str,
+    unsupported: &mut BTreeSet<UnsupportedFeature>,
+) -> Result<SceneSound, SceneParseError> {
+    let playback_mode = match object.get("playbackmode").map(unwrap_script_value) {
+        None => SoundPlaybackMode::Once,
+        Some(Value::String(mode)) if mode == "once" => SoundPlaybackMode::Once,
+        Some(Value::String(mode)) if mode == "loop" => SoundPlaybackMode::Loop,
+        Some(Value::String(mode)) => {
+            mark(
+                unsupported,
+                &format!("{path}.playbackmode"),
+                &format!("sound playback mode: {mode}"),
+            );
+            SoundPlaybackMode::Once
+        }
+        Some(_) => {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.playbackmode"),
+                detail: "expected a playback mode string".into(),
+            });
+        }
+    };
+    let volume = object
+        .get("volume")
+        .map(unwrap_script_value)
+        .map(|value| number_value(&format!("{path}.volume"), value))
+        .transpose()?
+        .unwrap_or(1.0);
+    if !(0.0..=1.0).contains(&volume) {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.volume"),
+            detail: "sound volume must be between 0 and 1".into(),
+        });
+    }
+    let start_silent = object
+        .get("startsilent")
+        .map(unwrap_script_value)
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| SceneParseError::InvalidValue {
+                    field: format!("{path}.startsilent"),
+                    detail: "expected a boolean or bound boolean value".into(),
+                })
+        })
+        .transpose()?
+        .unwrap_or(false);
+    Ok(SceneSound {
+        resource,
+        playback_mode,
+        volume,
+        start_silent,
     })
 }
 
@@ -1446,12 +1521,82 @@ mod tests {
         let graph = parse_scene_graph(
             r#"{"objects":[
                 {"id":2,"particle":"particles/snow.json"},
-                {"id":1,"sound":"audio/music.ogg"}
+                {"id":1,"sound":"audio/music.ogg","playbackmode":"random"}
             ]}"#,
         )
         .unwrap();
         assert_eq!(graph.unsupported_features[0].path, "objects[0]");
-        assert_eq!(graph.unsupported_features[1].path, "objects[1]");
+        assert_eq!(
+            graph.unsupported_features[1].path,
+            "objects[1].playbackmode"
+        );
+    }
+
+    #[test]
+    fn parses_sound_fields_from_singleton_array_and_string() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[
+                {"sound":["sounds/music.flac"],"playbackmode":"loop","volume":0.75,"startsilent":true},
+                {"sound":"sounds/chime.ogg"}
+            ]}"#,
+        )
+        .unwrap();
+        let SceneNodeKind::Sound(music) = &graph.nodes[0].kind else {
+            panic!("expected a sound node");
+        };
+        assert_eq!(music.resource, "sounds/music.flac");
+        assert_eq!(music.playback_mode, SoundPlaybackMode::Loop);
+        assert_eq!(music.volume, 0.75);
+        assert!(music.start_silent);
+        assert!(graph.nodes[0].unknown_fields.is_empty());
+
+        let SceneNodeKind::Sound(chime) = &graph.nodes[1].kind else {
+            panic!("expected a sound node");
+        };
+        assert_eq!(chime.resource, "sounds/chime.ogg");
+        assert_eq!(chime.playback_mode, SoundPlaybackMode::Once);
+        assert_eq!(chime.volume, 1.0);
+        assert!(!chime.start_silent);
+        assert!(graph.unsupported_features.is_empty());
+    }
+
+    #[test]
+    fn reports_advanced_and_unknown_sound_fields_as_unsupported() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"sound":"sounds/music.flac","playbackmode":"random","mintime":1,"maxtime":5}]}"#,
+        )
+        .unwrap();
+        let SceneNodeKind::Sound(sound) = &graph.nodes[0].kind else {
+            panic!("expected a sound node");
+        };
+        assert_eq!(sound.playback_mode, SoundPlaybackMode::Once);
+        assert_eq!(graph.nodes[0].unknown_fields, ["maxtime", "mintime"]);
+        assert!(graph.unsupported_features.iter().any(|feature| {
+            feature.path == "objects[0].playbackmode"
+                && feature.feature == "sound playback mode: random"
+        }));
+        assert!(
+            graph
+                .unsupported_features
+                .iter()
+                .any(|feature| feature.path == "objects[0].mintime")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_sound_fields() {
+        for json in [
+            r#"{"objects":[{"sound":["a.ogg","b.ogg"]}]}"#,
+            r#"{"objects":[{"sound":"a.ogg","volume":-0.1}]}"#,
+            r#"{"objects":[{"sound":"a.ogg","volume":1.1}]}"#,
+            r#"{"objects":[{"sound":"a.ogg","startsilent":"false"}]}"#,
+            r#"{"objects":[{"sound":"a.ogg","playbackmode":1}]}"#,
+        ] {
+            assert!(
+                parse_scene_graph(json).is_err(),
+                "accepted invalid input: {json}"
+            );
+        }
     }
 
     #[test]

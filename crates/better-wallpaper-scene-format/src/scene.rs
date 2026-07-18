@@ -393,9 +393,6 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         warnings
             .push("Text objects require a package, Wallpaper Engine asset, or system font".into());
     }
-    if meta.has_sounds {
-        unsupported.push("Sound objects (planned for L2)".into());
-    }
     if meta.has_particles {
         unsupported.push("Particle systems (planned for L3)".into());
     }
@@ -558,6 +555,9 @@ mod tests {
         }"#;
         let meta = analyse_scene(scene).unwrap();
         assert!(meta.has_sounds);
+        let compatibility = compute_compatibility(&meta);
+        assert_eq!(compatibility.level, CompatibilityLevel::L1);
+        assert!(compatibility.unsupported_features.is_empty());
     }
 
     // ── project.json property parsing ─────────────────────────────────

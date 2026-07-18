@@ -1,6 +1,7 @@
 //! daemon 的可复用运行时组件。
 
 pub mod playback;
+pub mod scene_audio;
 pub mod server;
 pub mod tray;
 

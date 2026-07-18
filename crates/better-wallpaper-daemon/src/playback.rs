@@ -22,7 +22,7 @@ const STATS_INTERVAL: u64 = 300;
 const REALTIME_STATS_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
-struct AudioPlayback {
+pub(crate) struct AudioPlayback {
     _stream: OutputStream,
     sink: Sink,
     paused: bool,
@@ -34,16 +34,20 @@ struct FfmpegAudioSource {
     info: AudioInfo,
     pending: std::vec::IntoIter<f32>,
     failed: bool,
+    loop_playback: bool,
+    decoded_since_restart: bool,
 }
 
 impl FfmpegAudioSource {
-    fn open(path: &Path) -> Result<Self> {
+    fn open(path: &Path, loop_playback: bool) -> Result<Self> {
         let (decoder, info) = FfmpegAudioDecoder::open(path)?;
         Ok(Self {
             decoder,
             info,
             pending: Vec::new().into_iter(),
             failed: false,
+            loop_playback,
+            decoded_since_restart: false,
         })
     }
 }
@@ -60,10 +64,22 @@ impl Iterator for FfmpegAudioSource {
                 return None;
             }
             match self.decoder.next_samples() {
-                Ok(samples) => self.pending = samples.into_iter(),
+                Ok(samples) => {
+                    self.decoded_since_restart |= !samples.is_empty();
+                    self.pending = samples.into_iter();
+                }
+                Err(VideoError::EndOfStream)
+                    if self.loop_playback && self.decoded_since_restart =>
+                {
+                    if let Err(error) = self.decoder.seek_start() {
+                        warn!(%error, "audio loop seek failed");
+                        self.failed = true;
+                    }
+                    self.decoded_since_restart = false;
+                }
                 Err(VideoError::EndOfStream) => return None,
                 Err(error) => {
-                    warn!(%error, "niri audio decoding stopped");
+                    warn!(%error, "audio decoding stopped");
                     self.failed = true;
                 }
             }
@@ -91,14 +107,23 @@ impl Source for FfmpegAudioSource {
 
 impl AudioPlayback {
     fn open(path: &Path) -> Result<Self> {
+        Self::open_with_options(path, false, 1.0)
+    }
+
+    pub(crate) fn open_scene(path: &Path, loop_playback: bool, volume: f32) -> Result<Self> {
+        Self::open_with_options(path, loop_playback, volume)
+    }
+
+    fn open_with_options(path: &Path, loop_playback: bool, volume: f32) -> Result<Self> {
         let stream = OutputStreamBuilder::open_default_stream()
             .context("failed to open default audio output")?;
         let sink = Sink::connect_new(stream.mixer());
-        let source = FfmpegAudioSource::open(path)
+        let source = FfmpegAudioSource::open(path, loop_playback)
             .with_context(|| format!("failed to decode audio source {}", path.display()))?;
         sink.append(source);
+        sink.set_volume(volume);
         sink.pause();
-        info!(path = %path.display(), "niri audio output initialized for video-controlled looping");
+        info!(path = %path.display(), loop_playback, volume, "audio output initialized");
         Ok(Self {
             _stream: stream,
             sink,
@@ -107,7 +132,7 @@ impl AudioPlayback {
         })
     }
 
-    fn set_paused(&mut self, paused: bool) {
+    pub(crate) fn set_paused(&mut self, paused: bool) {
         if self.paused == paused {
             return;
         }
@@ -117,11 +142,11 @@ impl AudioPlayback {
             self.sink.play();
         }
         self.paused = paused;
-        info!(paused, "niri audio pause state updated");
+        info!(paused, "audio pause state updated");
     }
 
     fn restart_for_video_loop(&mut self) -> Result<()> {
-        let source = FfmpegAudioSource::open(&self.path)
+        let source = FfmpegAudioSource::open(&self.path, false)
             .with_context(|| format!("failed to restart audio source {}", self.path.display()))?;
         self.sink.clear();
         self.sink.append(source);
