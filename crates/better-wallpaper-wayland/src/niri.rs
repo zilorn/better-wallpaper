@@ -170,6 +170,14 @@ impl NiriBackend {
 
     pub fn present_scene(&mut self, elapsed_seconds: f64) -> anyhow::Result<()> {
         self.dispatch_pending()?;
+        while !self.state.frame_ready && !self.state.closed {
+            self.event_queue
+                .blocking_dispatch(&mut self.state)
+                .context("failed to wait for compositor scene frame callback")?;
+        }
+        if self.state.closed {
+            bail!("layer surface closed by compositor");
+        }
         let (width, height) = self.size();
         let egl = self.egl.as_mut().ok_or_else(|| {
             anyhow::anyhow!("EGL GPU backend unavailable, scene rendering not supported")

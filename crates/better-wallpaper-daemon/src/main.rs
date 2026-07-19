@@ -20,7 +20,7 @@ use better_wallpaper_renderer::{
 };
 use better_wallpaper_scene_format::PkgReader;
 use clap::{Parser, ValueEnum};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{Layer, filter::filter_fn, layer::SubscriberExt};
 
 const MANAGEMENT_BIND: &str = "127.0.0.1:43129";
@@ -374,7 +374,7 @@ fn run_niri_scene(
     let desktop_audio_capture = if scene_config.audio_processing && audio_response_draws > 0 {
         match DesktopAudioCapture::start(Arc::clone(&spectrum)) {
             Ok(capture) => {
-                assets.audio_spectrum = Some(spectrum);
+                assets.audio_spectrum = Some(Arc::clone(&spectrum));
                 Some(capture)
             }
             Err(error) => {
@@ -477,6 +477,11 @@ fn run_niri_scene(
     let mut scene_elapsed = Duration::ZERO;
     let mut previous_tick = std::time::Instant::now();
     let mut was_paused = false;
+    let mut stats_started = std::time::Instant::now();
+    let mut stats_frames = 0_u64;
+    let mut stats_work = Duration::ZERO;
+    let mut stats_max_work = Duration::ZERO;
+    let mut stats_over_budget = 0_u64;
     while !control.is_cancelled() {
         let frame_start = std::time::Instant::now();
         let delta = frame_start.saturating_duration_since(previous_tick);
@@ -509,6 +514,43 @@ fn run_niri_scene(
         // Start only after a complete frame has reached every output, and keep
         // pause state synchronized with the scene clock thereafter.
         background_audio.set_paused(paused);
+        let work_elapsed = frame_start.elapsed();
+        stats_frames += 1;
+        stats_work = stats_work.saturating_add(work_elapsed);
+        stats_max_work = stats_max_work.max(work_elapsed);
+        stats_over_budget += u64::from(work_elapsed > frame_interval);
+        let stats_elapsed = stats_started.elapsed();
+        if stats_elapsed >= Duration::from_secs(1) {
+            let average_work_us = stats_work.as_micros() as f64 / stats_frames.max(1) as f64;
+            let spectrum_peak = (0..64).map(|bin| spectrum.get(bin)).fold(0.0_f32, f32::max);
+            let audio_metrics = desktop_audio_capture
+                .as_ref()
+                .map(DesktopAudioCapture::take_metrics)
+                .unwrap_or_default();
+            debug!(
+                frames = stats_frames,
+                actual_fps = stats_frames as f64 / stats_elapsed.as_secs_f64(),
+                target_fps = fps_limit,
+                average_work_us,
+                max_work_us = stats_max_work.as_micros() as u64,
+                over_budget_frames = stats_over_budget,
+                output_count = backends.len(),
+                paused,
+                desktop_capture = desktop_audio_capture.is_some(),
+                captured_audio_bytes = audio_metrics.captured_bytes,
+                spectrum_updates = audio_metrics.spectrum_updates,
+                spectrum_update_hz =
+                    audio_metrics.spectrum_updates as f64 / stats_elapsed.as_secs_f64(),
+                spectrum_peak,
+                scene_elapsed_seconds = scene_elapsed.as_secs_f64(),
+                "scene realtime frame statistics"
+            );
+            stats_started = std::time::Instant::now();
+            stats_frames = 0;
+            stats_work = Duration::ZERO;
+            stats_max_work = Duration::ZERO;
+            stats_over_budget = 0;
+        }
         let elapsed = frame_start.elapsed();
         if elapsed < frame_interval {
             std::thread::sleep(frame_interval - elapsed);
