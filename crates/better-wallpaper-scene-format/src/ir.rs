@@ -172,6 +172,19 @@ pub struct WaterWaveEffect {
     pub strength: f32,
     pub mask: Option<String>,
     pub normal: Option<String>,
+    /// Parameters used only by Wallpaper Engine's normal-map water ripple.
+    /// A ripple is not equivalent to the procedural sine displacement used by
+    /// `waterwaves`, so retaining these values prevents the two effects from
+    /// being accidentally rendered with the same shader path.
+    #[serde(default)]
+    pub ripple: Option<WaterRippleEffect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WaterRippleEffect {
+    pub animation_speed: f32,
+    pub scroll_speed: f32,
+    pub ratio: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1485,6 +1498,7 @@ fn parse_water_wave_effects(
             strength,
             mask: effect_texture(effect, index, 1)?,
             normal: None,
+            ripple: None,
         };
         if parsed.len() < MAX_WATER_WAVE_EFFECTS {
             parsed.push(wave);
@@ -1521,20 +1535,27 @@ fn parse_water_wave_effects(
         let scale = optional_finite_number(values, "scale").unwrap_or(1.0);
         let animation_speed = optional_finite_number(values, "animationspeed").unwrap_or(0.0);
         let scroll_speed = optional_finite_number(values, "scrollspeed").unwrap_or(0.0);
+        let ratio = optional_finite_number(values, "ratio").unwrap_or(1.0);
         let strength = optional_finite_number(values, "ripplestrength").unwrap_or(0.0);
-        if scale <= 0.0 || strength < 0.0 {
+        if scale <= 0.0 || ratio <= 0.0 || strength < 0.0 {
             return Err(SceneParseError::InvalidValue {
                 field: format!("{path}.effects[{index}]"),
-                detail: "waterripple scale must be positive and strength non-negative".into(),
+                detail: "waterripple scale and ratio must be positive and strength non-negative"
+                    .into(),
             });
         }
         parsed.push(WaterWaveEffect {
             direction,
             scale,
-            speed: animation_speed + scroll_speed,
+            speed: 0.0,
             strength,
             mask: effect_texture(effect, index, 1)?,
             normal: effect_texture(effect, index, 2)?,
+            ripple: Some(WaterRippleEffect {
+                animation_speed,
+                scroll_speed,
+                ratio,
+            }),
         });
         break;
     }
@@ -2267,14 +2288,18 @@ mod tests {
     #[test]
     fn parses_waterflow_alongside_waterripple() {
         let graph = parse_scene_graph(
-            r#"{"objects":[{"image":"water.json","effects":[{"file":"effects/waterripple/effect.json","passes":[{"constantshadervalues":{"animationspeed":0.03,"scrollspeed":0.08,"scale":1.0,"ripplestrength":0.1},"textures":[null,"masks/ripple","effects/normal"]}]},{"file":"effects/waterflow/effect.json","passes":[{"constantshadervalues":{"phasescale":0.62,"speed":0.08,"strength":1.0},"textures":[null,"masks/flow","effects/phase"]}]}]}]}"#,
+            r#"{"objects":[{"image":"water.json","effects":[{"file":"effects/waterripple/effect.json","passes":[{"constantshadervalues":{"animationspeed":0.03,"scrollspeed":0.08,"scale":1.0,"ratio":3.08,"ripplestrength":0.1},"textures":[null,"masks/ripple","effects/normal"]}]},{"file":"effects/waterflow/effect.json","passes":[{"constantshadervalues":{"phasescale":0.62,"speed":0.08,"strength":1.0},"textures":[null,"masks/flow","effects/phase"]}]}]}]}"#,
         )
         .unwrap();
         let node = &graph.nodes[0];
         let wave = &node.water_waves[0];
-        assert_eq!(wave.speed, 0.11);
+        assert_eq!(wave.speed, 0.0);
         assert_eq!(wave.mask.as_deref(), Some("masks/ripple"));
         assert_eq!(wave.normal.as_deref(), Some("effects/normal"));
+        let ripple = wave.ripple.unwrap();
+        assert_eq!(ripple.animation_speed, 0.03);
+        assert_eq!(ripple.scroll_speed, 0.08);
+        assert_eq!(ripple.ratio, 3.08);
         let flow = node.water_flow.as_ref().unwrap();
         assert_eq!(flow.phase_scale, 0.62);
         assert_eq!(flow.speed, 0.08);

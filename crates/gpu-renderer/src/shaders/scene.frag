@@ -22,6 +22,9 @@ uniform float u_has_water_wave_mask0;
 uniform float u_has_water_wave_mask1;
 uniform float u_has_water_wave_mask2;
 uniform float u_has_water_wave_normal;
+// Normal-map ripple: direction, scale, animation speed, scroll speed.
+uniform vec4 u_water_ripple;
+uniform float u_water_ripple_ratio;
 
 // Water flow: phase scale, speed, strength.
 uniform vec3 u_water_flow;
@@ -206,9 +209,11 @@ vec2 applyWaterWaveEffect(
 }
 
 vec2 applyWaterWaves(vec2 uv) {
-    uv = applyWaterWaveEffect(
-        uv, u_water_wave0, u_water_wave_mask0, u_has_water_wave_mask0
-    );
+    if (u_has_water_wave_normal <= 0.0) {
+        uv = applyWaterWaveEffect(
+            uv, u_water_wave0, u_water_wave_mask0, u_has_water_wave_mask0
+        );
+    }
     uv = applyWaterWaveEffect(
         uv, u_water_wave1, u_water_wave_mask1, u_has_water_wave_mask1
     );
@@ -216,6 +221,35 @@ vec2 applyWaterWaves(vec2 uv) {
         uv, u_water_wave2, u_water_wave_mask2, u_has_water_wave_mask2
     );
     return uv;
+}
+
+vec2 applyWaterRipple(vec2 uv) {
+    if (u_has_water_wave_normal <= 0.0 || u_water_wave0.w <= 0.0) {
+        return uv;
+    }
+
+    float mask = mix(
+        1.0,
+        texture2D(u_water_wave_mask0, v_effect_coord).r,
+        u_has_water_wave_mask0
+    );
+    vec2 scrollDirection = vec2(-sin(u_water_ripple.x), cos(u_water_ripple.x));
+    vec2 scroll = scrollDirection
+                * u_water_ripple.w * u_water_ripple.w * u_time;
+    float animation = u_time * u_water_ripple.z * u_water_ripple.z;
+    vec2 first = v_effect_coord + vec2(animation) + scroll;
+    vec2 second = v_effect_coord * 1.333 - vec2(animation) + scroll;
+    first *= u_water_ripple.y;
+    second *= u_water_ripple.y;
+    first.x *= u_spin_aspect;
+    second.x *= u_spin_aspect;
+    first.y *= u_water_ripple_ratio;
+    second.y *= u_water_ripple_ratio;
+
+    vec3 normal1 = texture2D(u_water_wave_normal, first).xyz * 2.0 - 1.0;
+    vec3 normal2 = texture2D(u_water_wave_normal, second).xyz * 2.0 - 1.0;
+    vec3 normal = normalize(vec3(normal1.xy + normal2.xy, normal1.z));
+    return uv + normal.xy * u_water_wave0.w * u_water_wave0.w * mask;
 }
 
 vec2 applyShakeEffect(
@@ -351,6 +385,7 @@ void main() {
     vec2 effectUv = applySpin(v_effect_coord);
     effectUv = applyFoliageSway(effectUv);
     effectUv = applyIrisMovement(effectUv);
+    effectUv = applyWaterRipple(effectUv);
     effectUv = applyWaterWaves(effectUv);
     effectUv = applyShakes(effectUv);
     effectUv = applyWaterFlow(effectUv);

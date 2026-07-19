@@ -515,6 +515,24 @@ pub fn resolve_scene_2d_assets(
                         .transpose()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            if let Some((wave, ripple)) = quad
+                .water_waves
+                .first()
+                .and_then(|wave| wave.ripple.map(|ripple| (wave, ripple)))
+            {
+                debug!(
+                    node = %quad.node_id,
+                    mask = ?wave.mask,
+                    normal = ?wave.normal,
+                    direction = wave.direction,
+                    scale = wave.scale,
+                    strength = wave.strength,
+                    animation_speed = ripple.animation_speed,
+                    scroll_speed = ripple.scroll_speed,
+                    ratio = ripple.ratio,
+                    "Prepared normal-map water ripple effect"
+                );
+            }
             let water_flow_phase = quad
                 .water_flow
                 .as_ref()
@@ -1198,6 +1216,24 @@ pub fn build_scene_2d_plan(
         if !visible[index].unwrap_or(false) {
             continue;
         }
+        if resource == "models/util/solidlayer.json"
+            && let Some(effect) = node
+                .effects
+                .iter()
+                .find(|effect| unsupported_solid_generator(effect))
+        {
+            // A solid layer is commonly just the input canvas for a procedural
+            // effect. Drawing that input without the generator turns the
+            // intended transparent result into a conspicuous opaque rectangle.
+            skipped_nodes += 1;
+            warn!(
+                node = %node.id,
+                node_name = %node.name,
+                %effect,
+                "Skipping procedural solid layer because its pixel-generating effect is unsupported"
+            );
+            continue;
+        }
         let Some(size) = node.transform.size else {
             skipped_nodes += 1;
             continue;
@@ -1290,6 +1326,12 @@ pub fn build_scene_2d_plan(
         camera_zoom: graph.camera.zoom,
         camera_zoom_animation: graph.camera.zoom_animation.clone(),
     })
+}
+
+fn unsupported_solid_generator(effect: &str) -> bool {
+    let effect = effect.to_ascii_lowercase();
+    (effect.contains("audio") && (effect.contains("bar") || effect.contains("visualizer")))
+        || effect.contains("procedural_noise")
 }
 
 fn resolve_node(
@@ -1562,6 +1604,29 @@ mod tests {
         );
         assert!(assets.draws[0].texture.levels[0].height >= 32);
         assert_eq!(assets.draws[1].texture.levels[0].data.as_ref(), &[255; 4]);
+    }
+
+    #[test]
+    fn suppresses_unsupported_pixel_generators_instead_of_drawing_their_solid_input() {
+        let result = plan(
+            r#"{
+                "general":{"orthogonalprojection":{"width":200,"height":100}},
+                "objects":[{
+                    "id":"sound-bars",
+                    "name":"Sound bars",
+                    "image":"models/util/solidlayer.json",
+                    "origin":"100 50 0",
+                    "size":"40 30",
+                    "effects":[{
+                        "file":"effects/workshop/2084198056/Simple_Audio_Bars/effect.json"
+                    }]
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(result.quads.is_empty());
+        assert_eq!(result.skipped_nodes, 1);
     }
 
     #[test]

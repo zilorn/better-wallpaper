@@ -372,6 +372,10 @@ impl SceneGpuRenderer {
             let water_wave_normal_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_water_wave_normal");
+            let water_ripple_loc = self.gl.get_uniform_location(self.program, "u_water_ripple");
+            let water_ripple_ratio_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_water_ripple_ratio");
             let water_flow_phase_loc = self
                 .gl
                 .get_uniform_location(self.program, "u_water_flow_phase");
@@ -637,6 +641,26 @@ impl SceneGpuRenderer {
                         self.gl.uniform_4_f32(location.as_ref(), 0.0, 1.0, 0.0, 0.0);
                     }
                 }
+                if let Some((wave, ripple)) = draw
+                    .quad
+                    .water_waves
+                    .first()
+                    .and_then(|wave| wave.ripple.map(|ripple| (wave, ripple)))
+                {
+                    self.gl.uniform_4_f32(
+                        water_ripple_loc.as_ref(),
+                        wave.direction,
+                        wave.scale,
+                        ripple.animation_speed,
+                        ripple.scroll_speed,
+                    );
+                    self.gl
+                        .uniform_1_f32(water_ripple_ratio_loc.as_ref(), ripple.ratio);
+                } else {
+                    self.gl
+                        .uniform_4_f32(water_ripple_loc.as_ref(), 0.0, 1.0, 0.0, 0.0);
+                    self.gl.uniform_1_f32(water_ripple_ratio_loc.as_ref(), 1.0);
+                }
                 if let Some(flow) = &draw.quad.water_flow {
                     self.gl.uniform_3_f32(
                         water_flow_loc.as_ref(),
@@ -857,10 +881,7 @@ impl SceneGpuRenderer {
                         false,
                     );
                 }
-                for (index, unit) in [glow::TEXTURE11, glow::TEXTURE12, glow::TEXTURE3]
-                    .into_iter()
-                    .enumerate()
-                {
+                for (index, unit) in [glow::TEXTURE11, glow::TEXTURE12].into_iter().enumerate() {
                     bind_optional_texture(
                         &self.gl,
                         &self.textures,
@@ -870,6 +891,29 @@ impl SceneGpuRenderer {
                             .and_then(Option::as_ref)
                             .map(|texture| texture.path.as_str()),
                         has_shake_map_locs[index].as_ref(),
+                        false,
+                    );
+                }
+                if draw
+                    .water_wave_normals
+                    .first()
+                    .and_then(Option::as_ref)
+                    .is_some()
+                {
+                    // Texture unit 3 carries the ripple normal. A third shake
+                    // map cannot share it in the same draw, so keep the ripple
+                    // binding and explicitly disable that optional shake.
+                    self.gl.uniform_1_f32(has_shake_map_locs[2].as_ref(), 0.0);
+                } else {
+                    bind_optional_texture(
+                        &self.gl,
+                        &self.textures,
+                        glow::TEXTURE3,
+                        draw.shake_maps
+                            .get(2)
+                            .and_then(Option::as_ref)
+                            .map(|texture| texture.path.as_str()),
+                        has_shake_map_locs[2].as_ref(),
                         false,
                     );
                 }
