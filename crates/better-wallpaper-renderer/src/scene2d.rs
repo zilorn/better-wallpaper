@@ -9,8 +9,8 @@ use std::{
 
 use better_wallpaper_scene_format::{
     BlendMode, DynamicScaleKind, DynamicTextKind, MaterialManifest, ModelManifest, PkgReader,
-    PuppetModel, SceneGraph, SceneNodeKind, SceneText, TexFormat, TexTexture, TextureAlphaMode,
-    TextureColorSpace, TextureImage, TextureMipLevel, resolve_texture_path,
+    PuppetModel, ScalarAnimation, SceneGraph, SceneNodeKind, SceneText, TexFormat, TexTexture,
+    TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel, resolve_texture_path,
 };
 use thiserror::Error;
 use tracing::{debug, warn};
@@ -88,6 +88,9 @@ pub struct Scene2dQuad {
     /// Quad corners in NDC, ordered top-left, top-right, bottom-right, bottom-left.
     pub vertices: [[f32; 2]; 4],
     pub opacity: f32,
+    pub opacity_animation: Option<ScalarAnimation>,
+    pub texture_override: Option<String>,
+    pub backdrop_fade: bool,
     pub scroll: Option<better_wallpaper_scene_format::ScrollEffect>,
     pub water_waves: Vec<better_wallpaper_scene_format::WaterWaveEffect>,
     pub water_flow: Option<better_wallpaper_scene_format::WaterFlowEffect>,
@@ -138,6 +141,8 @@ pub struct Scene2dPlan {
     pub skipped_nodes: usize,
     pub projection_size: [f32; 2],
     pub layout_viewport: [u32; 2],
+    pub camera_zoom: f32,
+    pub camera_zoom_animation: Option<ScalarAnimation>,
 }
 
 /// A draw whose model/material/texture dependency chain has been fully resolved.
@@ -230,6 +235,8 @@ pub struct Scene2dAssets {
     pub projection_size: [f32; 2],
     /// Viewport used when the backend-independent quad plan was built.
     pub layout_viewport: [u32; 2],
+    pub camera_zoom: f32,
+    pub camera_zoom_animation: Option<ScalarAnimation>,
     pub audio_spectrum: Option<Arc<SceneAudioSpectrum>>,
 }
 
@@ -308,6 +315,7 @@ pub fn resolve_scene_2d_assets(
                 let initial = match text.dynamic {
                     Some(DynamicTextKind::Clock) => "00:00",
                     Some(DynamicTextKind::Date) => "0000 | 00 | 00 | 星期日",
+                    Some(DynamicTextKind::Media) => "",
                     None => &text.value,
                 };
                 let font_render =
@@ -345,6 +353,66 @@ pub fn resolve_scene_2d_assets(
                     solid_color_texture([255, 255, 255, 255]),
                     None,
                 ));
+            }
+            if quad.backdrop_fade {
+                debug!(node = %quad.node_id, "Prepared animated black scene entrance overlay");
+                return Ok(procedural_draw(
+                    quad.clone(),
+                    solid_color_texture([0, 0, 0, 255]),
+                    None,
+                ));
+            }
+            if let Some(texture_name) = quad.texture_override.as_deref() {
+                let texture_path = resolve_texture_path("", texture_name);
+                let entry = package
+                    .find(&texture_path)
+                    .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
+                let parsed = TexTexture::parse(package.read_entry(entry)).map_err(|error| {
+                    Scene2dError::InvalidTexture {
+                        path: texture_path.clone(),
+                        detail: error.to_string(),
+                    }
+                })?;
+                let texture =
+                    parsed
+                        .to_texture_image()
+                        .map_err(|error| Scene2dError::InvalidTexture {
+                            path: texture_path.clone(),
+                            detail: error.to_string(),
+                        })?;
+                let level = texture
+                    .levels
+                    .first()
+                    .ok_or_else(|| Scene2dError::InvalidTexture {
+                        path: texture_path.clone(),
+                        detail: "texture has no uploadable base level".into(),
+                    })?;
+                debug!(
+                    node = %quad.node_id,
+                    texture = %texture_path,
+                    width = level.width,
+                    height = level.height,
+                    "Prepared authored fallback for unavailable system scene texture"
+                );
+                return Ok(Scene2dDraw {
+                    quad,
+                    blend_mode: BlendMode::Translucent,
+                    texture_path,
+                    texture,
+                    text_render: None,
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    animation: None,
+                    mesh: None,
+                    water_wave_masks: Vec::new(),
+                    water_wave_normals: Vec::new(),
+                    water_flow_mask: None,
+                    water_flow_phase: None,
+                    iris_mask: None,
+                    foliage_masks: Vec::new(),
+                    shine_mask: None,
+                    shake_maps: Vec::new(),
+                    pulse_masks: Vec::new(),
+                });
             }
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
                 Scene2dError::MissingModel {
@@ -531,6 +599,8 @@ pub fn resolve_scene_2d_assets(
         skipped_nodes,
         projection_size,
         layout_viewport,
+        camera_zoom: plan.camera_zoom,
+        camera_zoom_animation: plan.camera_zoom_animation,
         audio_spectrum: None,
     })
 }
@@ -1077,6 +1147,23 @@ pub fn build_scene_2d_plan(
         editor_camera_y = editor_camera.y,
         view_center_x = center_x,
         view_center_y = center_y,
+        camera_zoom = graph.camera.zoom,
+        camera_zoom_animated = graph.camera.zoom_animation.is_some(),
+        animated_opacity_nodes = graph
+            .nodes
+            .iter()
+            .filter(|node| node.transform.opacity_animation.is_some())
+            .count(),
+        fallback_instance_textures = graph
+            .nodes
+            .iter()
+            .filter(|node| node.texture_override.is_some())
+            .count(),
+        backdrop_fade_nodes = graph
+            .nodes
+            .iter()
+            .filter(|node| node.backdrop_fade.is_some())
+            .count(),
         "Building aspect-preserving scene layout in project canvas coordinates; editor camera pan ignored"
     );
 
@@ -1152,6 +1239,9 @@ pub fn build_scene_2d_plan(
                     layout_transform: transform,
                     vertices: quad_vertices(transform, size.x, size.y),
                     opacity,
+                    opacity_animation: node.transform.opacity_animation.clone(),
+                    texture_override: node.texture_override.clone(),
+                    backdrop_fade: node.backdrop_fade.is_some(),
                     scroll: node.scroll,
                     water_waves: node.water_waves.clone(),
                     water_flow: node.water_flow.clone(),
@@ -1175,6 +1265,12 @@ pub fn build_scene_2d_plan(
             layout_transform: transform,
             vertices: quad_vertices(transform, size.x, size.y),
             opacity,
+            opacity_animation: node
+                .backdrop_fade
+                .clone()
+                .or_else(|| node.transform.opacity_animation.clone()),
+            texture_override: node.texture_override.clone(),
+            backdrop_fade: node.backdrop_fade.is_some(),
             scroll: node.scroll,
             water_waves: node.water_waves.clone(),
             water_flow: node.water_flow.clone(),
@@ -1191,6 +1287,8 @@ pub fn build_scene_2d_plan(
         skipped_nodes,
         projection_size: [projection.x, projection.y],
         layout_viewport: [options.viewport_width, options.viewport_height],
+        camera_zoom: graph.camera.zoom,
+        camera_zoom_animation: graph.camera.zoom_animation.clone(),
     })
 }
 
@@ -1840,5 +1938,36 @@ mod tests {
         assert_eq!(assets.draws.len(), 1);
         assert_eq!(assets.draws[0].quad.node_id, "bg");
         assert_eq!(assets.skipped_nodes, 1);
+    }
+
+    #[test]
+    fn resolves_an_instance_texture_without_the_builtin_system_material() {
+        let package = package(&[("materials/album-fallback.tex", rgba_tex(2, 2))]);
+        let plan = plan(
+            r#"{"objects":[{"id":"album","image":"models/system-instance.json","size":"16 16","instance":{"textures":["album-fallback"],"usertextures":[{"name":"$mediaThumbnail","type":"system"}]}}]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(assets.draws.len(), 1);
+        assert_eq!(assets.draws[0].texture_path, "materials/album-fallback.tex");
+    }
+
+    #[test]
+    fn resolves_a_color_grading_entrance_as_an_animated_black_overlay() {
+        let plan = plan(
+            r#"{"objects":[{"id":"intro","image":"models/util/composelayer.json","size":"100 100","effects":[{"file":"effects/workshop/example/color_grading/effect.json","passes":[{"constantshadervalues":{"Brightness":{"animation":{"c0":[{"frame":0,"value":-1},{"frame":30,"value":0}],"options":{"fps":30,"length":30,"mode":"single"}},"value":0}}}]}]}]}"#,
+        )
+        .unwrap();
+
+        let assets = resolve_scene_2d_assets(&package(&[]), plan).unwrap();
+        assert_eq!(assets.draws.len(), 1);
+        assert_eq!(
+            assets.draws[0].texture.levels[0].data.as_ref(),
+            &[0, 0, 0, 255]
+        );
+        let fade = assets.draws[0].quad.opacity_animation.as_ref().unwrap();
+        assert_eq!(fade.value_at(0.0), 1.0);
+        assert_eq!(fade.value_at(1.0), 0.0);
     }
 }

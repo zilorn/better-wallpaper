@@ -17,11 +17,87 @@ pub struct SceneGraph {
     pub unsupported_features: Vec<UnsupportedFeature>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SceneCamera {
     pub eye: Option<Vec3>,
     pub center: Option<Vec3>,
     pub projection_size: Option<Vec2>,
+    #[serde(default = "default_one")]
+    pub zoom: f32,
+    #[serde(default)]
+    pub zoom_animation: Option<ScalarAnimation>,
+}
+
+impl Default for SceneCamera {
+    fn default() -> Self {
+        Self {
+            eye: None,
+            center: None,
+            projection_size: None,
+            zoom: 1.0,
+            zoom_animation: None,
+        }
+    }
+}
+
+const fn default_one() -> f32 {
+    1.0
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScalarAnimation {
+    pub keyframes: Vec<ScalarKeyframe>,
+    pub fps: f32,
+    pub length_frames: f32,
+    pub mode: AnimationMode,
+}
+
+impl ScalarAnimation {
+    pub fn value_at(&self, elapsed_seconds: f64) -> f32 {
+        let Some(first) = self.keyframes.first() else {
+            return 0.0;
+        };
+        let Some(last) = self.keyframes.last() else {
+            return first.value;
+        };
+        if self.fps <= 0.0 || self.length_frames <= 0.0 {
+            return last.value;
+        }
+        let mut frame = elapsed_seconds.max(0.0) as f32 * self.fps;
+        if self.mode == AnimationMode::Loop {
+            frame = frame.rem_euclid(self.length_frames);
+        } else {
+            frame = frame.min(self.length_frames);
+        }
+        if frame <= first.frame {
+            return first.value;
+        }
+        for pair in self.keyframes.windows(2) {
+            let [left, right] = pair else { continue };
+            if frame <= right.frame {
+                let span = right.frame - left.frame;
+                if span <= f32::EPSILON {
+                    return right.value;
+                }
+                let amount = ((frame - left.frame) / span).clamp(0.0, 1.0);
+                return left.value + (right.value - left.value) * amount;
+            }
+        }
+        last.value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScalarKeyframe {
+    pub frame: f32,
+    pub value: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnimationMode {
+    Single,
+    Loop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -45,6 +121,12 @@ pub struct SceneNode {
     pub visible: bool,
     pub kind: SceneNodeKind,
     pub transform: SceneTransform,
+    /// First authored instance texture, used when a system texture is unavailable.
+    #[serde(default)]
+    pub texture_override: Option<String>,
+    /// Safe approximation of an animated color-grading fade on a composition layer.
+    #[serde(default)]
+    pub backdrop_fade: Option<ScalarAnimation>,
     pub dynamic_scale: Option<DynamicScaleKind>,
     #[serde(default)]
     pub audio_visualizer: Option<SceneAudioVisualizer>,
@@ -192,6 +274,8 @@ pub enum SoundPlaybackMode {
 pub enum DynamicTextKind {
     Clock,
     Date,
+    /// Wallpaper Engine media-event text has no authoring fallback at runtime.
+    Media,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -216,6 +300,8 @@ pub struct SceneTransform {
     pub scale: Option<Vec3>,
     pub angles: Option<Vec3>,
     pub opacity: Option<f32>,
+    #[serde(default)]
+    pub opacity_animation: Option<ScalarAnimation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
@@ -366,6 +452,10 @@ fn parse_camera(root: &Map<String, Value>) -> Result<SceneCamera, SceneParseErro
         .and_then(Value::as_object)
         .and_then(|general| general.get("orthogonalprojection"))
         .and_then(Value::as_object);
+    let zoom_value = root
+        .get("general")
+        .and_then(Value::as_object)
+        .and_then(|general| general.get("zoom"));
 
     Ok(SceneCamera {
         eye: camera
@@ -386,6 +476,15 @@ fn parse_camera(root: &Map<String, Value>) -> Result<SceneCamera, SceneParseErro
                 })
             })
             .transpose()?,
+        zoom: zoom_value
+            .map(unwrap_script_value)
+            .map(|value| number_value("general.zoom", value))
+            .transpose()?
+            .unwrap_or(1.0),
+        zoom_animation: zoom_value
+            .map(|value| parse_scalar_animation(value, "general.zoom"))
+            .transpose()?
+            .flatten(),
     })
 }
 
@@ -412,6 +511,8 @@ fn parse_node(
         "id",
         "image",
         "instanceoverride",
+        "instance",
+        "dependencies",
         "name",
         "origin",
         "parallaxDepth",
@@ -506,6 +607,7 @@ fn parse_node(
     let iris = parse_iris_effect(object.get("effects"), &path)?;
     let foliage_sway = parse_foliage_sway_effects(object.get("effects"), &path)?;
     let shine = parse_shine_effect(object.get("effects"), &path)?;
+    let backdrop_fade = parse_backdrop_fade(object, &path)?;
     let audio_visualizer = parse_audio_visualizer(object.get("visible"));
     if object.get("visible").and_then(script_source).is_some() && audio_visualizer.is_none() {
         mark(
@@ -541,6 +643,15 @@ fn parse_node(
             mark(unsupported, &format!("{path}.{field}"), feature);
         }
     }
+
+    let texture_override = object
+        .get("instance")
+        .and_then(Value::as_object)
+        .and_then(|instance| instance.get("textures"))
+        .and_then(Value::as_array)
+        .and_then(|textures| textures.iter().find_map(Value::as_str))
+        .map(validate_resource_path)
+        .transpose()?;
 
     Ok(SceneNode {
         id: scalar_id(object.get("id")).unwrap_or_else(|| format!("index-{index}")),
@@ -578,7 +689,14 @@ fn parse_node(
                     number_value(&format!("{path}.alpha"), value)
                 })
                 .transpose()?,
+            opacity_animation: object
+                .get("alpha")
+                .map(|value| parse_scalar_animation(value, &format!("{path}.alpha")))
+                .transpose()?
+                .flatten(),
         },
+        texture_override,
+        backdrop_fade,
         dynamic_scale: parse_dynamic_scale(object.get("scale")),
         audio_visualizer,
         effects,
@@ -672,7 +790,9 @@ fn parse_scene_text(
         });
     }
     let script = script_source(text).unwrap_or_default();
-    let dynamic = if script.contains("getHours()") && script.contains("getMinutes()") {
+    let dynamic = if script.contains("mediaPropertiesChanged") {
+        Some(DynamicTextKind::Media)
+    } else if script.contains("getHours()") && script.contains("getMinutes()") {
         Some(DynamicTextKind::Clock)
     } else if script.contains("getFullYear()")
         && script.contains("getMonth()")
@@ -717,6 +837,132 @@ fn parse_scene_text(
         font,
         point_size,
     })
+}
+
+fn parse_scalar_animation(
+    value: &Value,
+    path: &str,
+) -> Result<Option<ScalarAnimation>, SceneParseError> {
+    const MAX_KEYFRAMES: usize = 1024;
+    let Some(animation) = value
+        .as_object()
+        .and_then(|object| object.get("animation"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(None);
+    };
+    let options = animation
+        .get("options")
+        .and_then(Value::as_object)
+        .ok_or_else(|| SceneParseError::InvalidValue {
+            field: format!("{path}.animation.options"),
+            detail: "expected an animation options object".into(),
+        })?;
+    let fps = number_field(options, "fps", &format!("{path}.animation.options"))?;
+    let length_frames = number_field(options, "length", &format!("{path}.animation.options"))?;
+    if fps <= 0.0 || length_frames <= 0.0 {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.animation.options"),
+            detail: "animation fps and length must be positive".into(),
+        });
+    }
+    let mode = match options
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("single")
+    {
+        "single" => AnimationMode::Single,
+        "loop" => AnimationMode::Loop,
+        other => {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("{path}.animation.options.mode"),
+                detail: format!("unsupported scalar animation mode: {other}"),
+            });
+        }
+    };
+    let values = animation
+        .get("c0")
+        .and_then(Value::as_array)
+        .ok_or_else(|| SceneParseError::InvalidValue {
+            field: format!("{path}.animation.c0"),
+            detail: "expected a scalar keyframe array".into(),
+        })?;
+    if values.is_empty() || values.len() > MAX_KEYFRAMES {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.animation.c0"),
+            detail: format!("keyframe count must be within 1..={MAX_KEYFRAMES}"),
+        });
+    }
+    let mut keyframes = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        let keyframe = value
+            .as_object()
+            .ok_or_else(|| SceneParseError::InvalidValue {
+                field: format!("{path}.animation.c0[{index}]"),
+                detail: "expected a keyframe object".into(),
+            })?;
+        keyframes.push(ScalarKeyframe {
+            frame: number_field(keyframe, "frame", &format!("{path}.animation.c0[{index}]"))?,
+            value: number_field(keyframe, "value", &format!("{path}.animation.c0[{index}]"))?,
+        });
+    }
+    keyframes.sort_by(|left, right| left.frame.total_cmp(&right.frame));
+    Ok(Some(ScalarAnimation {
+        keyframes,
+        fps,
+        length_frames,
+        mode,
+    }))
+}
+
+fn parse_backdrop_fade(
+    object: &Map<String, Value>,
+    path: &str,
+) -> Result<Option<ScalarAnimation>, SceneParseError> {
+    let is_composition_layer = object
+        .get("image")
+        .and_then(Value::as_str)
+        .is_some_and(|image| image == "models/util/composelayer.json");
+    if !is_composition_layer {
+        return Ok(None);
+    }
+    let Some(effects) = object.get("effects").and_then(Value::as_array) else {
+        return Ok(None);
+    };
+    for (effect_index, effect) in effects.iter().enumerate() {
+        let Some(effect) = effect.as_object() else {
+            continue;
+        };
+        if !effect
+            .get("file")
+            .and_then(Value::as_str)
+            .is_some_and(|file| file.ends_with("/color_grading/effect.json"))
+        {
+            continue;
+        }
+        let Some(passes) = effect.get("passes").and_then(Value::as_array) else {
+            continue;
+        };
+        for (pass_index, pass) in passes.iter().enumerate() {
+            let Some(brightness) = pass
+                .get("constantshadervalues")
+                .and_then(Value::as_object)
+                .and_then(|values| values.get("Brightness"))
+            else {
+                continue;
+            };
+            let animation_path = format!(
+                "{path}.effects[{effect_index}].passes[{pass_index}].constantshadervalues.Brightness"
+            );
+            if let Some(mut animation) = parse_scalar_animation(brightness, &animation_path)? {
+                for keyframe in &mut animation.keyframes {
+                    keyframe.value = (-keyframe.value).clamp(0.0, 1.0);
+                }
+                return Ok(Some(animation));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn parse_dynamic_scale(value: Option<&Value>) -> Option<DynamicScaleKind> {
@@ -2053,5 +2299,50 @@ mod tests {
         assert!(matches!(graph.nodes[0].kind, SceneNodeKind::Container));
         assert!(matches!(graph.nodes[1].kind, SceneNodeKind::Model(_)));
         assert!(matches!(graph.nodes[2].kind, SceneNodeKind::Model(_)));
+    }
+
+    #[test]
+    fn parses_single_scalar_timelines_and_clamps_at_the_last_keyframe() {
+        let graph = parse_scene_graph(
+            r#"{
+                "general":{"zoom":{"animation":{"c0":[{"frame":0,"value":1.2},{"frame":210,"value":1.02}],"options":{"fps":30,"length":210,"mode":"single"}},"value":1.02}},
+                "objects":[{"image":"logo.json","alpha":{"animation":{"c0":[{"frame":0,"value":1},{"frame":120,"value":0}],"options":{"fps":30,"length":120,"mode":"single"}},"value":1}}]
+            }"#,
+        )
+        .unwrap();
+        let zoom = graph.camera.zoom_animation.as_ref().unwrap();
+        assert!((zoom.value_at(3.5) - 1.11).abs() < 0.0001);
+        assert!((zoom.value_at(30.0) - 1.02).abs() < 0.0001);
+        let opacity = graph.nodes[0].transform.opacity_animation.as_ref().unwrap();
+        assert_eq!(opacity.value_at(0.0), 1.0);
+        assert_eq!(opacity.value_at(30.0), 0.0);
+    }
+
+    #[test]
+    fn recognizes_media_text_and_instance_texture_fallbacks() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"models/album.json","instance":{"textures":["album-fallback"],"usertextures":[{"name":"$mediaThumbnail","type":"system"}]}},{"text":{"script":"export function mediaPropertiesChanged(event) { value = event.title; }","value":"Song Title"}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            graph.nodes[0].texture_override.as_deref(),
+            Some("album-fallback")
+        );
+        let SceneNodeKind::Text(text) = &graph.nodes[1].kind else {
+            panic!("media text should parse as text");
+        };
+        assert_eq!(text.dynamic, Some(DynamicTextKind::Media));
+    }
+
+    #[test]
+    fn converts_a_single_color_grading_entrance_into_a_black_fade() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"image":"models/util/composelayer.json","effects":[{"file":"effects/workshop/example/color_grading/effect.json","passes":[{"constantshadervalues":{"Brightness":{"animation":{"c0":[{"frame":0,"value":-1},{"frame":120,"value":0}],"options":{"fps":30,"length":120,"mode":"single"}},"value":0}}}]}]}]}"#,
+        )
+        .unwrap();
+        let fade = graph.nodes[0].backdrop_fade.as_ref().unwrap();
+        assert_eq!(fade.value_at(0.0), 1.0);
+        assert_eq!(fade.value_at(4.0), 0.0);
+        assert_eq!(fade.value_at(30.0), 0.0);
     }
 }

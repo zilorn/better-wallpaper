@@ -491,7 +491,16 @@ impl SceneGpuRenderer {
             self.gl.enable_vertex_attrib_array(tex_coord_loc);
             self.gl.enable_vertex_attrib_array(effect_coord_loc);
             self.gl.uniform_1_i32(sampler_loc.as_ref(), 0);
-            let layout_scale = scene_layout_scale(assets, self.output_size);
+            let mut layout_scale = scene_layout_scale(assets, self.output_size);
+            let camera_zoom = assets
+                .camera_zoom_animation
+                .as_ref()
+                .map_or(assets.camera_zoom, |animation| {
+                    animation.value_at(elapsed_seconds)
+                })
+                .clamp(0.01, 100.0);
+            layout_scale[0] *= camera_zoom;
+            layout_scale[1] *= camera_zoom;
             self.gl
                 .uniform_2_f32(layout_scale_loc.as_ref(), layout_scale[0], layout_scale[1]);
             for (location, unit) in water_wave_mask_locs.iter().zip([1, 9, 10]) {
@@ -513,6 +522,17 @@ impl SceneGpuRenderer {
             self.gl
                 .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
             for draw in &assets.draws {
+                let opacity = draw
+                    .quad
+                    .opacity_animation
+                    .as_ref()
+                    .map_or(draw.quad.opacity, |animation| {
+                        animation.value_at(elapsed_seconds)
+                    })
+                    .clamp(0.0, 1.0);
+                if opacity <= f32::EPSILON {
+                    continue;
+                }
                 if let Some(render) = draw
                     .text_render
                     .as_ref()
@@ -603,8 +623,7 @@ impl SceneGpuRenderer {
                     .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, wrap);
                 self.gl
                     .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
-                self.gl
-                    .uniform_1_f32(opacity_loc.as_ref(), draw.quad.opacity);
+                self.gl.uniform_1_f32(opacity_loc.as_ref(), opacity);
                 for (index, location) in water_wave_locs.iter().enumerate() {
                     if let Some(wave) = draw.quad.water_waves.get(index) {
                         self.gl.uniform_4_f32(
@@ -1033,6 +1052,7 @@ fn dynamic_text_label(kind: DynamicTextKind, local: LocalDateTime) -> String {
                 local.year, local.month, local.day
             )
         }
+        DynamicTextKind::Media => String::new(),
     }
 }
 
@@ -1502,6 +1522,8 @@ mod tests {
             skipped_nodes: 0,
             projection_size: [3840.0, 2160.0],
             layout_viewport: [1920, 1080],
+            camera_zoom: 1.0,
+            camera_zoom_animation: None,
             audio_spectrum: None,
         };
         assert_eq!(scene_layout_scale(&assets, (3840, 2160)), [1.0, 1.0]);
