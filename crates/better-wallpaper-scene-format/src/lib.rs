@@ -42,7 +42,8 @@ pub use resource::{
 };
 pub use scene::{
     CompatibilityLevel, CompatibilityReport, PropertyType, PropertyValue, SceneMetadata,
-    SceneProject, UserProperty, analyse_scene, compute_compatibility, parse_project_properties,
+    SceneProject, UserProperty, analyse_scene, analyse_scene_with_package, compute_compatibility,
+    parse_project_properties,
 };
 pub use texture::{
     AnimationFrame, FreeImageFormat, Mipmap, TexFormat, TexTexture, TextureAlphaMode,

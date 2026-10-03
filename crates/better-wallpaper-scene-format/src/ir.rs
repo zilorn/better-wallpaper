@@ -630,17 +630,7 @@ fn parse_node(
         );
     }
     for effect in &effects {
-        if !effect.ends_with("/scroll/effect.json")
-            && effect != "effects/waterwaves/effect.json"
-            && effect != "effects/waterripple/effect.json"
-            && effect != "effects/waterflow/effect.json"
-            && effect != "effects/shake/effect.json"
-            && effect != "effects/pulse/effect.json"
-            && effect != "effects/spin/effect.json"
-            && effect != "effects/iris/effect.json"
-            && effect != "effects/foliagesway/effect.json"
-            && effect != "effects/shine/effect.json"
-        {
+        if !crate::scene::is_supported_effect(effect) {
             mark(unsupported, &path, &format!("effect: {effect}"));
         }
     }
@@ -991,7 +981,7 @@ fn script_source(value: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
-fn parse_audio_visualizer(visible: Option<&Value>) -> Option<SceneAudioVisualizer> {
+pub(crate) fn parse_audio_visualizer(visible: Option<&Value>) -> Option<SceneAudioVisualizer> {
     let visible = visible?.as_object()?;
     let script = visible.get("script")?.as_str()?;
     let bins = parse_script_call_usize(script, "engine.registerAudioBuffers")?;

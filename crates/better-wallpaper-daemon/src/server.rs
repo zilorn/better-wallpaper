@@ -17,7 +17,7 @@ use better_wallpaper_core::{
     config::{FillMode, WallpaperType},
 };
 use better_wallpaper_scene_format::{
-    CompatibilityLevel, PkgReader, UserProperty, analyse_scene, compute_compatibility,
+    CompatibilityLevel, PkgReader, UserProperty, analyse_scene_with_package, compute_compatibility,
     parse_project_properties,
 };
 use ksni::blocking::TrayMethods;
@@ -398,6 +398,7 @@ struct LibraryEntry {
 struct CompatibilityPayload {
     level: u32,
     level_name: String,
+    supported_features: Vec<String>,
     unsupported_features: Vec<String>,
     warnings: Vec<String>,
 }
@@ -915,7 +916,7 @@ fn analyse_scene_pkg(project_dir: &Path) -> Option<CompatibilityPayload> {
     // Try to find and parse scene.json from the package
     let scene_entry = pkg.find("scene.json")?;
     let scene_json = pkg.read_entry_string(scene_entry).ok()?;
-    let meta = analyse_scene(&scene_json).ok()?;
+    let meta = analyse_scene_with_package(&scene_json, &pkg).ok()?;
     let compat = compute_compatibility(&meta);
 
     Some(CompatibilityPayload {
@@ -927,6 +928,7 @@ fn analyse_scene_pkg(project_dir: &Path) -> Option<CompatibilityPayload> {
             CompatibilityLevel::L3 => "L3".into(),
             CompatibilityLevel::L4 => "L4".into(),
         },
+        supported_features: compat.supported_features,
         unsupported_features: compat.unsupported_features,
         warnings: compat.warnings,
     })
@@ -1447,6 +1449,57 @@ mod tests {
         assert_eq!(entries[0].name, "clip.webm");
         assert_eq!(entries[1].name, "wallpaper.MP4");
         assert!(entries.iter().all(|entry| !entry.engine_mode));
+    }
+
+    #[test]
+    fn library_serializes_supported_scene_tiers_and_remaining_limits() {
+        let directory = tempfile::tempdir().unwrap();
+        for (name, scene, expected_level) in [
+            ("audio", r#"{"objects":[{"sound":"sounds/bg.ogg"}]}"#, 2),
+            (
+                "effects",
+                r#"{"general":{"bloom":true},"objects":[{"image":"models/bg.json","effects":[{"file":"effects/shake/effect.json"}]},{"particle":"particles/snow.json"}]}"#,
+                3,
+            ),
+        ] {
+            let project = directory.path().join(name);
+            fs::create_dir(&project).unwrap();
+            fs::write(
+                project.join("project.json"),
+                format!(r#"{{"type":"scene","file":"scene.pkg","title":"{name}"}}"#),
+            )
+            .unwrap();
+            let mut package = Vec::new();
+            package.extend(8u32.to_le_bytes());
+            package.extend(b"PKGV0018");
+            package.extend(1u32.to_le_bytes());
+            package.extend(10u32.to_le_bytes());
+            package.extend(b"scene.json");
+            package.extend(0u32.to_le_bytes());
+            package.extend((scene.len() as u32).to_le_bytes());
+            package.extend(scene.as_bytes());
+            fs::write(project.join("scene.pkg"), package).unwrap();
+            let report = super::analyse_scene_pkg(&project).unwrap();
+            assert_eq!(report.level, expected_level);
+            assert_eq!(report.level_name, format!("L{expected_level}"));
+        }
+        let (entries, truncated) = scan_library(&[], &[directory.path().to_path_buf()]);
+        assert!(!truncated);
+        assert_eq!(entries.len(), 2);
+        let json = serde_json::to_value(&entries).unwrap();
+        assert_eq!(json[0]["scene_compatibility"]["level"], 2);
+        assert_eq!(json[1]["scene_compatibility"]["level"], 3);
+        for entry in json.as_array().unwrap() {
+            assert!(
+                !entry["scene_compatibility"]["supported_features"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let effects = &json[1]["scene_compatibility"];
+        assert_eq!(effects["unsupported_features"].as_array().unwrap().len(), 1);
+        assert_eq!(effects["warnings"].as_array().unwrap().len(), 1);
     }
 
     #[test]

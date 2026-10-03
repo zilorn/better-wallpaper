@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
 use crate::error::SceneParseError;
+use crate::{
+    PkgReader, TexTexture, parse_material_definition, parse_model_definition, parse_scene_graph,
+    resolve_texture_path,
+};
 
 /// A project identified as a Wallpaper Engine scene
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25,12 +29,15 @@ pub struct SceneProject {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CompatibilityReport {
     pub level: CompatibilityLevel,
+    #[serde(default)]
+    pub supported_features: Vec<String>,
     pub unsupported_features: Vec<String>,
     pub warnings: Vec<String>,
     pub parse_version: String,
 }
 
-/// Compatibility level matching the plan's L0-L4
+/// Highest supported feature tier used by a scene, matching the plan's L0-L4.
+/// Unsupported features are reported separately; a tier is not full engine parity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompatibilityLevel {
     L0 = 0,
@@ -42,6 +49,7 @@ pub enum CompatibilityLevel {
 
 /// Parsed metadata from a scene.json file
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SceneMetadata {
     pub camera_eye: Option<String>,
     pub camera_center: Option<String>,
@@ -59,6 +67,10 @@ pub struct SceneMetadata {
     pub has_custom_shaders: bool,
     pub has_scene_script: bool,
     pub has_effects: bool,
+    pub has_timeline_animation: bool,
+    pub has_sprite_animation: bool,
+    pub has_audio_response: bool,
+    pub supported_effects: Vec<String>,
     pub unsupported_effects: Vec<String>,
     pub object_types: Vec<String>,
 }
@@ -318,6 +330,9 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
                 for eff in effects {
                     if let Some(file) = eff.get("file").and_then(|v| v.as_str()) {
                         if is_supported_effect(file) {
+                            if !meta.supported_effects.iter().any(|effect| effect == file) {
+                                meta.supported_effects.push(file.to_owned());
+                            }
                             continue;
                         }
                         if file.contains("/workshop/") || !file.starts_with("effects/") {
@@ -335,26 +350,126 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
             {
                 meta.has_scene_script = true;
             }
-            if contains_script(obj, 0) {
+            // Recognized spectrum scripts are converted to bounded native IR,
+            // never executed as arbitrary SceneScript.
+            let audio_response = crate::ir::parse_audio_visualizer(obj.get("visible"));
+            meta.has_audio_response |= audio_response.is_some();
+            let mut script_object = obj.clone();
+            if audio_response.is_some()
+                && let Some(visible) = script_object
+                    .get_mut("visible")
+                    .and_then(|v| v.as_object_mut())
+            {
+                visible.remove("script");
+            }
+            if contains_script(&script_object, 0) {
                 meta.has_scene_script = true;
             }
         }
     }
 
+    // Count only the timeline forms actually accepted by the runtime parser.
+    if let Ok(graph) = parse_scene_graph(scene_json) {
+        meta.has_timeline_animation = graph.camera.zoom_animation.is_some()
+            || graph.nodes.iter().any(|node| {
+                node.transform.opacity_animation.is_some() || node.backdrop_fade.is_some()
+            });
+    }
+
     Ok(meta)
 }
 
-fn is_supported_effect(file: &str) -> bool {
-    matches!(
-        file,
-        "effects/scroll/effect.json"
-            | "effects/waterwaves/effect.json"
-            | "effects/waterripple/effect.json"
-            | "effects/waterflow/effect.json"
-            | "effects/iris/effect.json"
-            | "effects/foliagesway/effect.json"
-            | "effects/shine/effect.json"
-    )
+pub(crate) fn is_supported_effect(file: &str) -> bool {
+    file.ends_with("/scroll/effect.json")
+        || matches!(
+            file,
+            "effects/waterwaves/effect.json"
+                | "effects/waterripple/effect.json"
+                | "effects/waterflow/effect.json"
+                | "effects/iris/effect.json"
+                | "effects/foliagesway/effect.json"
+                | "effects/shine/effect.json"
+                | "effects/shake/effect.json"
+                | "effects/pulse/effect.json"
+                | "effects/spin/effect.json"
+        )
+}
+
+/// Enrich scene metadata with animation in referenced package textures.
+/// Only image model/material dependencies are inspected, not unused TEX assets.
+pub fn analyse_scene_with_package(
+    scene_json: &str,
+    package: &PkgReader,
+) -> Result<SceneMetadata, SceneParseError> {
+    let mut meta = analyse_scene(scene_json)?;
+    let Ok(graph) = parse_scene_graph(scene_json) else {
+        return Ok(meta);
+    };
+    let mut textures = std::collections::BTreeSet::new();
+    for node in &graph.nodes {
+        let crate::SceneNodeKind::Image(path) = &node.kind else {
+            continue;
+        };
+        let Some(model) = package
+            .find(path)
+            .and_then(|entry| package.read_entry_string(entry).ok())
+            .and_then(|json| parse_model_definition(&json).ok())
+        else {
+            continue;
+        };
+        let Some(material) = package
+            .find(&model.material)
+            .and_then(|entry| package.read_entry_string(entry).ok())
+            .and_then(|json| parse_material_definition(&json).ok())
+        else {
+            continue;
+        };
+        if let Some(pass) = material.passes.first()
+            && let [texture] = pass.textures.as_slice()
+        {
+            textures.insert(resolve_texture_path(&model.material, texture));
+        }
+    }
+    for path in textures {
+        let Some(texture) = package
+            .find(&path)
+            .and_then(|entry| TexTexture::parse(package.read_entry(entry)).ok())
+        else {
+            continue;
+        };
+        let Some(mip) = texture.mipmaps.first() else {
+            continue;
+        };
+        // Match the renderer's requirement of at least two valid sprite frames.
+        let valid_frames = texture
+            .frames
+            .iter()
+            .filter(|frame| {
+                frame.frametime.is_finite()
+                    && frame.frametime > 0.0
+                    && frame.x.is_finite()
+                    && frame.y.is_finite()
+                    && frame.width.is_finite()
+                    && frame.height.is_finite()
+                    && frame.x >= 0.0
+                    && frame.y >= 0.0
+                    && frame.width > 0.0
+                    && frame.height > 0.0
+                    && frame.x + frame.width <= mip.width as f32
+                    && frame.y + frame.height <= mip.height as f32
+            })
+            .collect::<Vec<_>>();
+        let duration = valid_frames
+            .iter()
+            .map(|frame| frame.frametime)
+            .sum::<f32>();
+        meta.has_sprite_animation |=
+            !texture.is_video && valid_frames.len() >= 2 && duration.is_finite() && duration > 0.0;
+        if meta.has_sprite_animation {
+            break;
+        }
+    }
+    Ok(meta)
 }
 
 fn bound_bool(value: &serde_json::Value) -> Option<bool> {
@@ -387,6 +502,41 @@ fn contains_script(value: &serde_json::Value, depth: usize) -> bool {
 pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
     let mut unsupported = Vec::new();
     let mut warnings = Vec::new();
+    let mut supported = Vec::new();
+    let mut level = CompatibilityLevel::L0;
+    if meta
+        .object_types
+        .iter()
+        .any(|kind| kind.starts_with("image:"))
+        || meta.has_text
+    {
+        level = CompatibilityLevel::L1;
+        supported.push("2D layers and transforms".into());
+    }
+    for (present, feature) in [
+        (
+            meta.has_timeline_animation,
+            "Scalar timelines (opacity, camera zoom, backdrop fade)",
+        ),
+        (meta.has_sprite_animation, "Sprite sheet animation"),
+        (meta.has_sounds, "Scene background audio"),
+    ] {
+        if present {
+            level = CompatibilityLevel::L2;
+            supported.push(feature.into());
+        }
+    }
+    if !meta.supported_effects.is_empty() || meta.has_audio_response {
+        level = CompatibilityLevel::L3;
+        supported.extend(
+            meta.supported_effects
+                .iter()
+                .map(|effect| format!("2D effect: {effect}")),
+        );
+        if meta.has_audio_response {
+            supported.push("Audio spectrum response (recognized native pattern)".into());
+        }
+    }
 
     // L1 checks (2D images, transforms)
     if meta.has_text {
@@ -402,6 +552,9 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
     if meta.has_custom_shaders {
         unsupported.push("Custom shaders (planned for L4)".into());
     }
+    if meta.has_3d_materials {
+        unsupported.push("3D models and materials".into());
+    }
     unsupported.extend(
         meta.unsupported_effects
             .iter()
@@ -409,23 +562,18 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
     );
 
     if meta.bloom {
-        warnings.push("Bloom effect enabled (will be ignored until L3)".into());
+        warnings.push("Bloom effect enabled (currently ignored)".into());
     }
     if meta.parallax {
-        warnings.push("Parallax effect enabled (will be ignored until L2)".into());
+        warnings.push("Parallax effect enabled (currently ignored)".into());
     }
     if meta.shake {
         warnings.push("Camera shake enabled (will be ignored)".into());
     }
 
-    let level = if unsupported.is_empty() {
-        CompatibilityLevel::L1
-    } else {
-        CompatibilityLevel::L0
-    };
-
     CompatibilityReport {
         level,
+        supported_features: supported,
         unsupported_features: unsupported,
         warnings,
         parse_version: "scene-format v0.1.0".into(),
@@ -516,6 +664,189 @@ mod tests {
     }
 
     #[test]
+    fn rates_supported_scalar_timelines_as_l2() {
+        for scene in [
+            r#"{"objects":[{"image":"models/bg.json","alpha":{"value":1,"animation":{"c0":[{"frame":0,"value":0},{"frame":30,"value":1}],"options":{"fps":30,"length":30,"mode":"loop"}}}}]}"#,
+            r#"{"general":{"zoom":{"value":1,"animation":{"c0":[{"frame":0,"value":1},{"frame":30,"value":2}],"options":{"fps":30,"length":30,"mode":"single"}}}},"objects":[{"image":"models/bg.json"}]}"#,
+        ] {
+            let meta = analyse_scene(scene).unwrap();
+            assert!(meta.has_timeline_animation);
+            let report = compute_compatibility(&meta);
+            assert_eq!(report.level, CompatibilityLevel::L2);
+            assert!(
+                report
+                    .supported_features
+                    .iter()
+                    .any(|feature| feature.contains("timeline"))
+            );
+        }
+        let invalid = analyse_scene(r#"{"objects":[{"image":"bg.json","alpha":{"animation":{"c0":[],"options":{"fps":0,"length":0}}}}]}"#).unwrap();
+        assert!(!invalid.has_timeline_animation);
+    }
+
+    #[test]
+    fn rates_each_supported_effect_as_l3() {
+        for effect in [
+            "scroll",
+            "waterwaves",
+            "waterripple",
+            "waterflow",
+            "shake",
+            "pulse",
+            "spin",
+            "iris",
+            "foliagesway",
+            "shine",
+        ] {
+            let scene = serde_json::json!({"objects":[{"image":"models/bg.json", "effects":[{"file":format!("effects/{effect}/effect.json")}]}]});
+            let meta = analyse_scene(&scene.to_string()).unwrap();
+            let report = compute_compatibility(&meta);
+            assert_eq!(report.level, CompatibilityLevel::L3, "{effect}");
+            assert!(report.unsupported_features.is_empty(), "{effect}");
+            assert!(
+                report
+                    .supported_features
+                    .iter()
+                    .any(|feature| feature.contains(effect))
+            );
+        }
+        let meta = analyse_scene(r#"{"objects":[{"image":"bg.json","effects":[{"file":"effects/workshop/example/scroll/effect.json"}]}]}"#).unwrap();
+        assert_eq!(compute_compatibility(&meta).level, CompatibilityLevel::L3);
+        assert!(!meta.has_custom_shaders);
+    }
+
+    #[test]
+    fn recognizes_native_audio_response_without_hiding_other_scripts() {
+        let mut scene = serde_json::json!({"objects":[{"image":"models/bar.json","visible":{
+            "value":false,
+            "script":"let audioData=engine.registerAudioBuffers(64); audioData.average[i]; thisScene.createLayer('models/bar.json');",
+            "scriptproperties":{"barWidth":{"value":10},"scaleY":{"value":100},"originX":{"value":5}}
+        }}]});
+        let meta = analyse_scene(&scene.to_string()).unwrap();
+        assert!(meta.has_audio_response);
+        assert!(!meta.has_scene_script);
+        let report = compute_compatibility(&meta);
+        assert_eq!(report.level, CompatibilityLevel::L3);
+        assert!(report.unsupported_features.is_empty());
+
+        scene["objects"][0]["scale"] =
+            serde_json::json!({"script":"return value;", "value":"1 1 1"});
+        let report = compute_compatibility(&analyse_scene(&scene.to_string()).unwrap());
+        assert_eq!(report.level, CompatibilityLevel::L3);
+        assert!(
+            report
+                .unsupported_features
+                .iter()
+                .any(|feature| feature.contains("SceneScript"))
+        );
+
+        scene["objects"][0]["visible"]["scriptproperties"]["barWidth"]["value"] = 1000.into();
+        let meta = analyse_scene(&scene.to_string()).unwrap();
+        assert!(!meta.has_audio_response);
+        assert!(meta.has_scene_script);
+    }
+
+    #[test]
+    fn preserves_limits_for_mixed_scenes_and_does_not_award_l4() {
+        let meta = analyse_scene(r#"{"general":{"bloom":true,"cameraparallax":true},"objects":[
+            {"image":"bg.json","effects":[{"file":"effects/shine/effect.json"},{"file":"effects/twirl/effect.json"},{"file":"effects/workshop/custom/effect.json"}]},
+            {"particle":"snow.json"}, {"image":"fg.json","scale":{"script":"return value;","value":"1 1 1"}}
+        ]}"#).unwrap();
+        let report = compute_compatibility(&meta);
+        assert_eq!(report.level, CompatibilityLevel::L3);
+        for feature in ["Particle", "SceneScript", "Custom shaders", "twirl"] {
+            assert!(
+                report
+                    .unsupported_features
+                    .iter()
+                    .any(|item| item.contains(feature)),
+                "{feature}"
+            );
+        }
+        assert_eq!(report.warnings.len(), 2);
+        let empty = compute_compatibility(&SceneMetadata::default());
+        assert_eq!(empty.level, CompatibilityLevel::L0);
+        assert!(empty.supported_features.is_empty());
+        let particles = analyse_scene(r#"{"objects":[{"particle":"snow.json"}]}"#).unwrap();
+        assert_eq!(
+            compute_compatibility(&particles).level,
+            CompatibilityLevel::L0
+        );
+    }
+
+    fn package_fixture(files: &[(&str, &[u8])]) -> PkgReader {
+        let mut bytes = Vec::new();
+        bytes.extend(8u32.to_le_bytes());
+        bytes.extend(b"PKGV0018");
+        bytes.extend((files.len() as u32).to_le_bytes());
+        let mut offset = 0u32;
+        for (name, data) in files {
+            bytes.extend((name.len() as u32).to_le_bytes());
+            bytes.extend(name.as_bytes());
+            bytes.extend(offset.to_le_bytes());
+            bytes.extend((data.len() as u32).to_le_bytes());
+            offset += data.len() as u32;
+        }
+        for (_, data) in files {
+            bytes.extend(*data);
+        }
+        PkgReader::parse(bytes).unwrap()
+    }
+
+    #[test]
+    fn rates_referenced_sprite_textures_but_not_unused_or_invalid_animation() {
+        // Two RGBA pixels and two validated TEXS0001 sprite frames.
+        let mut texture = Vec::new();
+        texture.extend(b"TEXV0005\0TEXI0001\0");
+        for value in [0u32, 4, 2, 1, 2, 1, 0] {
+            texture.extend(value.to_le_bytes());
+        }
+        texture.extend(b"TEXB0001\0");
+        for value in [1u32, 2, 1, 8] {
+            texture.extend(value.to_le_bytes());
+        }
+        texture.extend([255u8; 8]);
+        texture.extend(b"TEXS0001\0");
+        texture.extend(2u32.to_le_bytes());
+        for index in 0..2u32 {
+            texture.extend(index.to_le_bytes());
+            texture.extend(0.5f32.to_le_bytes());
+            for value in [index, 0, 1, 1, 0, 0] {
+                texture.extend(value.to_le_bytes());
+            }
+        }
+        assert_eq!(TexTexture::parse(&texture).unwrap().frames.len(), 2);
+        let scene = r#"{"objects":[{"image":"models/bg.json"}]}"#;
+        let model = br#"{"material":"materials/bg.json"}"#;
+        let material = br#"{"passes":[{"shader":"image","textures":["bg"]}]}"#;
+        let package = package_fixture(&[
+            ("models/bg.json", model),
+            ("materials/bg.json", material),
+            ("materials/bg.tex", &texture),
+        ]);
+        let meta = analyse_scene_with_package(scene, &package).unwrap();
+        assert!(meta.has_sprite_animation);
+        assert_eq!(compute_compatibility(&meta).level, CompatibilityLevel::L2);
+
+        let unused = package_fixture(&[("materials/unused.tex", &texture)]);
+        assert!(
+            !analyse_scene_with_package(scene, &unused)
+                .unwrap()
+                .has_sprite_animation
+        );
+        let invalid = package_fixture(&[
+            ("models/bg.json", model),
+            ("materials/bg.json", material),
+            ("materials/bg.tex", b"invalid"),
+        ]);
+        assert!(
+            !analyse_scene_with_package(scene, &invalid)
+                .unwrap()
+                .has_sprite_animation
+        );
+    }
+
+    #[test]
     fn distinguishes_supported_builtin_and_unknown_effects() {
         let meta = analyse_scene(
             r#"{"objects":[{"image":"models/bg.json","effects":[
@@ -556,7 +887,7 @@ mod tests {
         let meta = analyse_scene(scene).unwrap();
         assert!(meta.has_sounds);
         let compatibility = compute_compatibility(&meta);
-        assert_eq!(compatibility.level, CompatibilityLevel::L1);
+        assert_eq!(compatibility.level, CompatibilityLevel::L2);
         assert!(compatibility.unsupported_features.is_empty());
     }
 

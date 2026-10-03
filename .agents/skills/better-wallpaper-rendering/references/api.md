@@ -18,6 +18,24 @@ Keep scene semantics in shared parsing/planning rather than independently in nir
 and Plasma. Preserve unsupported/skipped-node reporting and library compatibility
 metadata. Unknown private-format semantics need legal sample evidence.
 
+`scene::compute_compatibility` reports the highest supported feature tier actually
+identified in a scene: L0 for metadata only, L1 for 2D layers/text, L2 for supported
+scalar timelines, referenced sprite animation or background audio, and L3 for
+whitelisted 2D effects or the bounded native audio-spectrum pattern. No current
+feature awards L4. `supported_features`, `unsupported_features`, and `warnings`
+must be read together: mixed scenes retain their supported tier and all known
+limitations. The tier is metadata analysis, not asset validation, visual parity,
+or proof that playback works on the selected backend.
+
+`analyse_scene_with_package(scene_json, &PkgReader)` adds TEX animation detection
+through referenced image model/material base textures; unused textures do not
+raise the tier. Library scanning and `scene-validate` use this package-aware path;
+unpacked `scene-inspect` can only classify features visible in scene.json.
+Effect identifiers and audio-spectrum recognition are shared with the IR parser.
+Scalar timelines currently cover opacity, camera zoom and composition backdrop
+fade; arbitrary transform timelines are not implied. Bloom, camera parallax and
+camera shake still generate ignored-feature warnings.
+
 Texture dimensions, RGBA channel layout, mip data, and UV coordinates must agree
 with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existing
 mip selection and filtering behavior is implemented; do not classify it as missing

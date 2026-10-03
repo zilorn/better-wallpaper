@@ -60,8 +60,13 @@ Percent-encode paths and output names in query parameters. Library scanning uses
 `library.paths` (default `~/Videos`) and discovered Steam Workshop roots for app
 431960. Scanning is bounded by 1,000 entries and depth 4; check `truncated`.
 Symlinks in configured library traversal are skipped. Scene compatibility contains
-`level`, `level_name`, `unsupported_features`, `warnings`; it does not promise
-full engine parity.
+`level`, `level_name`, `supported_features`, `unsupported_features`, `warnings`.
+The level is the highest supported feature tier identified in the scene (L0–L3
+currently), with limitations listed separately even for higher tiers. Package
+analysis includes referenced sprite textures. It does not promise validated
+assets, successful playback on the selected backend, or full engine parity.
+Library cards show supported-feature counts/details as well as limits and warnings;
+the optional UI field permits responses from older daemons without support lists.
 
 Thumbnail cache: `$XDG_CACHE_HOME/better-wallpaper/thumbnails`, falling back to
 `~/.cache/better-wallpaper/thumbnails`. Cache keys include source path, size, and

@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
     MaterialManifest, ModelManifest, PkgReader, ResourceManifest, ResourceValidationReport,
-    SceneGraph, analyse_scene, compute_compatibility, parse_scene_graph,
+    SceneGraph, analyse_scene_with_package, compute_compatibility, parse_scene_graph,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -47,7 +47,8 @@ fn main() -> Result<()> {
     let scene_json = package
         .read_entry_string(scene_entry)
         .context("failed to read scene.json")?;
-    let metadata = analyse_scene(&scene_json).context("scene.json validation failed")?;
+    let metadata = analyse_scene_with_package(&scene_json, &package)
+        .context("scene.json validation failed")?;
     let scene_graph = parse_scene_graph(&scene_json).context("scene IR conversion failed")?;
     let resources = ResourceManifest::from_package(&package);
     let models = ModelManifest::from_package(&package).context("model validation failed")?;
@@ -74,6 +75,9 @@ fn main() -> Result<()> {
             "Valid scene package {} ({} entries, compatibility {:?})",
             output.package_version, output.file_count, output.compatibility.level
         );
+        for feature in output.compatibility.supported_features {
+            println!("Supported: {feature}");
+        }
         for feature in output.compatibility.unsupported_features {
             println!("Unsupported: {feature}");
         }
