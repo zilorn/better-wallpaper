@@ -56,10 +56,10 @@ See `packaging/README.md` for dependencies and installation options.
 - Preserve configuration validation, atomic persistence, safe playback reload,
   and filesystem boundaries for media and wallpaper assets.
 - Read the relevant category skill before feature/API work:
-  - Rendering and scene formats: `skills/better-wallpaper-rendering/SKILL.md`.
-  - niri and Wayland: `skills/better-wallpaper-niri/SKILL.md`.
-  - KDE Plasma: `skills/better-wallpaper-plasma/SKILL.md`.
-  - Management API, configuration, and library: `skills/better-wallpaper-api/SKILL.md`.
+  - Rendering and scene formats: `.agents/skills/better-wallpaper-rendering/SKILL.md`.
+  - niri and Wayland: `.agents/skills/better-wallpaper-niri/SKILL.md`.
+  - KDE Plasma: `.agents/skills/better-wallpaper-plasma/SKILL.md`.
+  - Management API, configuration, and library: `.agents/skills/better-wallpaper-api/SKILL.md`.
 - Load only relevant skills; cross-category changes require each affected skill.
   Update their references in the same change whenever interfaces, behavior,
   limitations, commands, or improvement status change. Add confirmed gaps with
