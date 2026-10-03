@@ -68,6 +68,14 @@ See `packaging/README.md` for dependencies and installation options.
 
 ## Git Commits
 
+Commit finished work to git as part of the task; do not wait for the user to ask
+and do not leave completed changes uncommitted in the working tree.
+
+When a task contains several independent changes, split them into separate
+commits grouped by logical change instead of one large commit. Each commit should
+build and pass the validation relevant to the files it touches, and unrelated
+in-progress work must not be swept into it.
+
 Use English commit messages with one of these prefixes:
 `feat: <message>`, `fix: <message>`, `docs: <message>`, or `refactor: <message>`.
 
