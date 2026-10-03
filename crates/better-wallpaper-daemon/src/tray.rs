@@ -66,12 +66,25 @@ impl WallpaperTray {
     }
 
     fn open_ui(&self) {
-        match ui_open_command(&self.ui_url).spawn() {
-            Ok(_) => info!(
-                url = self.ui_url,
-                "tray requested isolated management UI launch"
-            ),
-            Err(error) => warn!(%error, url = self.ui_url, "failed to open management UI"),
+        let url = self.ui_url.clone();
+        // Wait off the tray thread so launch failures are visible without blocking
+        // the menu. systemd-run exits after starting the service, not the browser.
+        if let Err(error) = std::thread::Builder::new()
+            .name("management-ui-launch".into())
+            .spawn(move || match ui_open_command(&url).output() {
+                Ok(output) if output.status.success() => {
+                    info!(%url, "management UI opener started in independent user service");
+                }
+                Ok(output) => warn!(
+                    %url,
+                    status = %output.status,
+                    stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+                    "failed to start management UI opener in user service"
+                ),
+                Err(error) => warn!(%error, %url, "failed to launch management UI opener"),
+            })
+        {
+            warn!(%error, "failed to create management UI launch thread");
         }
     }
 
@@ -82,12 +95,29 @@ impl WallpaperTray {
 }
 
 fn ui_open_command(url: &str) -> Command {
-    let mut command = Command::new("xdg-open");
+    // A direct child inherits ProtectSystem, PrivateTmp and NoNewPrivileges
+    // from the wallpaper service. In particular, browsers cannot write their
+    // profiles or find existing browser sockets there. A transient *service*
+    // (not --scope) is spawned by the user manager outside that sandbox, with
+    // the desktop session environment rather than the daemon's environment.
+    let mut command = Command::new("systemd-run");
     command
+        .args([
+            "--user",
+            "--collect",
+            "--quiet",
+            "--service-type=exec",
+            "--description=Better Wallpaper management UI",
+        ])
+        .arg(format!(
+            "--property=UnsetEnvironment={}",
+            GRAPHICS_ENV_OVERRIDES.join(" ")
+        ))
+        .args(["--", "xdg-open"])
         .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     for name in GRAPHICS_ENV_OVERRIDES {
         command.env_remove(name);
     }
@@ -180,12 +210,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn browser_launch_does_not_inherit_graphics_overrides() {
+    fn browser_launch_uses_independent_service_without_graphics_overrides() {
         let command = ui_open_command("http://127.0.0.1:1234");
-        assert_eq!(command.get_program(), "xdg-open");
+        assert_eq!(command.get_program(), "systemd-run");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
-            vec![std::ffi::OsStr::new("http://127.0.0.1:1234")]
+            vec![
+                "--user",
+                "--collect",
+                "--quiet",
+                "--service-type=exec",
+                "--description=Better Wallpaper management UI",
+                &format!(
+                    "--property=UnsetEnvironment={}",
+                    GRAPHICS_ENV_OVERRIDES.join(" ")
+                ),
+                "--",
+                "xdg-open",
+                "http://127.0.0.1:1234",
+            ]
         );
         let removed = command
             .get_envs()
