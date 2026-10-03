@@ -36,6 +36,11 @@ Scalar timelines currently cover opacity, camera zoom and composition backdrop
 fade; arbitrary transform timelines are not implied. Bloom, camera parallax and
 camera shake still generate ignored-feature warnings.
 
+`SceneConfig::mouse`, `parallax`, and `particle_limit` have no rendering runtime
+implementation. They remain validated/persisted for config compatibility; they do
+not enable interaction, parallax or particle budgeting. The daemon reports them
+as ignored, and the Web UI disables their controls with an unimplemented label.
+
 Texture dimensions, RGBA channel layout, mip data, and UV coordinates must agree
 with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existing
 mip selection and filtering behavior is implemented; do not classify it as missing

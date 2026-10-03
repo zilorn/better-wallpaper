@@ -81,9 +81,12 @@ pub enum WallpaperType {
 #[serde(default)]
 pub struct SceneConfig {
     pub quality: SceneQuality,
+    /// Reserved for mouse interaction; persisted but not used at runtime.
     pub mouse: bool,
+    /// Reserved for parallax; persisted but not used at runtime.
     pub parallax: bool,
     pub audio_processing: bool,
+    /// Reserved for particle rendering; validated and persisted but not enforced.
     pub particle_limit: u32,
     pub script_enabled: bool,
     pub properties: BTreeMap<String, String>,

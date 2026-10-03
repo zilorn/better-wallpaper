@@ -286,6 +286,12 @@ fn run_playback(
             return Ok(());
         };
         let scene_config = config.scene.clone().unwrap_or_default();
+        info!(
+            mouse = scene_config.mouse,
+            parallax = scene_config.parallax,
+            particle_limit = scene_config.particle_limit,
+            "scene mouse interaction, parallax and particle limits are not implemented; saved values are ignored"
+        );
         let prepared = prepare_scene(project_dir, &scene_config)?;
         info!(
             ?backend,
@@ -527,12 +533,9 @@ fn run_niri_scene(
     info!(
         ?scene_config.quality,
         fps_limit,
-        mouse = scene_config.mouse,
-        parallax = scene_config.parallax,
-        audio_processing = scene_config.audio_processing,
+        desktop_audio_capture = desktop_audio_capture.is_some(),
         audio_response_draws,
         background_tracks = background_audio.active_track_count(),
-        particle_limit = scene_config.particle_limit,
         property_override_count = scene_config.properties.len(),
         "scene runtime configuration applied"
     );

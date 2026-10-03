@@ -40,8 +40,14 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 - `general.log_level`: `info` or `debug`; scene quality: `low`, `medium`, `high`.
 - `scene.particle_limit`: 0–100,000; `scene.properties`: at most 256 string entries,
   keys 1–128 bytes, values at most 4,096 bytes.
-- Other scene fields include `mouse`, `parallax`, `audio_processing`, and
-  `script_enabled`; check runtime support before advertising a field as a feature.
+- `scene.mouse`, `scene.parallax`, and `scene.particle_limit` are reserved fields:
+  validation and persistence preserve their values, but no runtime behavior uses
+  them. The Web UI shows disabled controls marked unimplemented and preserves
+  stored values on save. Scene playback logs explicitly report these values as
+  ignored, separate from applied runtime settings.
+- `scene.audio_processing` enables niri desktop spectrum capture for supported
+  audio-response draws; capture failures fall back to rendering without spectrum
+  data. `scene.script_enabled` does not execute scripts.
 - Config paths expand `~` and `~/`; relative paths resolve against user home.
   Library paths are normalized, sorted, and deduplicated.
 - Version 1 migrates to version 2; legacy `engine_mode` is cleared during migration.

@@ -35,6 +35,11 @@ same fallback. Startup probes NVIDIA Vulkan/DMA-BUF capability; `--require-nvidi
 turns probe failure into startup failure. That probe alone does not prove end-to-end
 zero-copy frame presentation.
 
+Scene surfaces do not collect pointer input or implement mouse/parallax behavior.
+`scene.mouse`, `scene.parallax`, and `scene.particle_limit` are ignored reserved
+settings, reported separately by the daemon and disabled in the Web UI. Their
+stored values do not prove backend support; see the rendering improvements.
+
 Preserve frame callback pacing, configured output selection, resize behavior, and
 buffer lifetime. EGL resources must be released before their Wayland connection
 and surface. For shared draw/texture changes, also read
