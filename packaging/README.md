@@ -16,12 +16,13 @@ systemctl --user enable --now better-wallpaper.service
 DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 ```
 
-`SKIP_BUILD=1` 要求预先生成 `target/release/better-wallpaper-daemon` 和 `web/dist`。
+`SKIP_BUILD=1` 要求预先生成 `target/release/better-wallpaper-daemon`、`scene-inspect`、
+`scene-validate` 和 `web/dist`；Plasma QML 包直接从源码安装。
 卸载时运行 `./packaging/uninstall.sh`；脚本先停止并禁用用户服务，不删除
 `~/.better-wallpaper` 中的用户配置。
 
 提交发行产物前运行完整 staging 验收。脚本会构建 daemon 和 Web、验证 systemd/动态依赖/QML，
-并检查卸载后无包文件残留：
+检查升级时清理旧原生帧模块，并检查卸载后无包文件残留：
 
 ```bash
 ./packaging/verify.sh
@@ -29,16 +30,15 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 
 ## 构建依赖
 
-- Rust stable、Cargo、C/C++ 工具链、Clang、CMake 和 `pkg-config`
+- Rust stable、Cargo、C/C++ 工具链、Clang 和 `pkg-config`
 - Bun（只用于构建 Web UI）
 - FFmpeg 命令行程序，以及开发库：`libavdevice`、`libavfilter`、`libavformat`、
   `libavcodec`、`libavutil`、`libswscale`、`libswresample`
 - ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
 - Wayland 客户端开发文件
-- Qt 6.6+ Core、Network、Qml、Quick、OpenGL、Multimedia 开发文件
 
 Debian/Ubuntu 和 Fedora 的完整安装命令见项目根目录的
-[`README.md`](../README.md#依赖)。包名随发行版和仓库变化，构建时以 CMake 和
+[`README.md`](../README.md#依赖)。包名随发行版和仓库变化，构建时以 Cargo 和
 `pkg-config` 的检测结果为准。
 
 ## 运行时依赖
@@ -56,9 +56,10 @@ CPU `wl_shm` 路径。
 niri 后端通过系统默认音频设备播放视频音轨；暂停、恢复、循环和配置重载会同步作用于音频。
 媒体没有可解码音轨或音频设备不可用时，daemon 会记录英文警告并继续无声播放视频。
 
-Plasma 插件构建依赖 CMake、FFmpeg 开发库以及 Qt 6 Core、Qml、Quick、Multimedia 开发包。
-安装后在桌面壁纸设置的“壁纸类型”中选择“Better Wallpaper 视频壁纸”；插件通过静态
-Rust/FFmpeg 库直接解码视频，并由 Qt Multimedia 直接播放音频。
+Plasma 插件是无需原生编译的 QML 包，运行时需要 Qt 6.6+ Qt Quick、Qt Multimedia
+和 Qt WebEngine QML 模块。安装后在桌面壁纸设置的“壁纸类型”中选择“Better Wallpaper
+视频壁纸”；插件从 daemon 的 HTTP 媒体接口读取视频文件，由 Qt Multimedia 解码并播放
+视频和音频。安装脚本会清理旧版安装的未使用原生帧插件及其 `qmldir`。
 
 服务日志写入 systemd journal：
 

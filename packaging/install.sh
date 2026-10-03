@@ -16,9 +16,6 @@ fi
 
 if [ "$SKIP_BUILD" != "1" ]; then
     cargo build --locked --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
-    cmake -S "$PROJECT_ROOT/kde/frame-plugin" -B "$PROJECT_ROOT/target/plasma-plugin" \
-        -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$PROJECT_ROOT/target/plasma-plugin" --parallel
     (
         cd "$PROJECT_ROOT/web"
         bun install --frozen-lockfile
@@ -31,7 +28,6 @@ SCENE_INSPECT_SOURCE="$PROJECT_ROOT/target/release/scene-inspect"
 SCENE_VALIDATE_SOURCE="$PROJECT_ROOT/target/release/scene-validate"
 WEB_SOURCE="$PROJECT_ROOT/web/dist/index.html"
 PLASMA_SOURCE="$PROJECT_ROOT/kde/org.better-wallpaper/contents/ui/main.qml"
-PLASMA_PLUGIN_SOURCE="$PROJECT_ROOT/target/plasma-plugin/libbetterwallpaperplugin.so"
 
 test -x "$DAEMON_SOURCE" || {
     printf '%s\n' "错误：daemon 构建产物不存在：$DAEMON_SOURCE" >&2
@@ -52,10 +48,6 @@ test -f "$WEB_SOURCE" || {
 }
 test -f "$PLASMA_SOURCE" || {
     printf '%s\n' "错误：Plasma 插件入口不存在：$PLASMA_SOURCE" >&2
-    exit 1
-}
-test -f "$PLASMA_PLUGIN_SOURCE" || {
-    printf '%s\n' "错误：Plasma 帧插件构建产物不存在：$PLASMA_PLUGIN_SOURCE" >&2
     exit 1
 }
 
@@ -95,11 +87,14 @@ atomic_install "$SCENE_VALIDATE_SOURCE" "$DESTDIR$PREFIX/bin/scene-validate" 755
 install -d "$DESTDIR$PREFIX/share/better-wallpaper/web"
 cp -R "$PROJECT_ROOT/web/dist/." "$DESTDIR$PREFIX/share/better-wallpaper/web/"
 install -d "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper"
+# Remove only the obsolete native module's installed files when upgrading.
+LEGACY_PLASMA_MODULE="$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/contents/ui/BetterWallpaper"
+if [ -d "$LEGACY_PLASMA_MODULE" ]; then
+    rm -f "$LEGACY_PLASMA_MODULE/qmldir" "$LEGACY_PLASMA_MODULE/libbetterwallpaperplugin.so"
+    rmdir "$LEGACY_PLASMA_MODULE" 2>/dev/null || true
+fi
 cp -R "$PROJECT_ROOT/kde/org.better-wallpaper/." \
     "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/"
-atomic_install "$PLASMA_PLUGIN_SOURCE" \
-    "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so" \
-    755
 install -d "$DESTDIR$SYSTEMD_USER_UNIT_DIR"
 sed "s|@PREFIX@|$PREFIX|g" \
     "$SCRIPT_DIR/systemd/better-wallpaper.service.in" \
@@ -111,7 +106,6 @@ test -x "$DESTDIR$PREFIX/bin/scene-validate"
 test -f "$DESTDIR$PREFIX/share/better-wallpaper/web/index.html"
 test -f "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/metadata.json"
 test -f "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/contents/ui/main.qml"
-test -x "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/contents/ui/BetterWallpaper/libbetterwallpaperplugin.so"
 
 printf '%s\n' "已安装到 $DESTDIR$PREFIX"
 if [ -z "$DESTDIR" ]; then

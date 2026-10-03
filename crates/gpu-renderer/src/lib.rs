@@ -1,8 +1,6 @@
 mod cuda_gl;
-mod ffi;
 mod scene_renderer;
 
-use std::ffi::c_char;
 use std::num::NonZeroU32;
 
 use better_wallpaper_core::config::FillMode;
@@ -16,8 +14,6 @@ const YUV_FRAGMENT_SHADER: &str = "precision mediump float;varying vec2 u;unifor
 const PBO_RING_SIZE: usize = 3;
 
 pub use scene_renderer::SceneGpuRenderer;
-
-pub type GlLoaderFn = Option<unsafe extern "C" fn(name: *const c_char) -> *const std::ffi::c_void>;
 
 struct GlStateGuard {
     program: Option<glow::Program>,
@@ -84,22 +80,6 @@ impl GpuRenderer {
                 cuda_textures: None,
             })
         }
-    }
-
-    pub fn from_loader(
-        loader: GlLoaderFn,
-        output_width: u32,
-        output_height: u32,
-    ) -> Result<Self, String> {
-        let loader_fn = loader.ok_or("GL loader function pointer is null")?;
-        let gl = unsafe {
-            glow::Context::from_loader_function(|name| {
-                let c_name = std::ffi::CString::new(name).unwrap_or_default();
-                let ptr = loader_fn(c_name.as_ptr());
-                ptr as *const _
-            })
-        };
-        Self::new(gl, output_width, output_height)
     }
 
     pub fn upload_frame(

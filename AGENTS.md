@@ -11,7 +11,7 @@ changing or describing these capabilities.
 - Rust workspace: daemon, configuration, FFmpeg decoding/audio, scene parsing,
   GPU rendering, Wayland/niri integration, and KDE integration.
 - Bun, TypeScript, SolidJS, and Vite: web management UI.
-- CMake, C++, Qt 6/QML, and Qt Multimedia: Plasma wallpaper plugin.
+- Qt 6/QML, Qt Multimedia, and Qt WebEngine: Plasma wallpaper plugin.
 - systemd user service: installed daemon lifecycle.
 
 ## Common Commands
@@ -38,7 +38,7 @@ Run commands from the repository root unless indicated otherwise.
 Build the web UI before using the management page. Set
 `BETTER_WALLPAPER_WEB_ROOT="$PWD/web/dist"` when launching a development daemon
 to serve the current build. Rust builds require FFmpeg, ALSA, and Wayland
-development libraries; plugin builds additionally need CMake and Qt 6.6+.
+development libraries; Plasma playback additionally needs Qt 6.6+ QML runtime modules.
 See `packaging/README.md` for dependencies and installation options.
 
 ## Important Notes

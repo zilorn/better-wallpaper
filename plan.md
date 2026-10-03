@@ -122,7 +122,7 @@ better-wallpaper-wayland / kde  niri 与 Plasma 呈现
 - 实现常用混合模式、纹理采样、sRGB/线性空间转换与离屏 framebuffer。
 - 用 render graph 表示多 pass，避免将效果硬编码进桌面后端。
 - niri 复用现有 layer-shell surface；场景渲染直接输出到每个 Wayland 输出，不经过 RGBA CPU 回读。
-- Plasma 扩展当前 C ABI/QML 帧插件，共享同一 Rust 场景渲染核心；QML 只负责承载纹理和配置同步。
+- Plasma 需新增场景提交路径，共享同一 Rust 场景渲染核心；当前 QML 通过 Qt Multimedia 播放 HTTP 视频，未实现原生场景提交。
 - 支持不同分辨率、DPR、旋转、cover/contain/stretch 和输出热插拔。
 - 使用离屏 headless 渲染生成 golden image；比较时允许明确的 GPU 浮点误差阈值。
 

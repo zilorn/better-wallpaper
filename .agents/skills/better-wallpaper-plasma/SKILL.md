@@ -1,6 +1,6 @@
 ---
 name: better-wallpaper-plasma
-description: Maintain Better Wallpaper Plasma QML playback, native frame plugin/C ABI, output synchronization, heartbeats, and plugin packaging. Use for Plasma backend behavior or troubleshooting.
+description: Maintain Better Wallpaper Plasma QML/Qt Multimedia playback, HTTP media consumption, output synchronization, heartbeats, and QML packaging. Use for Plasma backend behavior or troubleshooting.
 ---
 
 # KDE Plasma Integration
@@ -14,10 +14,10 @@ gaps or choosing scoped improvements. Backlog items do not authorize unrelated w
 
 ## Workflow
 
-Inspect active `main.qml` before choosing a playback path; the native frame module
-exists but is not currently instantiated there. Keep config polling, visibility,
-audio, output names, and heartbeat expiry consistent. Preserve C ABI ownership and
-GL thread/context lifetime. Load rendering for scene work and API for changes to
+Inspect active `main.qml` before choosing a playback path; Qt Multimedia consumes
+the daemon's HTTP media URL. The unused native frame module and C ABI have been
+removed. Keep config polling, visibility, audio, output names, and heartbeat expiry
+consistent. Load rendering for scene work and API for changes to
 shared configuration or management routes.
 
 ## Maintenance and Verification

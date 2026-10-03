@@ -9,12 +9,13 @@ Completion: implement plugin scene submission with shared scene semantics, verif
 rendering and reload/resource cleanup on Plasma, then update capability reporting
 and UI together. Compilation alone does not establish desktop rendering support.
 
-## Playback Path Documentation — Alignment Candidate
+## Playback Path Documentation — Resolved
 
-Evidence: README describes direct local Rust/FFmpeg playback, while current
-`main.qml` uses Qt `MediaPlayer` with the daemon media URL. The native
-`SharedFrameItem` module exists but is not instantiated by that QML file.
+Evidence: `main.qml` uses Qt `MediaPlayer` with the daemon media URL. README,
+packaging documentation, and QML logs now describe that HTTP/Qt Multimedia path.
+The unused native frame module, Rust C ABI, native library build outputs, and
+systemd prerequisite were removed. Packaging verification simulates a legacy
+installation and asserts that upgrading removes the obsolete module files.
 
-Completion: establish the intended active path for the requested change, verify
-its installed QML/plugin consumers, and align documentation and diagnostics with
-actual behavior. Do not switch playback engines merely to reconcile wording.
+Future playback-engine changes require an actual QML consumer and desktop
+verification, with audio, visibility, and lifecycle behavior preserved.

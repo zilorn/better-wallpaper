@@ -26,8 +26,9 @@ cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
 `/api/v1/plasma/config` 按 Plasma 屏幕名同步启用状态和播放参数，再通过
-静态链接的 Rust/FFmpeg C ABI 直接打开媒体并解码视频帧，音频由插件内 Qt Multimedia
-直接播放原媒体。daemon 不传输音视频数据，仅负责配置、控制和状态查询；daemon 或
+配置返回的 `media_url` 从 daemon 的 HTTP 媒体接口读取视频文件，由 Qt Multimedia
+`MediaPlayer` 解码并播放视频和音频，`VideoOutput` 显示视频帧。daemon 同时负责媒体文件
+传输、配置、控制和状态查询；daemon 或
 plasmashell 重启后插件会重新同步配置并恢复。
 插件实例会发送本机心跳，管理界面的诊断页可查看当前在线的 Plasma 屏幕实例。
 Plasma 在活动切换时隐藏壁纸实例后，视频会立即暂停并停止请求；实例重新可见时会同步最新配置并恢复。
@@ -71,13 +72,13 @@ compositor 连接失败或断开时，daemon 在有 UI 和 `--no-ui` 模式下�
 
 ## 安装
 
-项目支持 niri 和 KDE Plasma 6。niri 后端不需要 Plasma 插件；如需构建 KDE Plasma 插件，
-还需要 CMake、FFmpeg 开发库以及 Qt 6 Core、Qml、Quick、Multimedia 开发包。
+项目支持 niri 和 KDE Plasma 6。Plasma 壁纸插件是 QML 包，无需编译原生帧插件，
+运行时需要 Qt Quick、Qt Multimedia 和 Qt WebEngine QML 模块。
 
 ### 依赖
 
-完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、CMake、`pkg-config`，以及
-ALSA、FFmpeg、Wayland 和 Qt 6 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
+完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、`pkg-config`，以及
+ALSA、FFmpeg 和 Wayland 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
 以及 `parec`（通过 PipeWire/PulseAudio 默认输出 monitor 提供桌面音频响应）；Plasma 6 插件要求
 Qt 6.6 或更高版本。
 
@@ -86,20 +87,18 @@ Debian/Ubuntu：
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  build-essential clang cmake pkg-config ffmpeg pulseaudio-utils \
+  build-essential clang pkg-config ffmpeg pulseaudio-utils \
   libasound2-dev libwayland-dev \
   libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
-  libavutil-dev libswresample-dev libswscale-dev \
-  qt6-base-dev qt6-declarative-dev qt6-multimedia-dev
+  libavutil-dev libswresample-dev libswscale-dev
 ```
 
 Arch Linux（所有依赖均在官方仓库中）：
 
 ```bash
 sudo pacman -S --needed \
-  base-devel clang cmake pkgconf ffmpeg libpulse \
-  alsa-lib wayland \
-  qt6-base qt6-declarative qt6-multimedia
+  base-devel clang pkgconf ffmpeg libpulse \
+  alsa-lib wayland
 ```
 
 注意：Arch 的 `ffmpeg` 包同时提供运行时命令行和开发头文件，无需单独安装 `*-devel` 包。若使用 NVIDIA 专有驱动且需要 Vulkan DMA-BUF 支持，确保已安装 `nvidia-utils` 和 `vulkan-loader`。
@@ -108,15 +107,14 @@ Fedora（FFmpeg 开发包要求系统已启用提供完整 FFmpeg 的仓库）�
 
 ```bash
 sudo dnf install \
-  @development-tools clang cmake pkgconf-pkg-config ffmpeg ffmpeg-devel pulseaudio-utils \
-  alsa-lib-devel wayland-devel \
-  qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel
+  @development-tools clang pkgconf-pkg-config ffmpeg ffmpeg-devel pulseaudio-utils \
+  alsa-lib-devel wayland-devel
 ```
 
 Rust 和 Bun 建议使用各自的官方安装方式；完成安装后确认 `cargo`、`rustc` 和 `bun` 位于
-`PATH` 中。仅构建 daemon/Web UI 时可以省略 CMake 和 Qt 6 开发包；执行 `./install.sh`
-会同时构建 Plasma 插件，因此需要上面的完整依赖。Ubuntu 24.04 仓库中的 Qt 6.4 不满足
-版本要求；请使用提供 Qt 6.6+ 的发行版，或单独安装较新 Qt 并设置 `CMAKE_PREFIX_PATH`。
+`PATH` 中。上述命令安装 daemon/Web UI 的构建依赖；Plasma 用户还需安装发行版提供的
+Qt 6.6+ Qt Quick、Qt Multimedia 和 Qt WebEngine QML 运行时模块。执行 `./install.sh`
+会复制 Plasma QML 包，无需 CMake 或 Qt 开发包。
 
 ### 完整安装（推荐）
 

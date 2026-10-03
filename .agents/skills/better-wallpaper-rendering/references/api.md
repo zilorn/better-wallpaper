@@ -14,6 +14,11 @@ All paths above are beneath `crates/`. Scene format types and parsing live in
 `crates/better-wallpaper-scene-format/src/`; public rendering exports are listed
 in `crates/better-wallpaper-renderer/src/lib.rs`.
 
+`gpu-renderer` is a Rust library consumed by the Wayland/niri backend. The unused
+Plasma C ABI and static/shared library build outputs were removed; construct video
+renderers with `GpuRenderer::new(glow::Context, width, height)`. Plasma currently
+uses Qt Multimedia for HTTP video playback and has no shared GPU scene consumer.
+
 Keep scene semantics in shared parsing/planning rather than independently in niri
 and Plasma. Preserve unsupported/skipped-node reporting and library compatibility
 metadata. Unknown private-format semantics need legal sample evidence.

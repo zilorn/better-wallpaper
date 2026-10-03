@@ -23,10 +23,10 @@ WallpaperItem {
     property bool sceneRenderingAvailable: false
 
     Component.onCompleted: {
-        console.info("[Better Wallpaper] Plasma direct-render instance created for output " + outputName)
+        console.info("[Better Wallpaper] Plasma wallpaper instance created for output " + outputName)
         if (visible) refreshConfig()
     }
-    Component.onDestruction: console.info("[Better Wallpaper] Plasma direct-render instance destroyed")
+    Component.onDestruction: console.info("[Better Wallpaper] Plasma wallpaper instance destroyed")
 
     function syncPlayback() {
         if (wallpaperType === "video" && wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
@@ -78,7 +78,7 @@ WallpaperItem {
                 } else if (wallpaperType === "video") {
                     webSource = ""
                     mediaSource = daemonUrl + config.media_url + "?revision=" + config.revision
-                    console.info("[Better Wallpaper] native media source configured: " + config.media_path)
+                    console.info("[Better Wallpaper] HTTP media source configured: " + mediaSource)
                 } else {
                     webSource = ""
                     mediaSource = ""
@@ -155,7 +155,7 @@ WallpaperItem {
         videoOutput: videoOutput
         loops: root.loopPlayback ? MediaPlayer.Infinite : 1
         onErrorOccurred: (error, errorString) =>
-            console.error("[Better Wallpaper] native media playback failed: " + errorString)
+            console.error("[Better Wallpaper] Qt Multimedia playback failed: " + errorString)
     }
 
     Timer {
