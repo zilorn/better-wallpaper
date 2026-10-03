@@ -122,13 +122,15 @@ function createAppState() {
     if (current) setConfig(update(current));
   };
   const persistConfig = (current: Config) => run("保存配置", async () => {
-    const result = await requestJson<{ config: Config }>("/api/v1/config", {
+    const result = await requestJson<{ config: Config; restart_required: boolean; reload_requested: boolean }>("/api/v1/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
     });
     setConfig(result.config);
-    setNotice("配置已保存并已热重载。");
+    setNotice(result.restart_required
+      ? "配置已保存。显示后端尚未切换，请重启 Better Wallpaper 服务使其生效。"
+      : result.reload_requested ? "配置已保存，已请求重新加载播放配置。" : "配置已保存。");
   });
   const saveConfig = () => {
     const current = config();
@@ -350,7 +352,7 @@ function SettingsPage() {
   const state = useApp();
   const updateGeneral = (key: keyof Config["general"], value: string | boolean) => state.updateConfig((current) => ({ ...current, general: { ...current.general, [key]: value } }));
   return <><PageHeader title="设置与诊断" description="调整启动和解码选项，检查桌面集成状态。" /><Show when={state.config()} fallback={<Loading />}>{(config) => <div class="settings-grid">
-    <section class="page-panel"><h3>运行设置</h3><label>显示后端<select value={config().general.backend} onChange={(event) => updateGeneral("backend", event.currentTarget.value)}><option value="auto">自动检测</option><option value="niri">niri</option><option value="kde">KDE Plasma</option><option value="headless">Headless</option></select></label><label>硬件解码<select value={config().decode.hardware} onChange={(event) => state.updateConfig((current) => ({ ...current, decode: { ...current.decode, hardware: event.currentTarget.value } }))}><option value="auto">自动</option><option value="software">软件解码</option></select></label><label>日志级别<select value={config().general.log_level} onChange={(event) => updateGeneral("log_level", event.currentTarget.value)}><option value="info">Info（默认）</option><option value="debug">Debug（包含帧数日志）</option></select></label><label class="check"><input type="checkbox" checked={config().general.restore_on_start} onChange={(event) => updateGeneral("restore_on_start", event.currentTarget.checked)} />启动时恢复播放</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存设置</button></section>
+    <section class="page-panel"><h3>运行设置</h3><label>显示后端<select value={config().general.backend} onChange={(event) => updateGeneral("backend", event.currentTarget.value)}><option value="auto">自动检测</option><option value="niri">niri</option><option value="kde">KDE Plasma</option><option value="headless">Headless</option></select></label><p>显示后端切换需要重启服务；诊断信息显示当前运行的后端。</p><label>硬件解码<select value={config().decode.hardware} onChange={(event) => state.updateConfig((current) => ({ ...current, decode: { ...current.decode, hardware: event.currentTarget.value } }))}><option value="auto">自动</option><option value="software">软件解码</option></select></label><label>日志级别<select value={config().general.log_level} onChange={(event) => updateGeneral("log_level", event.currentTarget.value)}><option value="info">Info（默认）</option><option value="debug">Debug（包含帧数日志）</option></select></label><label class="check"><input type="checkbox" checked={config().general.restore_on_start} onChange={(event) => updateGeneral("restore_on_start", event.currentTarget.checked)} />启动时恢复播放</label><button class="command" disabled={state.busy()} onClick={state.saveConfig}>保存设置</button></section>
     <section class="page-panel"><h3>诊断</h3><Show when={state.status()} fallback={<Loading />}>{(status) => <div class="diagnostics"><Diagnostic label="桌面环境" value={status().desktop} /><Diagnostic label="显示后端" value={status().backend} /><Diagnostic label="播放状态" value={playbackLabel(status().playback)} /><Diagnostic label="Plasma 实例" value={status().plasma_instances.map((instance) => instance.output).join("、") || "无"} /><Diagnostic label="检测依据" value={status().evidence} /><Diagnostic label="候选桌面" value={status().candidates.join("、") || "无"} /><Diagnostic label="API 版本" value={String(status().api_version)} /></div>}</Show></section>
   </div>}</Show></>;
 }

@@ -19,7 +19,7 @@ JSON errors have the form `{"error":"message"}`.
 | --- | --- |
 | `GET /api/v1/status` | Returns `api_version`, `desktop`, `evidence`, `candidates`, `backend`, `playback`, and `plasma_instances`. Playback contains `running`, `paused`, `cancelled`; instances contain `output`, `last_seen_ms`. |
 | `GET /api/v1/config` | Returns normalized `AppConfig`. |
-| `PUT /api/v1/config` | Validates and atomically saves an `AppConfig` JSON document, reloads shared state and log filtering, and requests playback rebuild. Success: `saved: true`, `restart_required: false`, `reload_requested: true`, normalized `config`. |
+| `PUT /api/v1/config` | Validates and atomically saves an `AppConfig` JSON document, reloads shared state and log filtering, and requests playback rebuild. Success: `saved: true`, `restart_required: <boolean>`, `reload_requested: true`, normalized `config`. |
 | `POST /api/v1/playback/pause` | No body required; returns playback state. `409` if cancelled or no playback task is running. |
 | `POST /api/v1/playback/resume` | Same contract as pause, setting `paused` to false. |
 | `GET /api/v1/logs` | Returns `{"lines":[...]}` from the in-memory log store (currently 2,000 lines). |
@@ -29,8 +29,15 @@ PUT replaces the config document; it is not a field patch. Start from GET and
 preserve unrelated settings. Serde defaults apply to omitted fields. Invalid JSON
 or validation/save failure returns `400`; bodies over 1 MiB return `413`.
 Persistence/reload request success does not prove playback has restarted.
-The backend is selected at daemon startup; the response's `restart_required`
-field currently does not reliably describe live backend changes.
+The backend is selected at daemon startup. `restart_required` is true when the
+saved backend preference (with `auto` resolved using startup desktop detection)
+differs from the running backend reported by status. Repeated saves retain this
+flag until the preference matches the running backend or the service restarts.
+An equivalent explicit/`auto` preference does not require a restart. CLI
+`--backend` overrides must be removed or adjusted on restart for a conflicting
+saved preference to take effect. Playback reloads still use the running backend.
+The Web UI consumes this flag and prompts for a service restart; otherwise it
+reports a reload request without claiming that playback has already restarted.
 
 Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 `decode`, `outputs`. Key values and limits:

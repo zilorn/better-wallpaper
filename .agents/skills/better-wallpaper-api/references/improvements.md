@@ -1,11 +1,15 @@
 # Management API Improvements
 
-## Backend Reload Reporting — Proposal
+## Backend Reload Reporting — Resolved
 
-Evidence: `main.rs` selects the backend at startup and captures it in the playback
-supervisor; `server.rs::update_config` always returns `restart_required: false`.
-A successful PUT does not establish that a new backend took effect.
+`server.rs::update_config` compares the saved backend preference, resolving
+`auto` with startup desktop detection, against the running backend. It returns
+`restart_required: true` while they differ, including on repeated saves. Status
+continues to report the running backend. The Web UI displays a restart prompt
+and explains that backend changes require a service restart.
 
-Completion: accurately report when a daemon restart is needed, or implement safe
-backend switching. Verify configuration, status, and UI agreement after changing
-backends. Preserve atomic persistence and cleanup during playback rebuild.
+Regression coverage exercises actual configuration PUT handling, persistence,
+playback reload requests, repeated saves, reverting a pending switch, automatic
+selection, and a running backend selected by a CLI override. CLI overrides must
+be removed or adjusted on restart for a conflicting preference to take effect.
+Atomic persistence and playback rebuild behavior remain unchanged.

@@ -15,6 +15,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use better_wallpaper_core::{
     AppConfig, BackendKind, ConfigStore, DesktopDetection, PlaybackControl,
     config::{FillMode, WallpaperType},
+    desktop::select_backend,
 };
 use better_wallpaper_scene_format::{
     CompatibilityLevel, PkgReader, UserProperty, analyse_scene_with_package, compute_compatibility,
@@ -1311,13 +1312,24 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     }
     state.log_level.set(&config.general.log_level);
+    // Compare against the running backend, not the previous saved config: a
+    // second save must keep reporting a pending switch until the daemon restarts.
+    // Resolve auto using startup detection. A CLI override must be removed or
+    // adjusted on restart for the saved preference to take effect.
+    let configured_backend = select_backend(None, config.general.backend, state.detection.kind);
+    let restart_required = configured_backend != state.backend;
     state.playback.request_reload();
-    info!("management API config update complete, playback pipeline rebuild requested");
+    info!(
+        running_backend = ?state.backend,
+        ?configured_backend,
+        restart_required,
+        "management API config update complete, playback pipeline rebuild requested"
+    );
     json_response(
         StatusCode(200),
         &serde_json::json!({
             "saved": true,
-            "restart_required": false,
+            "restart_required": restart_required,
             "reload_requested": true,
             "config": config,
         }),
@@ -1412,6 +1424,101 @@ mod tests {
         wallpaper_engine_web_root, websocket_accept, write_websocket_text,
     };
     use better_wallpaper_core::{AppConfig, WallpaperType, config::OutputConfig};
+
+    #[test]
+    fn config_put_reports_pending_backend_switch_until_reverted() {
+        use super::*;
+        use better_wallpaper_core::desktop::DesktopKind;
+
+        let directory = tempfile::tempdir().unwrap();
+        let state = ApiState::new(
+            Arc::new(RwLock::new(AppConfig::default())),
+            ConfigStore::new(
+                directory.path().join("config.toml"),
+                directory.path().into(),
+            ),
+            DesktopDetection {
+                kind: DesktopKind::Niri,
+                evidence: "test desktop".into(),
+                candidates: vec!["niri".into()],
+            },
+            BackendKind::Niri,
+            PlaybackControl::default(),
+            directory.path().into(),
+            LogStore::new(10),
+            LogLevelController::new("info"),
+        );
+
+        let put = |body: &'static str, expected_backend, expected_restart| {
+            let mut request = tiny_http::TestRequest::new()
+                .with_method(Method::Put)
+                .with_path("/api/v1/config")
+                .with_body(body)
+                .into();
+            let response = update_config(&mut request, &state);
+            assert_eq!(response.status_code(), StatusCode(200));
+            let result: serde_json::Value =
+                serde_json::from_reader(response.into_reader()).unwrap();
+            assert_eq!(result["saved"], true);
+            assert_eq!(result["restart_required"], expected_restart);
+            assert_eq!(result["reload_requested"], true);
+            assert_eq!(
+                result["config"]["general"]["backend"],
+                serde_json::to_value(expected_backend).unwrap()
+            );
+            assert_eq!(
+                state.store.load_or_create().unwrap().general.backend,
+                expected_backend
+            );
+            assert_eq!(
+                state.config.read().unwrap().general.backend,
+                expected_backend
+            );
+            assert!(state.playback.take_reload_request());
+            assert_eq!(status_payload(&state).backend, BackendKind::Niri);
+        };
+        put(
+            r#"{"general":{"backend":"auto"}}"#,
+            BackendKind::Auto,
+            false,
+        );
+        put(
+            r#"{"general":{"backend":"niri"}}"#,
+            BackendKind::Niri,
+            false,
+        );
+        put(r#"{"general":{"backend":"kde"}}"#, BackendKind::Kde, true);
+        put(
+            r#"{"general":{"backend":"kde","log_level":"debug"}}"#,
+            BackendKind::Kde,
+            true,
+        );
+        put(
+            r#"{"general":{"backend":"headless"}}"#,
+            BackendKind::Headless,
+            true,
+        );
+        put(
+            r#"{"general":{"backend":"auto"}}"#,
+            BackendKind::Auto,
+            false,
+        );
+
+        // Simulate a CLI override selecting a backend different from detection.
+        let state = ApiState {
+            backend: BackendKind::Headless,
+            ..state
+        };
+        let mut request = tiny_http::TestRequest::new()
+            .with_method(Method::Put)
+            .with_body(r#"{"general":{"backend":"auto"}}"#)
+            .into();
+        let response = update_config(&mut request, &state);
+        assert_eq!(response.status_code(), StatusCode(200));
+        let result: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
+        assert_eq!(result["restart_required"], true);
+        assert_eq!(status_payload(&state).backend, BackendKind::Headless);
+    }
 
     #[test]
     fn computes_websocket_accept_from_rfc_example() {
