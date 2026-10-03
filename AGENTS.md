@@ -74,3 +74,6 @@ Use English commit messages with one of these prefixes:
 Keep the subject concise and describe the resulting change. An optional short
 English body may explain implementation or validation; avoid long narratives.
 Example: `docs: document project APIs and maintenance rules`.
+
+After each commit, report back to the user with a table covering the commit, the
+affected files, and the validation results.
