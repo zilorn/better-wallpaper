@@ -22,3 +22,9 @@ Texture dimensions, RGBA channel layout, mip data, and UV coordinates must agree
 with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existing
 mip selection and filtering behavior is implemented; do not classify it as missing
 without a reproduction. Release GPU resources with the owning context alive.
+
+The niri backend retains CPU scene assets across output removal and uploads them
+into each replacement EGL context. Its upload, render, and teardown paths restore
+the owning context before GL calls; missing outputs defer upload, while a ready
+output without EGL remains an error. See the niri skill for output/retry lifecycle
+contracts and pending desktop verification.

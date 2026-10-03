@@ -62,7 +62,12 @@ cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui
 ```
 
 若配置中存在启用的 `[[outputs]]`，会为每个匹配的 Wayland 输出创建背景表面；否则自动选择
-compositor 输出。当前阶段仍需继续验证热插拔和 compositor 断线重连。
+compositor 输出。配置输出暂时不存在时会等待接入，其他屏幕继续播放；拔屏会释放对应背景
+表面，重新接入时自动创建，分辨率变化会更新呈现尺寸。layer surface 被关闭后会延迟重建；
+compositor 连接失败或断开时，daemon 在有 UI 和 `--no-ui` 模式下都会按 250ms 至 5s
+指数退避重试，无需保存配置或重启 daemon。暂停期间仍处理输出事件；视频保留最后一帧以
+便热插拔后重绘，scene 为新 surface 重新上传 GPU 资源。已添加隔离 Wayland 协议测试和
+监督逻辑回归测试；真实多屏热插拔、分辨率变化和 compositor 重启后的 EGL 恢复仍待验证。
 
 ## 安装
 

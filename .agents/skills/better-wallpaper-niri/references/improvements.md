@@ -1,18 +1,27 @@
 # niri Improvements
 
-## Output Hotplug — Implementation Gap / Desktop Verification Needed
+## Output Hotplug — Implemented / Desktop Verification Needed
 
-Evidence: `OutputHandler` in `crates/better-wallpaper-wayland/src/niri.rs` currently
-logs additions, changes, and removals. README flags hotplug verification as pending.
+Evidence: `OutputHandler` marks output changes for `NiriBackend::reconcile_output`,
+which creates matching layers, retains healthy layers, and releases removed layers.
+Missing configured outputs remain dormant; auto-selection moves on removal.
+`crates/better-wallpaper-wayland/src/niri_tests.rs` exercises additions, removals,
+replug, auto-selection, layer closure/backoff, and socket EOF using an isolated
+Wayland protocol peer. The peer leaves layers unconfigured; resize/stale-event
+tests exercise the configuration state handler directly without initializing EGL.
 
-Completion: create/update/release matching background surfaces; verify output
-connect/disconnect, resolution changes, and configured output selection in niri.
-Inspect daemon multi-output orchestration before changing the ownership model.
+Completion: verify real multi-output connect/disconnect, resolution changes,
+configured selection, paused repaint, and video/scene EGL resource teardown in niri.
 
-## Compositor Reconnect — Verification Pending
+## Compositor Reconnect — Implemented / Desktop Verification Needed
 
-Evidence: README flags reconnection as unverified. Inspect the current Wayland
-event loop and playback supervisor before assuming recovery is absent.
+Evidence: socket errors propagate from nonblocking event pumping to the daemon
+supervisor, which retries niri failures with 250 ms–5 s exponential backoff in both
+UI and `--no-ui` modes. Closed layers are recreated on a surviving connection.
+Tests in `main.rs` cover retries without reload, natural-completion idle behavior,
+latest-config reload during backoff, and cancellation. Video decoder cleanup is
+guarded and tested in `playback.rs`. wayland-client exposes connection failures
+through errors rather than a `connection_closed` handler.
 
 Completion: demonstrate bounded recovery after compositor restart, safe resource
 cleanup, and restored playback without leaked surfaces or stalled frame waits.

@@ -1,6 +1,10 @@
 use std::{
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -263,6 +267,33 @@ pub fn run_headless_for(
     result
 }
 
+// A pipeline error must stop and join its decoder without cancelling the shared
+// playback control, which the supervisor reuses for the next attempt.
+struct NiriDecoderThread {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl NiriDecoderThread {
+    fn join(&mut self) -> Result<()> {
+        self.stop.store(true, Ordering::Release);
+        if let Some(handle) = self.handle.take() {
+            handle
+                .join()
+                .map_err(|_| anyhow::anyhow!("niri decode thread panicked"))?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for NiriDecoderThread {
+    fn drop(&mut self) {
+        if let Err(error) = self.join() {
+            warn!(%error, "failed to clean up niri decode thread");
+        }
+    }
+}
+
 /// 在 niri background layer 上按 PTS 播放视频。多个输出共享同一个解码结果。
 pub fn run_niri(
     path: PathBuf,
@@ -316,6 +347,8 @@ pub fn run_niri_controlled(
     let (startup_tx, startup_rx) = mpsc::sync_channel(1);
     let decode_control = control.clone();
     let decode_path = path.clone();
+    let stop = Arc::new(AtomicBool::new(false));
+    let decoder_stop = Arc::clone(&stop);
     let decoder_thread = thread::Builder::new()
         .name("niri-video-decoder".into())
         .spawn(move || {
@@ -339,28 +372,35 @@ pub fn run_niri_controlled(
             if startup_tx.send(Ok(media)).is_err() {
                 return;
             }
-            let result = loop {
-                if decode_control.is_cancelled() {
+            let mut decoded_first_frame = false;
+            let result = 'decode: loop {
+                if decoder_stop.load(Ordering::Acquire) || decode_control.is_cancelled() {
                     break Ok(());
                 }
-                if decode_control.is_paused() {
+                if decode_control.is_paused() && decoded_first_frame {
                     thread::sleep(CONTROL_POLL_INTERVAL);
                     continue;
                 }
                 match decoder.next_frame() {
-                    Ok(mut frame) => loop {
-                        match frames_tx.try_send(frame) {
-                            Ok(()) => break,
-                            Err(mpsc::TrySendError::Full(returned)) => {
-                                frame = returned;
-                                if decode_control.is_cancelled() {
-                                    break;
+                    Ok(mut frame) => {
+                        // A rebuilt pipeline can repaint one frame while paused.
+                        decoded_first_frame = true;
+                        loop {
+                            match frames_tx.try_send(frame) {
+                                Ok(()) => break,
+                                Err(mpsc::TrySendError::Full(returned)) => {
+                                    frame = returned;
+                                    if decoder_stop.load(Ordering::Acquire)
+                                        || decode_control.is_cancelled()
+                                    {
+                                        break;
+                                    }
+                                    thread::sleep(Duration::from_millis(1));
                                 }
-                                thread::sleep(Duration::from_millis(1));
+                                Err(mpsc::TrySendError::Disconnected(_)) => break 'decode Ok(()),
                             }
-                            Err(mpsc::TrySendError::Disconnected(_)) => break,
                         }
-                    },
+                    }
                     Err(VideoError::EndOfStream) if loop_playback => {
                         if let Err(error) = decoder.seek_start() {
                             break Err(
@@ -375,6 +415,10 @@ pub fn run_niri_controlled(
             let _ = decode_result_tx.send(result);
         })
         .context("failed to create niri decode thread")?;
+    let mut decoder_thread = NiriDecoderThread {
+        stop,
+        handle: Some(decoder_thread),
+    };
     let media = startup_rx
         .recv()
         .context("niri decode thread did not return media info")?
@@ -408,6 +452,7 @@ pub fn run_niri_controlled(
     let mut dropped = 0_u64;
     let mut loops = 0_u64;
     let mut first_frame_presented = false;
+    let mut last_frame = None;
     let mut perf = NiriPerformanceWindow::new();
 
     loop {
@@ -415,20 +460,38 @@ pub fn run_niri_controlled(
             info!(path = %path.display(), "niri playback responded to cancel request");
             break;
         }
-        if control.is_paused() {
+        for backend in &mut backends {
+            backend.dispatch_pending().with_context(|| {
+                format!(
+                    "failed to dispatch events for niri output {}",
+                    backend.output_name()
+                )
+            })?;
+        }
+        let outputs_available = backends.iter().any(NiriBackend::has_output);
+        if control.is_paused() || !outputs_available {
             if let Some(audio) = audio.as_mut() {
                 audio.set_paused(true);
             }
-            for backend in &mut backends {
-                backend.dispatch_pending().with_context(|| {
-                    format!(
-                        "failed to dispatch events for niri output {} during pause",
-                        backend.output_name()
-                    )
-                })?;
+            if last_frame.is_none() {
+                last_frame = frames_rx.try_recv().ok();
+            }
+            // Repaint the retained frame after hotplug/resize, including while paused.
+            if let Some(frame) = &last_frame {
+                for backend in &mut backends {
+                    if backend.needs_redraw() {
+                        backend.present(frame, fill_mode)?;
+                    }
+                }
             }
             clock = None;
             thread::sleep(CONTROL_POLL_INTERVAL);
+            continue;
+        }
+        if !backends.iter().any(NiriBackend::is_ready) {
+            let wait_started = Instant::now();
+            thread::sleep(Duration::from_millis(1));
+            perf.callback_wait += wait_started.elapsed();
             continue;
         }
         if first_frame_presented && let Some(audio) = audio.as_mut() {
@@ -473,18 +536,28 @@ pub fn run_niri_controlled(
                         }
                         FrameDecision::Present => {
                             let present_started = Instant::now();
+                            let mut submitted = false;
                             for backend in &mut backends {
-                                let metrics =
+                                let Some(metrics) =
                                     backend.present(&frame, fill_mode).with_context(|| {
                                         format!(
                                             "failed to submit frame to niri output {}",
                                             backend.output_name()
                                         )
-                                    })?;
+                                    })?
+                                else {
+                                    continue;
+                                };
+                                submitted = true;
                                 perf.callback_wait += metrics.frame_callback_wait;
                                 perf.buffer_allocate += metrics.buffer_allocate;
                                 perf.scale += metrics.scale;
                                 perf.submit += metrics.submit;
+                            }
+                            if !submitted {
+                                clock = None;
+                                last_frame = Some(frame);
+                                break;
                             }
                             presented += 1;
                             perf.presented += 1;
@@ -511,6 +584,7 @@ pub fn run_niri_controlled(
                                     "niri present statistics"
                                 );
                             }
+                            last_frame = Some(frame);
                             break;
                         }
                         FrameDecision::Drop => {
@@ -530,9 +604,7 @@ pub fn run_niri_controlled(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    decoder_thread
-        .join()
-        .map_err(|_| anyhow::anyhow!("niri decode thread panicked"))?;
+    decoder_thread.join()?;
     decode_result_rx
         .recv()
         .context("niri decode thread did not return a result")??;
@@ -702,6 +774,32 @@ fn decode_frames(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_pipeline_joins_decoder_without_cancelling_shared_control() {
+        let control = PlaybackControl::default();
+        let worker_control = control.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let (tx, rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            while !worker_stop.load(Ordering::Acquire) && !worker_control.is_cancelled() {
+                thread::sleep(Duration::from_millis(1));
+            }
+            tx.send(()).unwrap();
+        });
+        let result: Result<()> = (|| {
+            let _decoder = NiriDecoderThread {
+                stop,
+                handle: Some(handle),
+            };
+            bail!("Wayland socket disconnected");
+        })();
+        assert!(result.is_err());
+        rx.recv_timeout(Duration::from_secs(2))
+            .expect("decoder should have exited and joined");
+        assert!(!control.is_cancelled());
+    }
 
     #[test]
     fn playback_stats_start_empty() {

@@ -122,12 +122,15 @@ fn main() -> Result<()> {
         std::thread::Builder::new()
             .name("wallpaper-playback".into())
             .spawn(move || {
-                run_playback_supervisor(
+                if let Err(error) = run_playback_supervisor(
                     backend,
                     playback_config,
                     cli.run_for_seconds,
                     worker_control,
-                );
+                    true,
+                ) {
+                    error!(%error, "playback supervisor exited");
+                }
             })
             .context("failed to create wallpaper playback thread")?;
         let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
@@ -146,48 +149,108 @@ fn main() -> Result<()> {
             ),
         );
     }
-    run_playback(
+    run_playback_supervisor(
         backend,
-        config,
+        Arc::new(RwLock::new(config)),
         cli.run_for_seconds,
         PlaybackControl::default(),
+        false,
     )
 }
+
+const PLAYBACK_RETRY_INITIAL: Duration = Duration::from_millis(250);
+const PLAYBACK_RETRY_MAX: Duration = Duration::from_secs(5);
+const PLAYBACK_RETRY_RESET: Duration = Duration::from_secs(30);
 
 fn run_playback_supervisor(
     backend: BackendKind,
     config: Arc<RwLock<better_wallpaper_core::AppConfig>>,
     run_for_seconds: Option<u64>,
     control: PlaybackControl,
-) {
+    idle_after_success: bool,
+) -> Result<()> {
+    supervise_playback(
+        backend,
+        config,
+        run_for_seconds,
+        control,
+        idle_after_success,
+        run_playback,
+    )
+}
+
+fn supervise_playback(
+    backend: BackendKind,
+    config: Arc<RwLock<better_wallpaper_core::AppConfig>>,
+    run_for_seconds: Option<u64>,
+    control: PlaybackControl,
+    idle_after_success: bool,
+    mut run: impl FnMut(
+        BackendKind,
+        better_wallpaper_core::AppConfig,
+        Option<u64>,
+        PlaybackControl,
+    ) -> Result<()>,
+) -> Result<()> {
+    let mut retry_delay = PLAYBACK_RETRY_INITIAL;
     loop {
-        let current = match config.read() {
-            Ok(config) => config.clone(),
-            Err(_) => {
-                error!("config lock poisoned, playback supervisor exiting");
-                return;
+        if control.is_cancelled() {
+            if control.take_reload_request() {
+                retry_delay = PLAYBACK_RETRY_INITIAL;
+            } else {
+                return Ok(());
             }
-        };
+        }
+        let current = config
+            .read()
+            .map_err(|_| anyhow::anyhow!("config lock poisoned, playback supervisor exiting"))?
+            .clone();
         control.set_running(true);
-        let result = run_playback(backend, current, run_for_seconds, control.clone());
+        let started = std::time::Instant::now();
+        let result = run(backend, current, run_for_seconds, control.clone());
         control.set_running(false);
-        if let Err(error) = result {
-            error!(%error, "wallpaper playback pipeline exited");
+        if let Err(error) = &result {
+            error!(error = %format!("{error:#}"), "wallpaper playback pipeline exited");
         }
         if control.take_reload_request() {
+            retry_delay = PLAYBACK_RETRY_INITIAL;
             info!("rebuilding playback pipeline with latest config");
             continue;
         }
-        // Keep the supervisor alive when playback ends naturally or the current config is empty,
-        // so it can respond to later UI config updates.
-        while !control.is_cancelled() {
-            std::thread::sleep(Duration::from_millis(100));
+        if control.is_cancelled() {
+            return Ok(());
         }
-        if control.take_reload_request() {
-            info!("idle playback supervisor received config update, rebuilding playback pipeline");
+        if backend == BackendKind::Niri && result.is_err() {
+            if started.elapsed() >= PLAYBACK_RETRY_RESET {
+                retry_delay = PLAYBACK_RETRY_INITIAL;
+            }
+            warn!(
+                delay_ms = retry_delay.as_millis(),
+                "retrying niri playback after pipeline failure"
+            );
+            wait_for_playback_control(&control, Some(retry_delay));
+            retry_delay = (retry_delay * 2).min(PLAYBACK_RETRY_MAX);
             continue;
         }
-        return;
+        if !idle_after_success {
+            return result;
+        }
+        // Natural completion and empty/disabled configs stay idle until an update.
+        wait_for_playback_control(&control, None);
+    }
+}
+
+fn wait_for_playback_control(control: &PlaybackControl, timeout: Option<Duration>) {
+    let started = std::time::Instant::now();
+    while !control.is_cancelled() {
+        let delay = match timeout {
+            Some(timeout) => match timeout.checked_sub(started.elapsed()) {
+                Some(remaining) if !remaining.is_zero() => remaining.min(Duration::from_millis(20)),
+                _ => return,
+            },
+            None => Duration::from_millis(20),
+        };
+        std::thread::sleep(delay);
     }
 }
 
@@ -478,6 +541,7 @@ fn run_niri_scene(
     let mut previous_tick = std::time::Instant::now();
     let mut was_paused = false;
     let mut stats_started = std::time::Instant::now();
+    let mut first_scene_frame_presented = false;
     let mut stats_frames = 0_u64;
     let mut stats_work = Duration::ZERO;
     let mut stats_max_work = Duration::ZERO;
@@ -486,11 +550,17 @@ fn run_niri_scene(
         let frame_start = std::time::Instant::now();
         let delta = frame_start.saturating_duration_since(previous_tick);
         previous_tick = frame_start;
+        for backend in &mut backends {
+            backend.dispatch_pending()?;
+        }
+        let outputs_available = backends
+            .iter()
+            .any(better_wallpaper_wayland::NiriBackend::has_output);
         let paused = control.is_paused();
         if let Some(capture) = &desktop_audio_capture {
             capture.set_paused(paused);
         }
-        if !paused {
+        if !paused && outputs_available {
             scene_elapsed = scene_elapsed.saturating_add(delta);
         }
         if paused != was_paused {
@@ -501,8 +571,9 @@ fn run_niri_scene(
             );
             was_paused = paused;
         }
+        let mut submitted = false;
         for backend in &mut backends {
-            backend
+            submitted |= backend
                 .present_scene(scene_elapsed.as_secs_f64())
                 .with_context(|| {
                     format!(
@@ -511,9 +582,9 @@ fn run_niri_scene(
                     )
                 })?;
         }
-        // Start only after a complete frame has reached every output, and keep
-        // pause state synchronized with the scene clock thereafter.
-        background_audio.set_paused(paused);
+        // Missing outputs do not prevent healthy outputs from starting audio.
+        first_scene_frame_presented |= submitted;
+        background_audio.set_paused(paused || !outputs_available || !first_scene_frame_presented);
         let work_elapsed = frame_start.elapsed();
         stats_frames += 1;
         stats_work = stats_work.saturating_add(work_elapsed);
@@ -617,6 +688,128 @@ mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
     use super::user_web_root;
+
+    #[test]
+    fn niri_failure_retries_without_reload_in_no_ui_mode() {
+        let config = std::sync::Arc::new(std::sync::RwLock::new(
+            better_wallpaper_core::AppConfig::default(),
+        ));
+        let control = better_wallpaper_core::PlaybackControl::default();
+        let mut attempts = 0;
+        super::supervise_playback(
+            better_wallpaper_core::BackendKind::Niri,
+            config,
+            None,
+            control.clone(),
+            false,
+            |_, _, _, worker| {
+                assert!(worker.is_running());
+                attempts += 1;
+                if attempts < 3 {
+                    anyhow::bail!("compositor unavailable");
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(attempts, 3);
+        assert!(!control.is_running());
+        assert!(!control.is_cancelled());
+    }
+
+    #[test]
+    fn natural_completion_stays_idle_until_config_reload() {
+        let config = std::sync::Arc::new(std::sync::RwLock::new(
+            better_wallpaper_core::AppConfig::default(),
+        ));
+        let control = better_wallpaper_core::PlaybackControl::default();
+        let worker_control = control.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            super::supervise_playback(
+                better_wallpaper_core::BackendKind::Niri,
+                config,
+                None,
+                worker_control,
+                true,
+                |_, _, _, _| {
+                    tx.send(()).unwrap();
+                    Ok(())
+                },
+            )
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(100))
+                .is_err()
+        );
+        control.request_reload();
+        rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        control.cancel();
+        worker.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn config_update_interrupts_retry_and_uses_latest_config() {
+        let config = std::sync::Arc::new(std::sync::RwLock::new(
+            better_wallpaper_core::AppConfig::default(),
+        ));
+        config.write().unwrap().wallpaper.muted = false;
+        let control = better_wallpaper_core::PlaybackControl::default();
+        let worker_config = std::sync::Arc::clone(&config);
+        let worker_control = control.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            super::supervise_playback(
+                better_wallpaper_core::BackendKind::Niri,
+                worker_config,
+                None,
+                worker_control,
+                false,
+                |_, current, _, _| {
+                    tx.send(current.wallpaper.muted).unwrap();
+                    if !current.wallpaper.muted {
+                        anyhow::bail!("connection lost");
+                    }
+                    Ok(())
+                },
+            )
+        });
+        assert!(!rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap());
+        config.write().unwrap().wallpaper.muted = true;
+        control.request_reload();
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap());
+        worker.join().unwrap().unwrap();
+        assert!(!control.is_cancelled());
+    }
+
+    #[test]
+    fn cancellation_interrupts_backoff_without_another_attempt() {
+        let config = std::sync::Arc::new(std::sync::RwLock::new(
+            better_wallpaper_core::AppConfig::default(),
+        ));
+        let control = better_wallpaper_core::PlaybackControl::default();
+        let worker_control = control.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            super::supervise_playback(
+                better_wallpaper_core::BackendKind::Niri,
+                config,
+                None,
+                worker_control,
+                false,
+                |_, _, _, _| {
+                    tx.send(()).unwrap();
+                    anyhow::bail!("connection lost")
+                },
+            )
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        control.cancel();
+        worker.join().unwrap().unwrap();
+        assert!(rx.try_recv().is_err());
+        assert!(!control.is_running());
+    }
 
     #[test]
     fn defaults_web_root_to_user_data_directory() {

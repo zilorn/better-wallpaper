@@ -90,7 +90,9 @@ impl EglRenderer {
             egl.create_window_surface(display, config, window as egl::NativeWindowType, None)
         }?;
         egl.make_current(display, Some(surface), Some(surface), Some(context))?;
-        egl.swap_interval(display, 1)?;
+        // Layer frame callbacks provide pacing. Avoid a second, blocking wait
+        // inside eglSwapBuffers when an output disappears or stops repainting.
+        egl.swap_interval(display, 0)?;
 
         let gl = unsafe {
             glow::Context::from_loader_function(|name| {
@@ -124,7 +126,18 @@ impl EglRenderer {
         })
     }
 
+    fn make_current(&self) -> Result<()> {
+        self.egl.make_current(
+            self.display,
+            Some(self.surface),
+            Some(self.surface),
+            Some(self.context),
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn set_scene_assets(&mut self, assets: Scene2dAssets) -> Result<()> {
+        self.make_current()?;
         let gl = unsafe {
             glow::Context::from_loader_function(|name| {
                 self.egl
@@ -152,6 +165,7 @@ impl EglRenderer {
         height: u32,
         elapsed_seconds: f64,
     ) -> Result<()> {
+        self.make_current()?;
         let renderer = self
             .scene_renderer
             .as_mut()
@@ -181,6 +195,7 @@ impl EglRenderer {
         width: u32,
         height: u32,
     ) -> Result<()> {
+        self.make_current()?;
         if self.output_size != (width, height) {
             unsafe {
                 wl_egl_window_resize(self.window, width as i32, height as i32, 0, 0);
@@ -251,6 +266,9 @@ impl Drop for EglRenderer {
         // GpuRenderer::drop issues GL delete calls. It must run before the EGL
         // context is detached or destroyed; doing it afterwards is undefined
         // driver behaviour and can hang the compositor during hot reload.
+        if let Err(error) = self.make_current() {
+            tracing::warn!(%error, "failed to restore EGL context during teardown");
+        }
         drop(self.renderer.take());
         drop(self.scene_renderer.take());
         unsafe {

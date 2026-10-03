@@ -1,5 +1,5 @@
 use crate::egl::EglRenderer;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result};
 use better_wallpaper_core::{DecodedFrame, config::FillMode};
 use better_wallpaper_renderer::Scene2dAssets;
 use smithay_client_toolkit::{
@@ -17,7 +17,10 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler, slot::SlotPool},
 };
-use std::time::{Duration, Instant};
+use std::{
+    io::ErrorKind,
+    time::{Duration, Instant},
+};
 use tracing::{debug, info, warn};
 use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
@@ -26,15 +29,44 @@ use wayland_client::{
 };
 
 pub struct NiriBackend {
-    // 必须先于 Wayland connection/surface 释放。
-    egl: Option<EglRenderer>,
+    // Drop EGL and surface resources before the connection and event queue.
+    surface: Option<OutputSurface>,
     connection: Connection,
     event_queue: EventQueue<NiriState>,
     state: NiriState,
-    layer: LayerSurface,
-    pool: SlotPool,
+    compositor: CompositorState,
+    layer_shell: LayerShell,
+    target_output: Option<String>,
     output_name: String,
+    scene_assets: Option<Scene2dAssets>,
+    next_surface_attempt: Instant,
+}
+
+struct OutputSurface {
+    // EGL must be released before its Wayland surface.
+    egl: Option<EglRenderer>,
+    layer: LayerSurface,
+    pool: Option<SlotPool>,
+    output: wl_output::WlOutput,
     scale_plan: Option<ScalePlan>,
+}
+
+const SURFACE_RETRY_DELAY: Duration = Duration::from_secs(1);
+
+// Explicit targets never fall back to another output. Auto-selection keeps its
+// current output until it disappears, avoiding surface churn on unrelated hotplug.
+fn select_output<T: PartialEq>(
+    outputs: &[(T, String)],
+    target: Option<&str>,
+    current: Option<&T>,
+) -> Option<usize> {
+    if let Some(target) = target {
+        outputs.iter().position(|(_, name)| name == target)
+    } else {
+        current
+            .and_then(|current| outputs.iter().position(|(output, _)| output == current))
+            .or_else(|| (!outputs.is_empty()).then_some(0))
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -49,6 +81,10 @@ impl NiriBackend {
     pub fn connect(target_output: Option<&str>) -> Result<Self> {
         let connection =
             Connection::connect_to_env().context("failed to connect to Wayland compositor")?;
+        Self::connect_with(connection, target_output)
+    }
+
+    fn connect_with(connection: Connection, target_output: Option<&str>) -> Result<Self> {
         let (globals, mut event_queue) =
             registry_queue_init(&connection).context("failed to read Wayland globals")?;
         let qh = event_queue.handle();
@@ -64,92 +100,160 @@ impl NiriBackend {
             configured_size: None,
             closed: false,
             frame_ready: true,
+            surface: None,
+            outputs_changed: true,
+            needs_redraw: true,
         };
         event_queue
             .roundtrip(&mut state)
             .context("failed to enumerate Wayland outputs")?;
 
-        let outputs: Vec<_> = state
-            .output_state
-            .outputs()
-            .filter_map(|output| state.output_state.info(&output).map(|info| (output, info)))
-            .collect();
-        for (_, output) in &outputs {
-            info!(
-                id = output.id,
-                name = ?output.name,
-                model = %output.model,
-                logical_size = ?output.logical_size,
-                scale = output.scale_factor,
-                "discovered Wayland output"
-            );
-        }
-        let (output, output_info) = outputs
-            .into_iter()
-            .find(|(_, info)| {
-                target_output.is_none_or(|target| info.name.as_deref() == Some(target))
-            })
-            .ok_or_else(|| match target_output {
-                Some(name) => anyhow!("configured Wayland output {name} not found"),
-                None => anyhow!("compositor reported no available outputs"),
-            })?;
-        let output_name = output_info
-            .name
-            .unwrap_or_else(|| format!("output-{}", output_info.id));
-
-        let surface = compositor.create_surface(&qh);
-        let layer = layer_shell.create_layer_surface(
-            &qh,
-            surface,
-            Layer::Background,
-            Some("better-wallpaper"),
-            Some(&output),
-        );
-        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        layer.set_exclusive_zone(-1);
-        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-        layer.set_size(0, 0);
-        layer.commit();
-
-        while state.configured_size.is_none() && !state.closed {
-            event_queue
-                .blocking_dispatch(&mut state)
-                .context("failed to wait for layer surface configure")?;
-        }
-        if state.closed {
-            bail!("layer surface closed by compositor before first configure");
-        }
-        let (width, height) = state
-            .configured_size
-            .expect("configure state already checked");
-        let pool = SlotPool::new(width as usize * height as usize * 4, &state.shm)
-            .context("failed to create wl_shm buffer pool")?;
-        let egl = match unsafe {
-            EglRenderer::new(
-                connection.backend().display_ptr().cast(),
-                layer.wl_surface().id().as_ptr().cast(),
-                width,
-                height,
-            )
-        } {
-            Ok(renderer) => Some(renderer),
-            Err(error) => {
-                warn!(output=%output_name,%error,"EGL GPU 初始化失败，回退 wl_shm");
-                None
-            }
-        };
-        info!(output = %output_name, width, height, gpu=egl.is_some(), "niri background layer ready");
-
-        Ok(Self {
-            egl,
+        let mut backend = Self {
+            surface: None,
             connection,
             event_queue,
             state,
-            layer,
-            pool,
-            output_name,
-            scale_plan: None,
-        })
+            compositor,
+            layer_shell,
+            target_output: target_output.map(str::to_owned),
+            output_name: target_output.unwrap_or("auto").to_owned(),
+            scene_assets: None,
+            next_surface_attempt: Instant::now(),
+        };
+        backend.reconcile_output()?;
+        Ok(backend)
+    }
+
+    fn release_surface(&mut self) {
+        if self.surface.take().is_some() {
+            info!(output = %self.output_name, "released niri background surface");
+        }
+        self.state.surface = None;
+        self.state.configured_size = None;
+        self.state.closed = false;
+        self.state.frame_ready = true;
+    }
+
+    fn reconcile_output(&mut self) -> Result<()> {
+        let now = Instant::now();
+        if self.state.closed {
+            self.release_surface();
+            self.next_surface_attempt = now + SURFACE_RETRY_DELAY;
+        }
+        if self.state.outputs_changed || self.surface.is_none() {
+            let outputs: Vec<_> = self
+                .state
+                .output_state
+                .outputs()
+                .filter_map(|output| {
+                    self.state.output_state.info(&output).map(|info| {
+                        let name = info.name.unwrap_or_else(|| format!("output-{}", info.id));
+                        (output, name)
+                    })
+                })
+                .collect();
+            let selected = select_output(
+                &outputs,
+                self.target_output.as_deref(),
+                self.surface.as_ref().map(|surface| &surface.output),
+            );
+            match selected.map(|index| &outputs[index]) {
+                Some((output, name)) => {
+                    if self
+                        .surface
+                        .as_ref()
+                        .is_some_and(|surface| surface.output != *output)
+                    {
+                        self.release_surface();
+                        self.next_surface_attempt = now;
+                    }
+                    if self.surface.is_none() && now >= self.next_surface_attempt {
+                        let qh = self.event_queue.handle();
+                        let surface = self.compositor.create_surface(&qh);
+                        let layer = self.layer_shell.create_layer_surface(
+                            &qh,
+                            surface,
+                            Layer::Background,
+                            Some("better-wallpaper"),
+                            Some(output),
+                        );
+                        layer.set_anchor(
+                            Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+                        );
+                        layer.set_exclusive_zone(-1);
+                        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+                        layer.set_size(0, 0);
+                        self.state.surface = Some(layer.wl_surface().clone());
+                        layer.commit();
+                        self.output_name = name.clone();
+                        self.surface = Some(OutputSurface {
+                            egl: None,
+                            layer,
+                            pool: None,
+                            output: output.clone(),
+                            scale_plan: None,
+                        });
+                        info!(output = %name, "created niri background surface, waiting for configure");
+                    }
+                }
+                None => {
+                    if self.surface.is_some() || self.state.outputs_changed {
+                        self.release_surface();
+                        info!(target = ?self.target_output, "waiting for a matching Wayland output");
+                    }
+                    self.next_surface_attempt = now;
+                }
+            }
+            self.state.outputs_changed = false;
+        }
+        if let Some((width, height)) = self.state.configured_size
+            && let Some(surface) = &mut self.surface
+            && surface.pool.is_none()
+        {
+            surface.pool = Some(
+                SlotPool::new(width as usize * height as usize * 4, &self.state.shm)
+                    .context("failed to create wl_shm buffer pool")?,
+            );
+            surface.egl = match unsafe {
+                EglRenderer::new(
+                    self.connection.backend().display_ptr().cast(),
+                    surface.layer.wl_surface().id().as_ptr().cast(),
+                    width,
+                    height,
+                )
+            } {
+                Ok(renderer) => Some(renderer),
+                Err(error) => {
+                    warn!(output = %self.output_name, %error, "EGL initialization failed, falling back to wl_shm");
+                    None
+                }
+            };
+            if let Some(assets) = &self.scene_assets {
+                surface
+                    .egl
+                    .as_mut()
+                    .context("EGL unavailable, scene rendering requires GPU support")?
+                    .set_scene_assets(assets.clone())?;
+            }
+            info!(output = %self.output_name, width, height, gpu = surface.egl.is_some(), "niri background layer ready");
+        }
+        Ok(())
+    }
+
+    /// Whether a configured surface can accept a frame without blocking.
+    pub fn is_ready(&self) -> bool {
+        self.surface.is_some()
+            && self.state.configured_size.is_some()
+            && self.state.frame_ready
+            && !self.state.closed
+    }
+
+    pub fn has_output(&self) -> bool {
+        self.surface.is_some() && self.state.configured_size.is_some() && !self.state.closed
+    }
+
+    pub fn needs_redraw(&self) -> bool {
+        self.state.needs_redraw && self.is_ready()
     }
 
     pub fn output_name(&self) -> &str {
@@ -159,83 +263,94 @@ impl NiriBackend {
     pub fn size(&self) -> (u32, u32) {
         self.state.configured_size.unwrap_or((1, 1))
     }
-    pub fn load_scene_assets(&mut self, assets: Scene2dAssets) -> anyhow::Result<()> {
-        let egl = self
-            .egl
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("EGL not available, cannot load scene textures"))?;
-        egl.set_scene_assets(assets)?;
+    pub fn load_scene_assets(&mut self, assets: Scene2dAssets) -> Result<()> {
+        if let Some(surface) = &mut self.surface
+            && surface.pool.is_some()
+        {
+            surface
+                .egl
+                .as_mut()
+                .context("EGL not available, cannot load scene textures")?
+                .set_scene_assets(assets.clone())?;
+        }
+        // Keep CPU assets so a replacement surface can upload into its new GL context.
+        self.scene_assets = Some(assets);
         Ok(())
     }
 
-    pub fn present_scene(&mut self, elapsed_seconds: f64) -> anyhow::Result<()> {
+    /// Returns false when the output is absent, configuring, or awaiting a callback.
+    pub fn present_scene(&mut self, elapsed_seconds: f64) -> Result<bool> {
         self.dispatch_pending()?;
-        while !self.state.frame_ready && !self.state.closed {
-            self.event_queue
-                .blocking_dispatch(&mut self.state)
-                .context("failed to wait for compositor scene frame callback")?;
-        }
-        if self.state.closed {
-            bail!("layer surface closed by compositor");
+        if !self.is_ready() {
+            return Ok(false);
         }
         let (width, height) = self.size();
-        let egl = self.egl.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("EGL GPU backend unavailable, scene rendering not supported")
-        })?;
+        let surface = self.surface.as_mut().expect("ready surface");
+        let egl = surface
+            .egl
+            .as_mut()
+            .context("EGL GPU backend unavailable, scene rendering not supported")?;
+        self.state.needs_redraw = false;
         self.state.frame_ready = false;
-        self.layer
-            .wl_surface()
-            .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
+        surface.layer.wl_surface().frame(
+            &self.event_queue.handle(),
+            surface.layer.wl_surface().clone(),
+        );
         egl.render_scene(width, height, elapsed_seconds)?;
-        self.layer.commit();
+        surface.layer.commit();
         self.connection
             .flush()
             .context("failed to flush Wayland scene frame")?;
-        Ok(())
+        Ok(true)
     }
 
-    pub fn present(&mut self, frame: &DecodedFrame, fill_mode: FillMode) -> Result<PresentMetrics> {
+    /// Returns None when the output cannot currently accept a frame.
+    pub fn present(
+        &mut self,
+        frame: &DecodedFrame,
+        fill_mode: FillMode,
+    ) -> Result<Option<PresentMetrics>> {
         self.dispatch_pending()?;
-        let wait_started = Instant::now();
-        while !self.state.frame_ready && !self.state.closed {
-            self.event_queue
-                .blocking_dispatch(&mut self.state)
-                .context("failed to wait for compositor frame callback")?;
+        if !self.is_ready() {
+            return Ok(None);
         }
-        if self.state.closed {
-            bail!("layer surface closed by compositor");
-        }
-        let frame_callback_wait = wait_started.elapsed();
         let (width, height) = self.size();
-        if let Some(egl) = &mut self.egl {
+        let surface = self.surface.as_mut().expect("ready surface");
+        if let Some(egl) = &mut surface.egl {
             let submit_started = Instant::now();
+            self.state.needs_redraw = false;
             self.state.frame_ready = false;
-            self.layer
-                .wl_surface()
-                .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
+            surface.layer.wl_surface().frame(
+                &self.event_queue.handle(),
+                surface.layer.wl_surface().clone(),
+            );
             match egl.render(frame, fill_mode, width, height) {
                 Ok(()) => {
-                    return Ok(PresentMetrics {
-                        frame_callback_wait,
+                    self.connection
+                        .flush()
+                        .context("failed to flush Wayland GPU frame")?;
+                    return Ok(Some(PresentMetrics {
                         submit: submit_started.elapsed(),
                         ..Default::default()
-                    });
+                    }));
                 }
                 Err(error) => {
                     if frame.cuda.is_some() {
                         return Err(error)
                             .context("CUDA OpenGL interop failed for a hardware-decoded frame");
                     }
-                    warn!(output=%self.output_name,%error,"EGL GPU 呈现失败，回退 wl_shm");
-                    self.egl = None;
+                    warn!(output = %self.output_name, %error, "EGL presentation failed, falling back to wl_shm");
+                    surface.egl = None;
                     self.state.frame_ready = true;
                 }
             }
         }
         let stride = width.checked_mul(4).context("output stride overflow")?;
         let allocate_started = Instant::now();
-        let (buffer, canvas) = self
+        let (buffer, canvas) = surface
             .pool
+            .as_mut()
+            .expect("configured buffer pool")
             .create_buffer(
                 width as i32,
                 height as i32,
@@ -245,7 +360,7 @@ impl NiriBackend {
             .context("failed to allocate wl_shm frame buffer")?;
         let buffer_allocate = allocate_started.elapsed();
         let scale_started = Instant::now();
-        let plan = self.scale_plan.get_or_insert_with(|| {
+        let plan = surface.scale_plan.get_or_insert_with(|| {
             ScalePlan::new(frame.width, frame.height, width, height, fill_mode)
         });
         if !plan.matches(frame.width, frame.height, width, height, fill_mode) {
@@ -261,34 +376,55 @@ impl NiriBackend {
         scale_rgba_with_plan(frame, canvas, plan);
         let scale = scale_started.elapsed();
         let submit_started = Instant::now();
-        self.layer
+        surface
+            .layer
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
         buffer
-            .attach_to(self.layer.wl_surface())
+            .attach_to(surface.layer.wl_surface())
             .context("wl_shm buffer still in use, cannot submit")?;
+        self.state.needs_redraw = false;
         self.state.frame_ready = false;
-        self.layer
-            .wl_surface()
-            .frame(&self.event_queue.handle(), self.layer.wl_surface().clone());
-        self.layer.commit();
+        surface.layer.wl_surface().frame(
+            &self.event_queue.handle(),
+            surface.layer.wl_surface().clone(),
+        );
+        surface.layer.commit();
         self.connection
             .flush()
             .context("failed to flush Wayland requests")?;
         let submit = submit_started.elapsed();
         debug!(output = %self.output_name, width, height, pts = frame.pts, "submitted wl_shm video frame");
-        Ok(PresentMetrics {
-            frame_callback_wait,
+        Ok(Some(PresentMetrics {
             buffer_allocate,
             scale,
             submit,
-        })
+            ..Default::default()
+        }))
     }
 
+    /// Read the socket as well as dispatching queued events, including while paused.
+    /// Wayland reports EOF/protocol failures through read/dispatch/flush errors;
+    /// there is no separate connection_closed callback in wayland-client.
     pub fn dispatch_pending(&mut self) -> Result<()> {
         self.event_queue
             .dispatch_pending(&mut self.state)
             .context("failed to process Wayland events")?;
+        if let Some(guard) = self.connection.prepare_read() {
+            match guard.read() {
+                Ok(_) => {}
+                Err(wayland_client::backend::WaylandError::Io(error))
+                    if error.kind() == ErrorKind::WouldBlock => {}
+                Err(error) => return Err(error).context("Wayland compositor connection lost"),
+            }
+        }
+        self.event_queue
+            .dispatch_pending(&mut self.state)
+            .context("failed to process Wayland socket events")?;
+        self.reconcile_output()?;
+        self.connection
+            .flush()
+            .context("failed to flush Wayland lifecycle requests")?;
         Ok(())
     }
 }
@@ -462,6 +598,9 @@ struct NiriState {
     configured_size: Option<(u32, u32)>,
     closed: bool,
     frame_ready: bool,
+    surface: Option<wl_surface::WlSurface>,
+    outputs_changed: bool,
+    needs_redraw: bool,
 }
 
 impl CompositorHandler for NiriState {
@@ -485,8 +624,16 @@ impl CompositorHandler for NiriState {
         info!(?new_transform, "layer surface transform changed");
     }
 
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
-        self.frame_ready = true;
+    fn frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+        if self.surface.as_ref() == Some(surface) {
+            self.frame_ready = true;
+        }
     }
 
     fn surface_enter(
@@ -514,35 +661,51 @@ impl OutputHandler for NiriState {
     }
 
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        self.outputs_changed = true;
         info!("Wayland output connected");
     }
 
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        self.outputs_changed = true;
         info!("Wayland output config changed");
     }
 
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
+        self.outputs_changed = true;
         warn!("Wayland output removed");
     }
 }
 
 impl LayerShellHandler for NiriState {
-    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
-        self.closed = true;
-        warn!("niri layer surface closed");
+    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
+        if self.surface.as_ref() == Some(layer.wl_surface()) {
+            self.closed = true;
+            warn!("niri layer surface closed, scheduling recreation");
+        }
     }
 
     fn configure(
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &LayerSurface,
+        layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         serial: u32,
     ) {
-        let (width, height) = configure.new_size;
-        if width > 0 && height > 0 {
+        self.configure_surface(layer, configure.new_size, serial);
+    }
+}
+
+impl NiriState {
+    fn configure_surface(
+        &mut self,
+        layer: &LayerSurface,
+        (width, height): (u32, u32),
+        serial: u32,
+    ) {
+        if self.surface.as_ref() == Some(layer.wl_surface()) && width > 0 && height > 0 {
             self.configured_size = Some((width, height));
+            self.needs_redraw = true;
             info!(width, height, serial, "received layer surface configure");
         }
     }
@@ -576,7 +739,7 @@ mod tests {
 
     const BLACK: [u8; 4] = [0, 0, 0, 0];
 
-    fn frame(width: u32, height: u32) -> DecodedFrame {
+    pub(super) fn frame(width: u32, height: u32) -> DecodedFrame {
         let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
         for y in 0..height {
             for x in 0..width {
@@ -645,3 +808,7 @@ mod tests {
         assert!(canvas.chunks_exact(4).all(|value| value == BLACK));
     }
 }
+
+#[cfg(test)]
+#[path = "niri_tests.rs"]
+mod lifecycle_tests;
