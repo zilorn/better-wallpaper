@@ -8,7 +8,7 @@ Source: `crates/better-wallpaper-daemon/src/server.rs`,
 
 | Method and route | Contract |
 | --- | --- |
-| `GET /api/v1/plasma/config?output=<encoded-name>` | Returns `api_version`, `output`, `enabled`, `media_url`, `media_path`, `wallpaper_type`, `web_url`, `fill_mode`, `muted`, `paused`, `loop_playback`, `revision`, `scene_rendering_available`. |
+| `GET /api/v1/plasma/config?output=<encoded-name>` | Returns `api_version`, `output`, `enabled`, `media_url`, `media_path`, `wallpaper_type`, `web_url`, `web_properties`, `fill_mode`, `muted`, `paused`, `loop_playback`, `revision`, `scene_rendering_available`. |
 | `POST /api/v1/plasma/heartbeat` | Body `{"output":"screen-name"}` with nonblank name; success `{"accepted":true}`. Invalid body: `400`; oversized/unreadable body: `413`. |
 
 With no configured outputs, all Plasma outputs are enabled. Otherwise names must
@@ -40,3 +40,11 @@ removes the obsolete installed `BetterWallpaper/qmldir` and native plugin binary
 on upgrade. The systemd unit checks the QML entry, not a native shared library.
 Package verification is `./packaging/verify.sh`; it checks cleanup of a simulated
 legacy module as well as QML lint, installation, and uninstallation.
+
+Web config now supplies an encoded relative `web_url` preserving nested HTML entry
+paths and `web_properties` containing project defaults. QML injects no-op audio
+and media registration functions before page scripts and invokes user/general
+property callbacks after load. Pause/hidden state retains a screenshot, hides the
+WebEngine item and sets Frozen; resume reactivates it. Browser audio follows mute
+and pause. Headless Rust validation does not prove Plasma rendering/pause behavior.
+User-property editing, audio spectrum and media-information data are unsupported.

@@ -34,3 +34,22 @@ disabled input, normalization, leave and stale-surface rejection after removal.
 Completion: verify real pointer focus/cursor behavior, multiple seats, multi-output
 motion and resize in niri. Only exposed wallpaper-surface input is available;
 other windows' global coordinates need a supported compositor-specific source.
+
+## Web Wallpapers — Implemented / Broader Desktop Verification Needed
+
+Evidence: `main.rs` now dispatches web projects to `web_wallpaper::run_niri`;
+`native/web-wallpaper` creates actual Qt WebEngine background layers. Projects use
+canonical asset boundaries on a private loopback origin and stdin-owned helper
+lifecycle. Regression tests cover mixed-case types, nested entries, properties,
+URL encoding, byte ranges, traversal/symlink denial and asset-server teardown.
+
+The explicit synthetic smoke check passed in niri on DP-1: HTTP page load,
+WebGL context creation, property callbacks, frozen timers, resume and stdin-close
+cleanup. A five-second daemon `--no-ui` run also loaded the private asset URL and
+stopped its renderer normally. The installed helper also passed a bounded user-service
+run with NoNewPrivileges, PrivateTmp and ProtectSystem=strict. Command: `python3 native/web-wallpaper/tests/smoke.py`.
+
+Completion: verify real multi-output resize/hotplug, compositor restart and varied
+Wallpaper Engine projects. Browser-native HTML/CSS/JS/WebGL and default property
+callbacks are supported; audio-spectrum/media callbacks are registration stubs.
+User-property editing and full proprietary engine integration remain gaps.

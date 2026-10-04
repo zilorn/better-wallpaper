@@ -16,6 +16,8 @@ fi
 
 if [ "$SKIP_BUILD" != "1" ]; then
     cargo build --locked --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
+    cmake -S "$PROJECT_ROOT/native/web-wallpaper" -B "$PROJECT_ROOT/target/web-wallpaper" -DCMAKE_BUILD_TYPE=Release
+    cmake --build "$PROJECT_ROOT/target/web-wallpaper" --parallel 2
     (
         cd "$PROJECT_ROOT/web"
         bun install --frozen-lockfile
@@ -24,6 +26,7 @@ if [ "$SKIP_BUILD" != "1" ]; then
 fi
 
 DAEMON_SOURCE="$PROJECT_ROOT/target/release/better-wallpaper-daemon"
+WEB_PLAYER_SOURCE="$PROJECT_ROOT/target/web-wallpaper/better-wallpaper-web"
 DESKTOP_SOURCE="$PROJECT_ROOT/target/release/better-wallpaper-desktop"
 SCENE_INSPECT_SOURCE="$PROJECT_ROOT/target/release/scene-inspect"
 SCENE_VALIDATE_SOURCE="$PROJECT_ROOT/target/release/scene-validate"
@@ -36,6 +39,10 @@ test -x "$DAEMON_SOURCE" || {
 }
 test -x "$DESKTOP_SOURCE" || {
     printf '%s\n' "错误：桌面客户端构建产物不存在：$DESKTOP_SOURCE" >&2
+    exit 1
+}
+test -x "$WEB_PLAYER_SOURCE" || {
+    printf '%s\n' "错误：网页壁纸渲染器不存在：$WEB_PLAYER_SOURCE" >&2
     exit 1
 }
 test -x "$SCENE_INSPECT_SOURCE" || {
@@ -88,6 +95,7 @@ atomic_install \
     "$DESTDIR$PREFIX/bin/better-wallpaper-daemon" \
     755
 atomic_install "$DESKTOP_SOURCE" "$DESTDIR$PREFIX/bin/better-wallpaper-desktop" 755
+atomic_install "$WEB_PLAYER_SOURCE" "$DESTDIR$PREFIX/bin/better-wallpaper-web" 755
 atomic_install "$PROJECT_ROOT/assets/icons/better-wallpaper-64.png" \
     "$DESTDIR$PREFIX/share/icons/hicolor/64x64/apps/better-wallpaper.png" 644
 atomic_install "$SCENE_INSPECT_SOURCE" "$DESTDIR$PREFIX/bin/scene-inspect" 755
@@ -114,6 +122,7 @@ sed "s|@PREFIX@|$PREFIX|g" \
 
 test -x "$DESTDIR$PREFIX/bin/better-wallpaper-daemon"
 test -x "$DESTDIR$PREFIX/bin/better-wallpaper-desktop"
+test -x "$DESTDIR$PREFIX/bin/better-wallpaper-web"
 test -f "$DESTDIR$PREFIX/share/applications/org.betterwallpaper.desktop.desktop"
 test -x "$DESTDIR$PREFIX/bin/scene-inspect"
 test -x "$DESTDIR$PREFIX/bin/scene-validate"

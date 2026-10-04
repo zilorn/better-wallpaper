@@ -96,7 +96,7 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 | `GET /api/v1/library/media?path=<encoded-path>` | Requires a scanned library entry. Supports single byte ranges (`206`, `Content-Range`). Missing/invalid parameter: `400`; unavailable file: `404`; outside library: `403`; invalid range: `416`. |
 | `GET /api/v1/library/thumbnail?path=<encoded-path>` | Requires a scanned entry; serves web preview images or cached FFmpeg JPEG thumbnails. Web entries without previews return `404`; FFmpeg generation failure can return `422`. |
 | `GET /api/v1/wallpaper/media` | Serves the configured wallpaper path with range support; `404` when none is configured. |
-| `GET /api/v1/wallpaper/web/<asset>` | Serves the current Wallpaper Engine web project's assets; empty suffix serves its entry file. Canonical files must stay inside the project root; inaccessible assets return `404`. |
+| `GET /api/v1/wallpaper/web/<asset>` | Serves the current Wallpaper Engine web project's assets; empty suffix serves its entry file; explicit relative entry URLs preserve nested resource paths. Supports single byte ranges and rejects malformed asset encoding. Canonical files must stay inside the project root; inaccessible assets return `404`. |
 
 Percent-encode paths and output names in query parameters. Library scanning uses
 `library.paths` (default `~/Videos`) and discovered Steam Workshop roots for app
@@ -114,3 +114,15 @@ the optional UI field permits responses from older daemons without support lists
 Thumbnail cache: `$XDG_CACHE_HOME/better-wallpaper/thumbnails`, falling back to
 `~/.cache/better-wallpaper/thumbnails`. Cache keys include source path, size, and
 modification time.
+
+Web project discovery accepts case-insensitive Wallpaper Engine type names.
+`WebProject::load` supports a descriptor-backed entry or project directory and
+standalone `.html` / `.htm` files; descriptor entries must match the configured
+file and remain within their canonical project root. Asset URL paths preserve
+literal `+`, percent-encode UTF-8 and keep nested entry directories. Standalone
+HTML uses its containing directory as the asset boundary. niri uses an independent
+random loopback port with no management routes, stopped on reload/teardown;
+Plasma retains the management asset route. MIME types include fonts and WASM.
+The wallpaper page offers explicit video/web selection and preserves type when
+editing a path. Web selection does not imply full Wallpaper Engine parity;
+default user properties are loaded, audio-spectrum/media callbacks remain stubs.

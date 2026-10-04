@@ -81,6 +81,29 @@ compositor 连接失败或断开时，daemon 在有 UI 和 `--no-ui` 模式下�
 便热插拔后重绘，scene 为新 surface 重新上传 GPU 资源。已添加隔离 Wayland 协议测试和
 监督逻辑回归测试；真实多屏热插拔、分辨率变化和 compositor 重启后的 EGL 恢复仍待验证。
 
+## 网页壁纸
+
+niri 使用独立的 `better-wallpaper-web`（Qt WebEngine / LayerShellQt）在背景层播放
+HTML、CSS、JavaScript 和 WebGL；Plasma 使用插件中的 Qt WebEngine。壁纸库识别
+Wallpaper Engine 的 `web` / `Web` 项目；也可在壁纸页选择“网页壁纸”并填写本地 HTML
+入口文件或含 `project.json` 的项目目录。修改路径会保留当前壁纸类型。
+
+niri 网页资源通过独立的临时本地 HTTP 地址加载，支持子目录入口、字体、WASM 和媒体
+范围请求；路径解析限制在项目根目录内。暂停保留截图并冻结浏览器页面，恢复后继续运行；
+静音和配置重载会同步到网页渲染器。启用的显示器分别创建背景层，缺失输出等待接入。
+Wallpaper Engine 的默认用户属性会传给 `wallpaperPropertyListener`；音频频谱和媒体信息
+回调目前仅提供空注册函数，用户属性编辑、自定义原生接口和完整 Wallpaper Engine 兼容性
+尚未实现。视频的缩放和循环设置不改变网页布局，网页动画帧率由浏览器控制。
+
+开发时先构建网页渲染器：
+
+```bash
+cmake -S native/web-wallpaper -B target/web-wallpaper -DCMAKE_BUILD_TYPE=Release
+cmake --build target/web-wallpaper --parallel 2
+BETTER_WALLPAPER_WEB_PLAYER="$PWD/target/web-wallpaper/better-wallpaper-web" \
+  cargo run -p better-wallpaper-daemon -- --backend niri
+```
+
 ## 安装
 
 项目支持 niri 和 KDE Plasma 6。Plasma 壁纸插件是 QML 包，无需编译原生帧插件，
@@ -125,7 +148,9 @@ sudo dnf install \
 Rust 和 Bun 建议使用各自的官方安装方式；完成安装后确认 `cargo`、`rustc` 和 `bun` 位于
 `PATH` 中。上述命令安装 daemon、桌面客户端和 Web UI 的构建依赖；Plasma 用户还需安装发行版提供的
 Qt 6.6+ Qt Quick、Qt Multimedia 和 Qt WebEngine QML 运行时模块。执行 `./install.sh`
-会复制 Plasma QML 包，无需 CMake 或 Qt 开发包。
+会复制 Plasma QML 包，并构建 niri 网页渲染器；后者需要 CMake、Qt 6.6+ Quick / WebEngineQuick
+开发包和匹配 Qt 6 的 LayerShellQt 开发包及 Wayland 平台插件。Arch 可安装 `cmake qt6-declarative
+qt6-webengine qt6-wayland layer-shell-qt`；其他发行版请使用对应开发包。
 
 ### 完整安装（推荐）
 
@@ -136,7 +161,7 @@ Qt 6.6+ Qt Quick、Qt Multimedia 和 Qt WebEngine QML 运行时模块。执行 `
 systemctl --user enable --now better-wallpaper.service
 ```
 
-该脚本会构建并安装 daemon、Web UI、systemd 用户服务以及 Plasma 壁纸插件。
+该脚本会构建并安装 daemon、网页壁纸渲染器、Web UI、systemd 用户服务以及 Plasma 壁纸插件。
 默认不需要 root 权限，插件安装到：
 
 ```text

@@ -13,3 +13,12 @@ playback reload requests, repeated saves, reverting a pending switch, automatic
 selection, and a running backend selected by a CLI override. CLI overrides must
 be removed or adjusted on restart for a conflicting preference to take effect.
 Atomic persistence and playback rebuild behavior remain unchanged.
+
+## Web Project Discovery and Relative Assets — Resolved
+
+The scanner now accepts `Web` as well as `web` (and mixed-case video/scene types).
+`WebProject` validates descriptor entries and their canonical asset root, preserves
+nested entry URLs and literal plus signs, and serves fonts/WASM/range media.
+Regression coverage exercises uppercase Web discovery, UTF-8 nested assets,
+properties, invalid ranges, traversal, symlinks and private-origin teardown.
+The UI keeps web type while editing paths and exposes explicit type selection.

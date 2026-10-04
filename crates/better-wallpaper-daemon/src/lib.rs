@@ -6,6 +6,7 @@ pub mod scene_audio;
 pub mod scene_video;
 pub mod server;
 pub mod tray;
+pub mod web_wallpaper;
 
 use std::{
     collections::VecDeque,

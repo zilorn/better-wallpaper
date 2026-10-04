@@ -17,6 +17,10 @@ log() {
 log "构建 release daemon 和桌面客户端"
 cargo build --locked --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
 
+log "构建网页壁纸渲染器"
+cmake -S "$PROJECT_ROOT/native/web-wallpaper" -B "$PROJECT_ROOT/target/web-wallpaper" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$PROJECT_ROOT/target/web-wallpaper" --parallel 2
+
 log "构建 Web 静态资源"
 (
     cd "$PROJECT_ROOT/web"
@@ -41,6 +45,7 @@ ROOT_INSTALLER="$PROJECT_ROOT/install.sh"
 test -x "$ROOT_INSTALLER"
 test -x "$DAEMON"
 test -x "$DESKTOP"
+test -x "$STAGE/usr/bin/better-wallpaper-web"
 test -f "$ENTRY"
 test -f "$STAGE/usr/share/icons/hicolor/64x64/apps/better-wallpaper.png"
 grep -q '^Exec="/usr/bin/better-wallpaper-desktop"$' "$ENTRY"
@@ -72,18 +77,19 @@ if ! SYSTEMD_OUTPUT=$(systemd-analyze verify "$UNIT" 2>&1); then
     fi
     log "受限环境无法访问 systemd 用户查询 socket；单元静态检查未发现其他错误"
 fi
-if ldd "$DAEMON" | grep -q 'not found' || ldd "$DESKTOP" | grep -q 'not found'; then
+if ldd "$DAEMON" | grep -q 'not found' || ldd "$DESKTOP" | grep -q 'not found' || ldd "$STAGE/usr/bin/better-wallpaper-web" | grep -q 'not found'; then
     log "发现缺失的动态链接库"
     ldd "$DAEMON"
     ldd "$DESKTOP"
     exit 1
 fi
-qmllint "$PLASMA/contents/ui/main.qml"
+qmllint "$PLASMA/contents/ui/main.qml" "$PROJECT_ROOT/native/web-wallpaper/WebWallpaper.qml"
 
 log "验证 staging 卸载"
 DESTDIR="$STAGE" PREFIX=/usr "$SCRIPT_DIR/uninstall.sh"
 test ! -e "$DAEMON"
 test ! -e "$DESKTOP"
+test ! -e "$STAGE/usr/bin/better-wallpaper-web"
 test ! -e "$ENTRY"
 test ! -e "$STAGE/usr/share/icons/hicolor/64x64/apps/better-wallpaper.png"
 test ! -e "$STAGE/usr/share/better-wallpaper"

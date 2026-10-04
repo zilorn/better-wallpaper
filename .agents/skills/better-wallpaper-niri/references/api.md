@@ -58,3 +58,30 @@ Package video layers are decoded once by the daemon and shared across outputs vi
 `SceneVideoTexture.frame`. They freeze with the scene clock on pause/absent outputs.
 Replacement EGL contexts upload the last CPU frame. Workers stop and join on
 pipeline teardown, including while the frame queue is full.
+
+## Web wallpaper surfaces
+
+`web_wallpaper::run_niri` launches a sibling `better-wallpaper-web` Qt Quick /
+Qt WebEngine / LayerShellQt helper, or `BETTER_WALLPAPER_WEB_PLAYER`. Build it with
+CMake from `native/web-wallpaper` into `target/web-wallpaper`; packaging installs
+it atomically. Qt 6.6+ Quick/WebEngineQuick and LayerShellQt development/runtime
+packages and the Qt Wayland platform plugin are required. Chromium sandboxing
+stays enabled. This path does not use the Rust EGL video/scene renderer.
+
+The daemon starts an ephemeral loopback asset origin without management APIs,
+including in `--no-ui` mode. Newline JSON over stdin initializes URL, enabled
+output names, default properties, mute and pause; later messages update pause.
+Empty output configuration follows the primary output. Explicit enabled outputs
+wait when absent; all-disabled configuration stays idle. Qt handles surface sizes;
+screen removal destroys its view, screen addition and a one-second reconciliation
+recreate matching/dismissed views. Layers use background placement, all-edge
+anchors, exclusion zone -1 and no keyboard focus.
+
+Pause grabs and retains a screenshot, hides the WebEngine item and sets Frozen;
+resume sets Active before showing it. Browser audio is muted on pause/configured
+mute. Reload/termination closes stdin, waits up to two seconds then kills/joins
+the helper before stopping the private asset server. Compositor connection failure
+exits the Qt helper and reaches the existing niri supervisor backoff. Bounded CLI
+playback applies `--run-for-seconds`. Pointer interaction is browser input on the
+exposed wallpaper; desktop-wide input is unavailable. Browser animation rate is
+not capped by video FPS/fill/loop configuration.

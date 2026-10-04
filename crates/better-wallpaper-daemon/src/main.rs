@@ -340,11 +340,22 @@ fn run_playback(
         // consumes a pending hot-reload request and constructs the replacement.
         return Ok(());
     }
-    if config.wallpaper.wallpaper_type == WallpaperType::Web && backend != BackendKind::Kde {
-        warn!(
-            ?backend,
-            "web wallpaper rendering is currently available through the Plasma wallpaper plugin only"
-        );
+    if config.wallpaper.wallpaper_type == WallpaperType::Web {
+        match backend {
+            BackendKind::Niri => better_wallpaper_daemon::web_wallpaper::run_niri(
+                &config,
+                run_for_seconds.map(Duration::from_secs),
+                control,
+            )?,
+            BackendKind::Kde => run_kde_controlled(control),
+            BackendKind::Headless => {
+                if let Some(path) = config.wallpaper.path.as_deref() {
+                    better_wallpaper_daemon::web_wallpaper::WebProject::load(path)?;
+                    info!("headless web wallpaper project validated");
+                }
+            }
+            _ => anyhow::bail!("web wallpaper backend is unavailable"),
+        }
         return Ok(());
     }
     if backend == BackendKind::Headless {

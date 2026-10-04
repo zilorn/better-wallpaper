@@ -19,3 +19,12 @@ installation and asserts that upgrading removes the obsolete module files.
 
 Future playback-engine changes require an actual QML consumer and desktop
 verification, with audio, visibility, and lifecycle behavior preserved.
+
+## Web Project Defaults and Pause — Implemented / Desktop Verification Needed
+
+Evidence: Plasma config returns nested entry URLs and project defaults; QML calls
+Wallpaper Engine property listeners after page load and freezes a hidden browser
+behind a retained pause screenshot. Empty registration stubs avoid missing global
+functions for audio/media callbacks but do not provide their data.
+Completion: verify real Plasma page load, pause/resume, visibility and type changes
+with nested-entry projects and audio. QML lint alone does not prove playback.

@@ -186,7 +186,7 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         return;
     }
     if method == Method::Get && url.starts_with("/api/v1/wallpaper/web/") {
-        let response = wallpaper_web_response(&url, state);
+        let response = wallpaper_web_response(&request, &url, state);
         if let Err(error) = request.respond(response) {
             warn!(%error, %url, "failed to send web wallpaper asset response");
         }
@@ -316,7 +316,8 @@ struct PlasmaConfigPayload {
     media_url: &'static str,
     media_path: Option<PathBuf>,
     wallpaper_type: WallpaperType,
-    web_url: Option<&'static str>,
+    web_url: Option<String>,
+    web_properties: serde_json::Value,
     fill_mode: FillMode,
     muted: bool,
     paused: bool,
@@ -337,7 +338,15 @@ fn plasma_config_response(
         Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     };
     let enabled = output_enabled(&config, &output);
-    info!(output, enabled, "serving Plasma wallpaper configuration");
+    let web_project = (config.wallpaper.wallpaper_type == WallpaperType::Web)
+        .then(|| {
+            config
+                .wallpaper
+                .path
+                .as_deref()
+                .and_then(|path| crate::web_wallpaper::WebProject::load(path).ok())
+        })
+        .flatten();
     json_response(
         StatusCode(200),
         &PlasmaConfigPayload {
@@ -347,8 +356,12 @@ fn plasma_config_response(
             media_url: "/api/v1/wallpaper/media",
             media_path: config.wallpaper.path.clone(),
             wallpaper_type: config.wallpaper.wallpaper_type,
-            web_url: (config.wallpaper.wallpaper_type == WallpaperType::Web)
-                .then_some("/api/v1/wallpaper/web/"),
+            web_url: web_project
+                .as_ref()
+                .map(|project| project.entry_url("/api/v1/wallpaper/web/")),
+            web_properties: web_project
+                .map(|project| project.properties)
+                .unwrap_or_else(|| serde_json::json!({})),
             fill_mode: config.wallpaper.fill_mode,
             muted: config.wallpaper.muted,
             paused: state.playback.is_paused(),
@@ -602,7 +615,7 @@ fn wallpaper_media_response(request: &Request, state: &ApiState) -> ResponseBox 
     media_response(request, path, state, false)
 }
 
-fn wallpaper_web_response(url: &str, state: &ApiState) -> ResponseBox {
+fn wallpaper_web_response(request: &Request, url: &str, state: &ApiState) -> ResponseBox {
     let entry = match state.config.read() {
         Ok(config) if config.wallpaper.wallpaper_type == WallpaperType::Web => {
             config.wallpaper.path.clone()
@@ -615,51 +628,25 @@ fn wallpaper_web_response(url: &str, state: &ApiState) -> ResponseBox {
     let Some(entry) = entry else {
         return error_response(StatusCode(404), "no current wallpaper configured").boxed();
     };
-    let Some(project_root) = wallpaper_engine_web_root(&entry) else {
-        return error_response(StatusCode(404), "web wallpaper directory does not exist").boxed();
+    let project = match crate::web_wallpaper::WebProject::load(&entry) {
+        Ok(project) => project,
+        Err(error) => {
+            warn!(%error, "cannot resolve web wallpaper project");
+            return error_response(StatusCode(404), "web wallpaper project is unavailable").boxed();
+        }
     };
-    let relative = url
-        .strip_prefix("/api/v1/wallpaper/web/")
-        .unwrap_or_default();
-    let relative = percent_decode(relative)
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let candidate = if relative.as_os_str().is_empty() {
-        entry
-    } else {
-        project_root.join(relative)
-    };
-    let canonical = match candidate.canonicalize() {
-        Ok(path) if path.starts_with(&project_root) && path.is_file() => path,
-        _ => return error_response(StatusCode(404), "web wallpaper asset does not exist").boxed(),
-    };
-    info!(path = %canonical.display(), "serving web wallpaper asset");
-    match File::open(&canonical) {
-        Ok(file) => Response::from_file(file)
-            .with_header(header("Content-Type", asset_content_type(&canonical)))
-            .with_header(header("Cache-Control", "no-cache"))
-            .boxed(),
-        Err(_) => error_response(StatusCode(404), "cannot open web wallpaper asset").boxed(),
-    }
+    project.asset_response(
+        request,
+        url.strip_prefix("/api/v1/wallpaper/web/")
+            .unwrap_or_default(),
+    )
 }
 
+#[cfg(test)]
 fn wallpaper_engine_web_root(entry: &Path) -> Option<PathBuf> {
-    let canonical_entry = entry.canonicalize().ok()?;
-    for directory in canonical_entry.ancestors().skip(1) {
-        let descriptor = directory.join("project.json");
-        let Ok(file) = File::open(descriptor) else {
-            continue;
-        };
-        let project: WallpaperEngineProject = serde_json::from_reader(file).ok()?;
-        if project.kind != "web" {
-            return None;
-        }
-        let relative = project.file.filter(|path| !path.is_absolute())?;
-        let root = directory.canonicalize().ok()?;
-        let configured_entry = root.join(relative).canonicalize().ok()?;
-        return (configured_entry == canonical_entry).then_some(root);
-    }
-    None
+    crate::web_wallpaper::WebProject::load(entry)
+        .ok()
+        .map(|project| project.root)
 }
 
 fn media_response(
@@ -742,7 +729,7 @@ fn query_parameter<'a>(url: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-fn percent_decode(value: &str) -> Option<String> {
+pub(crate) fn percent_decode(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -775,7 +762,7 @@ const fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
-fn parse_byte_range(value: &str, length: u64) -> Option<(u64, u64)> {
+pub(crate) fn parse_byte_range(value: &str, length: u64) -> Option<(u64, u64)> {
     let range = value.strip_prefix("bytes=")?;
     if range.contains(',') || length == 0 {
         return None;
@@ -790,7 +777,7 @@ fn parse_byte_range(value: &str, length: u64) -> Option<(u64, u64)> {
     (start <= end && start < length).then_some((start, end))
 }
 
-fn header(name: &str, value: &str) -> Header {
+pub(crate) fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name, value).expect("valid HTTP response header")
 }
 
@@ -967,7 +954,7 @@ fn scan_wallpaper_engine_library(
                 continue;
             }
         };
-        let wallpaper_type = match project.kind.as_str() {
+        let wallpaper_type = match project.kind.to_ascii_lowercase().as_str() {
             "video" => WallpaperType::Video,
             "web" => WallpaperType::Web,
             "scene" => WallpaperType::Scene,
@@ -1134,7 +1121,7 @@ fn image_content_type(path: &Path) -> &'static str {
     }
 }
 
-fn asset_content_type(path: &Path) -> &'static str {
+pub(crate) fn asset_content_type(path: &Path) -> &'static str {
     match path
         .extension()
         .and_then(|value| value.to_str())
@@ -1153,6 +1140,9 @@ fn asset_content_type(path: &Path) -> &'static str {
         Some("mp4" | "webm") => video_content_type(path),
         Some("woff") => "font/woff",
         Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        Some("wasm") => "application/wasm",
+        Some("ico") => "image/x-icon",
         _ => "application/octet-stream",
     }
 }
@@ -1381,7 +1371,10 @@ fn json_response<T: Serialize>(
     }
 }
 
-fn error_response(status: StatusCode, message: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+pub(crate) fn error_response(
+    status: StatusCode,
+    message: &str,
+) -> Response<std::io::Cursor<Vec<u8>>> {
     json_response(status, &serde_json::json!({ "error": message }))
 }
 
@@ -1614,7 +1607,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         for (id, kind, file) in [
             ("1", "video", "movie.mp4"),
-            ("2", "web", "index.html"),
+            ("2", "Web", "index.html"),
             ("3", "scene", "scene.pkg"),
         ] {
             let project = directory.path().join(id);
@@ -1665,6 +1658,46 @@ mod tests {
         assert_eq!(parse_byte_range("bytes=10-19", 100), Some((10, 19)));
         assert_eq!(parse_byte_range("bytes=90-", 100), Some((90, 99)));
         assert_eq!(parse_byte_range("bytes=100-", 100), None);
+    }
+
+    #[test]
+    fn plasma_web_config_preserves_nested_entry_and_default_properties() {
+        use super::*;
+        use better_wallpaper_core::desktop::DesktopKind;
+        let directory = tempfile::tempdir().unwrap();
+        fs::create_dir(directory.path().join("pages")).unwrap();
+        fs::write(directory.path().join("pages/main.html"), "html").unwrap();
+        fs::write(directory.path().join("project.json"), r#"{"type":"Web","file":"pages/main.html","general":{"properties":{"speed":{"type":"slider","value":2}}}}"#).unwrap();
+        let mut config = AppConfig::default();
+        config.wallpaper.wallpaper_type = WallpaperType::Web;
+        config.wallpaper.path = Some(directory.path().join("pages/main.html"));
+        let control = PlaybackControl::default();
+        control.set_paused(true);
+        let state = ApiState::new(
+            Arc::new(RwLock::new(config)),
+            ConfigStore::new(
+                directory.path().join("config.toml"),
+                directory.path().into(),
+            ),
+            DesktopDetection {
+                kind: DesktopKind::Kde,
+                evidence: "test".into(),
+                candidates: vec![],
+            },
+            BackendKind::Kde,
+            control,
+            directory.path().into(),
+            LogStore::new(10),
+            LogLevelController::new("info"),
+        );
+        let response = plasma_config_response("/api/v1/plasma/config?output=DP-1", &state);
+        assert_eq!(response.status_code(), StatusCode(200));
+        let config: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
+        assert_eq!(config["web_url"], "/api/v1/wallpaper/web/pages/main.html");
+        assert_eq!(config["web_properties"]["speed"]["value"], 2);
+        assert_eq!(config["paused"], true);
+        assert_eq!(config["muted"], true);
+        assert_eq!(config["wallpaper_type"], "web");
     }
 
     #[test]

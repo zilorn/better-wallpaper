@@ -78,3 +78,16 @@ Plasma 插件是无需原生编译的 QML 包，运行时需要 Qt 6.6+ Qt Quick
 ```bash
 journalctl --user -u better-wallpaper.service -f
 ```
+
+## niri 网页壁纸渲染器
+
+安装流程还通过 CMake 构建 `native/web-wallpaper`，将 `better-wallpaper-web` 原子安装到
+`$PREFIX/bin`，卸载时一并删除。构建需要 CMake、Qt 6.6+ Quick / WebEngineQuick 和
+匹配 Qt 6 的 LayerShellQt 开发包；运行需要 Qt WebEngine QML、Qt Wayland 和 LayerShellQt。
+Chromium 沙箱保持启用。`SKIP_BUILD=1` 要求 `target/web-wallpaper/better-wallpaper-web`
+已经存在。`verify.sh` 检查该程序的 staging 安装、动态依赖和卸载，并检查其 QML。
+
+本地开发可设置 `BETTER_WALLPAPER_WEB_PLAYER` 指向该构建产物；安装后 daemon 默认查找
+同目录程序。网页的私有资源服务不依赖管理服务，`--no-ui` 也可播放；
+`--run-for-seconds` 可限制 niri 网页播放时长。默认属性和暂停回调兼容 Wallpaper Engine，
+音频频谱/媒体信息回调暂未接入。

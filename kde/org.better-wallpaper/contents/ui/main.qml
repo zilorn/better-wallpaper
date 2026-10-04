@@ -20,6 +20,9 @@ WallpaperItem {
     property string configRevision: ""
     property string wallpaperType: "video"
     property url webSource: ""
+    property var webProperties: ({})
+    property bool webCaptured: false
+    property var webCapturedResult: null
     property bool sceneRenderingAvailable: false
 
     Component.onCompleted: {
@@ -28,7 +31,27 @@ WallpaperItem {
     }
     Component.onDestruction: console.info("[Better Wallpaper] Plasma wallpaper instance destroyed")
 
+    function syncWebPlayback() {
+        if (!wallpaperPaused && visible && wallpaperEnabled) {
+            webView.lifecycleState = WebEngineView.LifecycleState.Active
+            webCaptured = false
+            webSnapshot.source = ""
+            webCapturedResult = null
+            webView.runJavaScript("window.wallpaperPropertyListener?.setPaused?.(false)")
+        } else if (!webView.loading && webSource.toString() !== "" && !webCaptured) {
+            webView.runJavaScript("window.wallpaperPropertyListener?.setPaused?.(true)")
+            webView.grabToImage(function(result) {
+                if (!root.wallpaperPaused && root.visible && root.wallpaperEnabled) return
+                root.webCapturedResult = result
+                webSnapshot.source = result.url
+                root.webCaptured = true
+                webView.lifecycleState = WebEngineView.LifecycleState.Frozen
+            })
+        }
+    }
+
     function syncPlayback() {
+        if (wallpaperType === "web") syncWebPlayback()
         if (wallpaperType === "video" && wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
             if (mediaPlayer.playbackState !== MediaPlayer.PlayingState) mediaPlayer.play()
         } else if (mediaPlayer.playbackState === MediaPlayer.PlayingState) {
@@ -68,12 +91,15 @@ WallpaperItem {
             loopPlayback = config.loop_playback
             wallpaperFillMode = config.fill_mode
             wallpaperType = config.wallpaper_type || "video"
+            webProperties = config.web_properties || ({})
             sceneRenderingAvailable = config.scene_rendering_available === true
             if (wallpaperEnabled && config.media_path && configRevision !== String(config.revision)) {
                 configRevision = String(config.revision)
                 if (wallpaperType === "web") {
                     mediaSource = ""
-                    webSource = daemonUrl + config.web_url + "?revision=" + config.revision
+                    webView.lifecycleState = WebEngineView.LifecycleState.Active
+                    webCaptured = false
+                    webSource = config.web_url ? daemonUrl + config.web_url + "?revision=" + config.revision : ""
                     console.info("[Better Wallpaper] web wallpaper source configured: " + config.media_path)
                 } else if (wallpaperType === "video") {
                     webSource = ""
@@ -112,15 +138,32 @@ WallpaperItem {
     }
 
     WebEngineView {
+        id: webView
         anchors.fill: parent
-        visible: root.wallpaperType === "web" && root.wallpaperEnabled
+        visible: root.wallpaperType === "web" && root.wallpaperEnabled && !root.webCaptured
         url: root.webSource
         audioMuted: root.wallpaperMuted || root.wallpaperPaused
         settings.localContentCanAccessRemoteUrls: true
+        userScripts.collection: [{
+            name: "wallpaper-engine-compatibility",
+            injectionPoint: WebEngineScript.DocumentCreation,
+            worldId: WebEngineScript.MainWorld,
+            sourceCode: "window.wallpaperRegisterAudioListener = function() {}; window.wallpaperRegisterMediaPropertiesListener = function() {};"
+        }]
         onLoadingChanged: (loadRequest) => {
             if (loadRequest.status === WebEngineView.LoadFailedStatus)
                 console.error("[Better Wallpaper] web wallpaper load failed: " + loadRequest.errorString)
+            else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                webView.runJavaScript("window.wallpaperPropertyListener?.applyUserProperties?.(" + JSON.stringify(root.webProperties) + "); window.wallpaperPropertyListener?.applyGeneralProperties?.({fps:60});")
+                root.syncWebPlayback()
+            }
         }
+    }
+
+    Image {
+        id: webSnapshot
+        anchors.fill: parent
+        visible: root.wallpaperType === "web" && root.wallpaperEnabled && root.webCaptured
     }
 
     Column {
