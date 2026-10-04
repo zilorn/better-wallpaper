@@ -60,6 +60,8 @@ See `packaging/README.md` for dependencies and installation options.
   - niri and Wayland: `.agents/skills/better-wallpaper-niri/SKILL.md`.
   - KDE Plasma: `.agents/skills/better-wallpaper-plasma/SKILL.md`.
   - Management API, configuration, and library: `.agents/skills/better-wallpaper-api/SKILL.md`.
+  - Isolated worktree tasks triggered by a `wt:` prefix:
+    `.agents/skills/better-wallpaper-worktree/SKILL.md`.
 - Load only relevant skills; cross-category changes require each affected skill.
   Update their references in the same change whenever interfaces, behavior,
   limitations, commands, or improvement status change. Add confirmed gaps with
