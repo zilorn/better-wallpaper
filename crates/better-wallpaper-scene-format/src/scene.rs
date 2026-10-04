@@ -70,6 +70,7 @@ pub struct SceneMetadata {
     pub has_timeline_animation: bool,
     pub has_sprite_animation: bool,
     pub has_video_texture: bool,
+    pub has_basic_parallax: bool,
     pub has_audio_response: bool,
     pub supported_effects: Vec<String>,
     pub unsupported_effects: Vec<String>,
@@ -286,6 +287,11 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
     }
 
     if let Ok(graph) = parse_scene_graph(scene_json) {
+        meta.has_basic_parallax = graph.camera.parallax.is_some()
+            && graph.nodes.iter().any(|node| {
+                node.parallax_depth
+                    .is_some_and(|depth| depth.x != 0.0 || depth.y != 0.0)
+            });
         meta.has_video_texture = graph
             .nodes
             .iter()
@@ -532,6 +538,10 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         (meta.has_sprite_animation, "Sprite sheet animation"),
         (meta.has_sounds, "Scene background audio"),
         (
+            meta.has_basic_parallax,
+            "Basic mouse parallax (niri wallpaper surface)",
+        ),
+        (
             meta.has_video_texture,
             "Video textures (package media or embedded TEX video)",
         ),
@@ -580,7 +590,14 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         warnings.push("Bloom effect enabled (currently ignored)".into());
     }
     if meta.parallax {
-        warnings.push("Parallax effect enabled (currently ignored)".into());
+        warnings.push(
+            if meta.has_basic_parallax {
+                "Mouse parallax requires pointer focus on the niri wallpaper surface"
+            } else {
+                "Camera parallax has no supported authored layer depth"
+            }
+            .into(),
+        );
     }
     if meta.shake {
         warnings.push("Camera shake enabled (will be ignored)".into());

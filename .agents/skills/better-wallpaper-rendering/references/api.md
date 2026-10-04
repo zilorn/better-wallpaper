@@ -38,13 +38,13 @@ raise the tier. Library scanning and `scene-validate` use this package-aware pat
 unpacked `scene-inspect` can only classify features visible in scene.json.
 Effect identifiers and audio-spectrum recognition are shared with the IR parser.
 Scalar timelines currently cover opacity, camera zoom and composition backdrop
-fade; arbitrary transform timelines are not implied. Bloom, camera parallax and
-camera shake still generate ignored-feature warnings.
+fade; arbitrary transform timelines are not implied. Bloom and camera shake still generate ignored-feature warnings. Basic camera
+parallax is identified only with enabled camera settings and authored layer depth;
+its report includes the wallpaper-surface pointer-focus limitation.
 
-`SceneConfig::mouse`, `parallax`, and `particle_limit` have no rendering runtime
-implementation. They remain validated/persisted for config compatibility; they do
-not enable interaction, parallax or particle budgeting. The daemon reports them
-as ignored, and the Web UI disables their controls with an unimplemented label.
+`SceneConfig::mouse` and `parallax` gate basic niri camera parallax together.
+`particle_limit` remains reserved, reported as ignored and disabled in the Web UI.
+No arbitrary mouse scripts, depth-map effect or particle budgeting is implied.
 
 Texture dimensions, RGBA channel layout, mip data, and UV coordinates must agree
 with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existing
@@ -73,3 +73,17 @@ external MOV references; playlists and network demuxers are rejected. Video text
 audio is not mixed; use the scene background audio node. Compatibility detection
 reports references, not successful decoding. Desktop/GPU and eight-hour stability
 verification remain separate requirements.
+
+Basic parallax: `SceneCamera.parallax` parses `cameraparallaxamount` (0–100),
+`cameraparallaxdelay` (0–10 seconds) and `cameraparallaxmouseinfluence` (0–10),
+including property-bound values. Defaults are 0.1, 0.1 and 1 respectively.
+`SceneNode.parallax_depth` parses `parallaxDepth` as two finite axes in -100–100;
+missing/zero depth leaves the layer fixed. Shared plans/assets preserve both.
+`SceneParallaxState` smooths normalized, Y-up pointer coordinates [-1,1] on the
+pause-aware scene clock; elapsed-time rewind resets it. Per-axis translation is
+`-pointer * amount * mouse_influence * depth`, limited to ±2 NDC before cover/zoom.
+`draw_scene_with_pointer` consumes this state; `draw_scene` supplies no pointer.
+This is a bounded basic approximation, not demonstrated Wallpaper Engine pixel
+parity. Input loss returns smoothly to center. Source semantics:
+[Wallpaper Engine parallax](https://docs.wallpaperengine.io/en/scene/parallax/introduction.html)
+and [IScene parameters](https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/IScene.html).

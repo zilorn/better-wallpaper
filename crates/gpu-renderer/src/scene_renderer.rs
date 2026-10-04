@@ -15,6 +15,7 @@ pub struct SceneGpuRenderer {
     output_size: (u32, u32),
     supports_npot_mipmaps: bool,
     max_texture_size: u32,
+    parallax: better_wallpaper_renderer::SceneParallaxState,
 }
 
 #[allow(dead_code)]
@@ -55,6 +56,7 @@ impl SceneGpuRenderer {
                 output_size: (output_width, output_height),
                 supports_npot_mipmaps,
                 max_texture_size,
+                parallax: Default::default(),
             })
         }
     }
@@ -327,6 +329,18 @@ impl SceneGpuRenderer {
         assets: &Scene2dAssets,
         elapsed_seconds: f64,
     ) -> Result<(), String> {
+        self.draw_scene_with_pointer(assets, elapsed_seconds, None)
+    }
+
+    pub fn draw_scene_with_pointer(
+        &mut self,
+        assets: &Scene2dAssets,
+        elapsed_seconds: f64,
+        pointer: Option<[f32; 2]>,
+    ) -> Result<(), String> {
+        let pointer = self
+            .parallax
+            .update(assets.parallax, elapsed_seconds, pointer);
         let start = std::time::Instant::now();
         let mut drawn = 0u32;
         unsafe {
@@ -527,7 +541,17 @@ impl SceneGpuRenderer {
             }
             self.gl
                 .uniform_1_f32(time_loc.as_ref(), elapsed_seconds.rem_euclid(3600.0) as f32);
+            let parallax_loc = self
+                .gl
+                .get_uniform_location(self.program, "u_parallax_offset");
             for draw in &assets.draws {
+                let offset = better_wallpaper_renderer::scene_parallax_offset(
+                    assets.parallax,
+                    pointer,
+                    draw.quad.parallax_depth,
+                );
+                self.gl
+                    .uniform_2_f32(parallax_loc.as_ref(), offset[0], offset[1]);
                 let opacity = draw
                     .quad
                     .opacity_animation
@@ -1629,6 +1653,7 @@ mod tests {
             layout_viewport: [1920, 1080],
             camera_zoom: 1.0,
             camera_zoom_animation: None,
+            parallax: None,
             audio_spectrum: None,
         };
         assert_eq!(scene_layout_scale(&assets, (3840, 2160)), [1.0, 1.0]);

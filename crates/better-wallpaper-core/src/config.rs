@@ -81,9 +81,9 @@ pub enum WallpaperType {
 #[serde(default)]
 pub struct SceneConfig {
     pub quality: SceneQuality,
-    /// Reserved for mouse interaction; persisted but not used at runtime.
+    /// Enable wallpaper-surface pointer input for basic niri scene parallax.
     pub mouse: bool,
-    /// Reserved for parallax; persisted but not used at runtime.
+    /// Enable authored basic camera parallax in the niri scene renderer.
     pub parallax: bool,
     pub audio_processing: bool,
     /// Reserved for particle rendering; validated and persisted but not enforced.

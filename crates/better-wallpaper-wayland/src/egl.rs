@@ -164,6 +164,7 @@ impl EglRenderer {
         width: u32,
         height: u32,
         elapsed_seconds: f64,
+        pointer: Option<[f32; 2]>,
     ) -> Result<()> {
         self.make_current()?;
         let renderer = self
@@ -182,7 +183,7 @@ impl EglRenderer {
             self.output_size = (width, height);
         }
         renderer
-            .draw_scene(assets, elapsed_seconds)
+            .draw_scene_with_pointer(assets, elapsed_seconds, pointer)
             .map_err(|msg| anyhow::anyhow!("scene GPU draw: {msg}"))?;
         self.egl.swap_buffers(self.display, self.surface)?;
         Ok(())

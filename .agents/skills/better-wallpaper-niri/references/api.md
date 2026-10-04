@@ -35,10 +35,15 @@ same fallback. Startup probes NVIDIA Vulkan/DMA-BUF capability; `--require-nvidi
 turns probe failure into startup failure. That probe alone does not prove end-to-end
 zero-copy frame presentation.
 
-Scene surfaces do not collect pointer input or implement mouse/parallax behavior.
-`scene.mouse`, `scene.parallax`, and `scene.particle_limit` are ignored reserved
-settings, reported separately by the daemon and disabled in the Web UI. Their
-stored values do not prove backend support; see the rendering improvements.
+Scene surfaces collect standard Wayland seat/pointer events for enabled authored
+basic parallax. Events must target the current wallpaper surface; leave, seat
+removal and output removal clear the position. Positions normalize to the output
+size with Y-up axes. Scene-clock smoothing freezes on pause. Missing pointer seats
+leave the scene centered. `scene.mouse` and `scene.parallax` must both be enabled.
+Pointer focus is limited to exposed background: movement over other clients is
+unavailable, and leaving the wallpaper returns toward center. Keyboard focus and
+window interactions remain owned by the compositor. No global pointer tracking
+or arbitrary script interaction is claimed. `scene.particle_limit` remains ignored.
 
 Preserve frame callback pacing, configured output selection, resize behavior, and
 buffer lifetime. EGL resources must be released before their Wayland connection

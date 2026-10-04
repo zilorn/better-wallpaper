@@ -4,10 +4,15 @@ use better_wallpaper_core::{DecodedFrame, config::FillMode};
 use better_wallpaper_renderer::Scene2dAssets;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
+    delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::{
+        Capability, SeatHandler, SeatState,
+        pointer::{PointerEvent, PointerEventKind, PointerHandler},
+    },
     shell::{
         WaylandSurface,
         wlr_layer::{
@@ -25,7 +30,7 @@ use tracing::{debug, info, warn};
 use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_output, wl_shm, wl_surface},
+    protocol::{wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
 };
 
 pub struct NiriBackend {
@@ -97,6 +102,10 @@ impl NiriBackend {
             registry_state: RegistryState::new(&globals),
             output_state: OutputState::new(&globals, &qh),
             shm,
+            seat_state: SeatState::new(&globals, &qh),
+            pointers: Vec::new(),
+            pointer_position: None,
+            mouse_enabled: false,
             configured_size: None,
             closed: false,
             frame_ready: true,
@@ -129,6 +138,7 @@ impl NiriBackend {
             info!(output = %self.output_name, "released niri background surface");
         }
         self.state.surface = None;
+        self.state.pointer_position = None;
         self.state.configured_size = None;
         self.state.closed = false;
         self.state.frame_ready = true;
@@ -264,6 +274,8 @@ impl NiriBackend {
         self.state.configured_size.unwrap_or((1, 1))
     }
     pub fn load_scene_assets(&mut self, assets: Scene2dAssets) -> Result<()> {
+        self.state.mouse_enabled = assets.parallax.is_some();
+        self.state.pointer_position = None;
         if let Some(surface) = &mut self.surface
             && surface.pool.is_some()
         {
@@ -296,7 +308,14 @@ impl NiriBackend {
             &self.event_queue.handle(),
             surface.layer.wl_surface().clone(),
         );
-        egl.render_scene(width, height, elapsed_seconds)?;
+        let pointer = if self.state.mouse_enabled {
+            self.state
+                .pointer_position
+                .and_then(|position| normalized_pointer(position, (width, height)))
+        } else {
+            None
+        };
+        egl.render_scene(width, height, elapsed_seconds, pointer)?;
         surface.layer.commit();
         self.connection
             .flush()
@@ -591,16 +610,107 @@ fn scale_rgba_with_plan(frame: &DecodedFrame, target: &mut [u8], plan: &ScalePla
     }
 }
 
+fn normalized_pointer((x, y): (f64, f64), (width, height): (u32, u32)) -> Option<[f32; 2]> {
+    if width == 0 || height == 0 || !x.is_finite() || !y.is_finite() {
+        return None;
+    }
+    Some([
+        (2.0 * x / f64::from(width) - 1.0).clamp(-1.0, 1.0) as f32,
+        (1.0 - 2.0 * y / f64::from(height)).clamp(-1.0, 1.0) as f32,
+    ])
+}
+
 struct NiriState {
     registry_state: RegistryState,
     output_state: OutputState,
     shm: Shm,
+    seat_state: SeatState,
+    pointers: Vec<(wl_seat::WlSeat, wl_pointer::WlPointer)>,
+    pointer_position: Option<(f64, f64)>,
+    mouse_enabled: bool,
     configured_size: Option<(u32, u32)>,
     closed: bool,
     frame_ready: bool,
     surface: Option<wl_surface::WlSurface>,
     outputs_changed: bool,
     needs_redraw: bool,
+}
+
+impl SeatHandler for NiriState {
+    fn seat_state(&mut self) -> &mut SeatState {
+        &mut self.seat_state
+    }
+    fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
+    fn new_capability(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer
+            && !self.pointers.iter().any(|(known, _)| known == &seat)
+        {
+            match self.seat_state.get_pointer(qh, &seat) {
+                Ok(pointer) => {
+                    self.pointers.push((seat, pointer));
+                    info!("Wayland pointer available for wallpaper-surface parallax");
+                }
+                Err(error) => warn!(%error, "failed to bind Wayland scene pointer"),
+            }
+        }
+    }
+    fn remove_capability(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer
+            && let Some(index) = self.pointers.iter().position(|(known, _)| known == &seat)
+        {
+            let (_, pointer) = self.pointers.swap_remove(index);
+            if pointer.version() >= 3 {
+                pointer.release();
+            }
+            self.pointer_position = None;
+            info!("Wayland scene pointer removed");
+        }
+    }
+    fn remove_seat(&mut self, conn: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat) {
+        self.remove_capability(conn, qh, seat, Capability::Pointer);
+    }
+}
+
+impl NiriState {
+    fn handle_pointer_event(&mut self, event: &PointerEvent) {
+        if !self.mouse_enabled || self.surface.as_ref() != Some(&event.surface) {
+            return;
+        }
+        match event.kind {
+            PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                self.pointer_position = Some(event.position)
+            }
+            PointerEventKind::Leave { .. } => self.pointer_position = None,
+            _ => return,
+        }
+        self.needs_redraw = true;
+    }
+}
+
+impl PointerHandler for NiriState {
+    fn pointer_frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        for event in events {
+            self.handle_pointer_event(event);
+        }
+    }
 }
 
 impl CompositorHandler for NiriState {
@@ -722,13 +832,15 @@ delegate_output!(NiriState);
 delegate_shm!(NiriState);
 delegate_layer!(NiriState);
 delegate_registry!(NiriState);
+delegate_seat!(NiriState);
+delegate_pointer!(NiriState);
 
 impl ProvidesRegistryState for NiriState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
 
-    registry_handlers![OutputState];
+    registry_handlers![OutputState, SeatState];
 }
 
 #[cfg(test)]

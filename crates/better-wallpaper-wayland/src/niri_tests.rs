@@ -270,3 +270,44 @@ fn resize_marks_repaint_and_stale_surface_events_are_ignored() {
     assert_eq!(backend.size(), (2560, 1440));
     assert!(backend.state.needs_redraw);
 }
+
+#[test]
+fn pointer_input_filters_disabled_and_stale_surfaces_and_resets_on_removal() {
+    let (peer, mut backend) = peer(Some("DP-1"));
+    peer.commands.send(Command::AddOutput(10, "DP-1")).unwrap();
+    pump_until(&mut backend, |b| b.surface.is_some());
+    let surface = backend.state.surface.as_ref().unwrap().clone();
+    let event = PointerEvent {
+        surface: surface.clone(),
+        position: (75.0, 25.0),
+        kind: PointerEventKind::Motion { time: 0 },
+    };
+    backend.state.handle_pointer_event(&event);
+    assert!(backend.state.pointer_position.is_none());
+    backend.state.mouse_enabled = true;
+    backend.state.handle_pointer_event(&event);
+    assert_eq!(
+        normalized_pointer(backend.state.pointer_position.unwrap(), (100, 100)),
+        Some([0.5, 0.5])
+    );
+    let leave = PointerEvent {
+        kind: PointerEventKind::Leave { serial: 1 },
+        ..event.clone()
+    };
+    backend.state.handle_pointer_event(&leave);
+    assert!(backend.state.pointer_position.is_none());
+    backend.state.handle_pointer_event(&event);
+    peer.commands.send(Command::RemoveOutput(10)).unwrap();
+    pump_until(&mut backend, |b| b.surface.is_none());
+    assert!(backend.state.pointer_position.is_none());
+    peer.commands.send(Command::AddOutput(11, "DP-1")).unwrap();
+    pump_until(&mut backend, |b| b.surface.is_some());
+    backend.state.handle_pointer_event(&event);
+    assert!(backend.state.pointer_position.is_none());
+    assert_eq!(
+        normalized_pointer((1000.0, -100.0), (100, 100)),
+        Some([1.0, 1.0])
+    );
+    assert!(normalized_pointer((f64::NAN, 0.0), (100, 100)).is_none());
+    assert!(normalized_pointer((0.0, 0.0), (0, 100)).is_none());
+}

@@ -1,19 +1,27 @@
 # Rendering Improvements
 
-## Mouse, Parallax and Particle Settings — Not Implemented
+## Basic Mouse Parallax — Implemented / Desktop Verification Needed
 
-Evidence: `SceneConfig` in `better-wallpaper-core/src/config.rs` preserves `mouse`,
-`parallax`, and `particle_limit`, but `run_niri_scene` only consumes quality and
-audio processing, while `prepare_scene` consumes property overrides.
-`NiriBackend::present_scene` passes
-elapsed time to the GPU renderer without pointer state or a particle budget.
-The daemon now reports the reserved values as ignored, and Web controls are
-disabled and marked unimplemented.
+Evidence: scene IR parses bounded camera parameters and per-axis layer depth;
+`SceneParallaxState` and `scene_parallax_offset` share scene-clock smoothing and
+translation. `SceneGpuRenderer::draw_scene_with_pointer` applies the displacement.
+The niri seat/pointer handlers forward only current wallpaper-surface events and
+clear pointer state on leave/removal. The daemon gates it with `scene.mouse` and
+`scene.parallax`; the Web UI enables these controls with a niri limitation label.
+Regression tests cover frame-rate independence, pause, recentering, depth axes,
+invalid parameters, disabled input and stale surfaces after hotplug.
 
-Completion: implement each setting's runtime consumer with regression evidence;
-verify pointer-driven interaction/parallax in a real desktop session and enforce
-particle budgets on actual particle draws. Enable each control and update logs
-only when its corresponding behavior works.
+Completion: verify actual pointer-driven playback in niri with multiple outputs,
+resize and compositor recovery, and compare authored sample motion. Standard
+Wayland does not provide other windows' global pointer positions; a supported
+compositor input source is required before claiming desktop-wide mouse tracking.
+Depth-map parallax and arbitrary mouse scripts remain unsupported.
+
+## Particle Settings — Unsupported by Design
+
+`scene.particle_limit` is preserved and validated, but particle nodes are skipped.
+The daemon reports it as ignored and the Web UI keeps the control disabled.
+Particle rendering and runtime budget enforcement remain outside the L2 task.
 
 ## Scene Fidelity — Sample-Driven Candidate
 

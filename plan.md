@@ -494,3 +494,15 @@ media decoding excludes playlists/network access and external MOV references.
 Original generated video tests cover clock freeze, loop boundaries, shared outputs
 and cancellation. Eight-hour playback and real GPU/hotplug validation are pending;
 these unit checks do not complete the phase 4 exit criterion.
+
+### L2 basic parallax follow-up
+
+Camera amount/delay/mouse influence and explicit per-layer `parallaxDepth` now
+feed shared scene-clock smoothing and GPU translation. The niri backend consumes
+standard Wayland pointer events on the wallpaper surface; the saved mouse/parallax
+switches gate this behavior and the Web UI enables them. Tests cover axes, pause,
+frame-rate independence, input loss and stale events after surface replacement.
+The approximation is bounded; desktop-wide tracking over other windows and
+reference-sample motion parity remain unverified. Particle systems, SceneScript,
+Spine/Spriter model nodes, 3D/bones, container child groups, unlisted effects,
+model animation layers and attachments remain outside this L2 follow-up.

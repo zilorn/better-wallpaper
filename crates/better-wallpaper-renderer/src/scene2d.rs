@@ -83,6 +83,7 @@ pub struct Scene2dQuad {
     pub resource: String,
     pub text: Option<SceneText>,
     pub video: bool,
+    pub parallax_depth: [f32; 2],
     pub dynamic_scale: Option<DynamicScaleKind>,
     pub audio_response: Option<SceneAudioResponse>,
     pub layout_transform: Mat3,
@@ -101,6 +102,66 @@ pub struct Scene2dQuad {
     pub iris: Option<better_wallpaper_scene_format::IrisEffect>,
     pub foliage_sway: Vec<better_wallpaper_scene_format::FoliageSwayEffect>,
     pub shine: Option<better_wallpaper_scene_format::ShineEffect>,
+}
+
+/// Smooth pointer motion on the scene clock: equal paused timestamps produce
+/// equal offsets, and leaving a surface transitions back to the centered view.
+#[derive(Debug, Default)]
+pub struct SceneParallaxState {
+    position: [f32; 2],
+    previous_time: Option<f64>,
+}
+
+impl SceneParallaxState {
+    pub fn update(
+        &mut self,
+        settings: Option<better_wallpaper_scene_format::SceneParallax>,
+        elapsed_seconds: f64,
+        pointer: Option<[f32; 2]>,
+    ) -> [f32; 2] {
+        let elapsed_seconds = if elapsed_seconds.is_finite() {
+            elapsed_seconds.max(0.0)
+        } else {
+            0.0
+        };
+        let previous = self.previous_time.replace(elapsed_seconds);
+        let Some(settings) = settings else {
+            self.position = [0.0; 2];
+            return self.position;
+        };
+        if previous.is_some_and(|time| elapsed_seconds < time) {
+            self.position = [0.0; 2];
+        }
+        let delta = previous.map_or(0.0, |time| (elapsed_seconds - time).max(0.0));
+        let target = pointer
+            .filter(|p| p.iter().all(|v| v.is_finite()))
+            .unwrap_or([0.0; 2])
+            .map(|v| v.clamp(-1.0, 1.0));
+        let alpha = if previous.is_some() && delta == 0.0 {
+            0.0
+        } else if settings.delay <= f32::EPSILON {
+            1.0
+        } else {
+            1.0 - (-delta / f64::from(settings.delay)).exp() as f32
+        };
+        for (position, target) in self.position.iter_mut().zip(target) {
+            *position += (target - *position) * alpha;
+        }
+        self.position
+    }
+}
+
+pub fn scene_parallax_offset(
+    settings: Option<better_wallpaper_scene_format::SceneParallax>,
+    pointer: [f32; 2],
+    depth: [f32; 2],
+) -> [f32; 2] {
+    settings.map_or([0.0; 2], |settings| {
+        std::array::from_fn(|axis| {
+            (-pointer[axis] * settings.amount * settings.mouse_influence * depth[axis])
+                .clamp(-2.0, 2.0)
+        })
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -144,6 +205,7 @@ pub struct Scene2dPlan {
     pub layout_viewport: [u32; 2],
     pub camera_zoom: f32,
     pub camera_zoom_animation: Option<ScalarAnimation>,
+    pub parallax: Option<better_wallpaper_scene_format::SceneParallax>,
 }
 
 /// A draw whose model/material/texture dependency chain has been fully resolved.
@@ -254,6 +316,7 @@ pub struct Scene2dAssets {
     pub layout_viewport: [u32; 2],
     pub camera_zoom: f32,
     pub camera_zoom_animation: Option<ScalarAnimation>,
+    pub parallax: Option<better_wallpaper_scene_format::SceneParallax>,
     pub audio_spectrum: Option<Arc<SceneAudioSpectrum>>,
 }
 
@@ -701,6 +764,7 @@ pub fn resolve_scene_2d_assets(
         layout_viewport,
         camera_zoom: plan.camera_zoom,
         camera_zoom_animation: plan.camera_zoom_animation,
+        parallax: plan.parallax,
         audio_spectrum: None,
     })
 }
@@ -1353,6 +1417,9 @@ pub fn build_scene_2d_plan(
                     resource: resource.clone(),
                     text: None,
                     video: matches!(node.kind, SceneNodeKind::Video(_)),
+                    parallax_depth: node
+                        .parallax_depth
+                        .map_or([0.0, 0.0], |depth| [depth.x, depth.y]),
                     dynamic_scale: None,
                     audio_response: Some(SceneAudioResponse {
                         bin,
@@ -1383,6 +1450,9 @@ pub fn build_scene_2d_plan(
             resource,
             text,
             video: matches!(node.kind, SceneNodeKind::Video(_)),
+            parallax_depth: node
+                .parallax_depth
+                .map_or([0.0, 0.0], |depth| [depth.x, depth.y]),
             dynamic_scale: node.dynamic_scale,
             audio_response: None,
             layout_transform: transform,
@@ -1412,6 +1482,7 @@ pub fn build_scene_2d_plan(
         layout_viewport: [options.viewport_width, options.viewport_height],
         camera_zoom: graph.camera.zoom,
         camera_zoom_animation: graph.camera.zoom_animation.clone(),
+        parallax: graph.camera.parallax,
     })
 }
 
@@ -1476,6 +1547,58 @@ fn resolve_node(
 mod tests {
     use super::*;
     use better_wallpaper_scene_format::parse_scene_graph;
+
+    #[test]
+    fn parallax_is_frame_rate_independent_frozen_by_pause_and_axis_bounded() {
+        let settings = better_wallpaper_scene_format::SceneParallax {
+            amount: 0.25,
+            delay: 0.2,
+            mouse_influence: 0.5,
+        };
+        let mut slow = SceneParallaxState::default();
+        let mut fast = SceneParallaxState::default();
+        slow.update(Some(settings), 0.0, Some([1.0, -1.0]));
+        fast.update(Some(settings), 0.0, Some([1.0, -1.0]));
+        let expected = slow.update(Some(settings), 1.0, Some([1.0, -1.0]));
+        let mut actual = [0.0; 2];
+        for frame in 1..=60 {
+            actual = fast.update(Some(settings), f64::from(frame) / 60.0, Some([1.0, -1.0]));
+        }
+        assert!((actual[0] - expected[0]).abs() < 0.00001);
+        assert_eq!(fast.update(Some(settings), 1.0, Some([-1.0, 1.0])), actual);
+        let offset = scene_parallax_offset(Some(settings), actual, [2.0, 0.0]);
+        assert!(offset[0] < -0.24);
+        assert_eq!(offset[1], 0.0);
+        assert_eq!(scene_parallax_offset(None, actual, [1.0, 1.0]), [0.0, 0.0]);
+        assert_eq!(fast.update(None, 1.0, None), [0.0, 0.0]);
+        fast.update(Some(settings), 2.0, Some([1.0, 1.0]));
+        let recentered = fast.update(Some(settings), 3.0, None);
+        assert!(recentered.iter().all(|v| v.abs() < 0.01));
+        assert_eq!(
+            fast.update(Some(settings), 0.0, Some([1.0, 1.0])),
+            [0.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn carries_authored_parallax_to_the_shared_draw_plan() {
+        let plan = plan(r#"{"general":{"cameraparallax":true,"cameraparallaxamount":0.25},"objects":[{"image":"models/a.json","size":"10 10","parallaxDepth":"1 0"},{"image":"models/b.json","size":"10 10","parallaxDepth":"0 2"}]}"#).unwrap();
+        assert_eq!(plan.parallax.unwrap().amount, 0.25);
+        assert_eq!(plan.quads[0].parallax_depth, [1.0, 0.0]);
+        assert_eq!(plan.quads[1].parallax_depth, [0.0, 2.0]);
+        let meta = better_wallpaper_scene_format::analyse_scene(r#"{"general":{"cameraparallax":true},"objects":[{"image":"models/a.json","parallaxDepth":"1 0"}]}"#).unwrap();
+        let report = better_wallpaper_scene_format::compute_compatibility(&meta);
+        assert_eq!(
+            report.level,
+            better_wallpaper_scene_format::CompatibilityLevel::L2
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .all(|warning| !warning.contains("ignored"))
+        );
+    }
 
     #[test]
     fn sprite_animation_uses_frame_durations_and_loops() {

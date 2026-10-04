@@ -25,3 +25,12 @@ through errors rather than a `connection_closed` handler.
 
 Completion: demonstrate bounded recovery after compositor restart, safe resource
 cleanup, and restored playback without leaked surfaces or stalled frame waits.
+
+## Basic Parallax Input — Implemented / Desktop Verification Needed
+
+`SeatState`, `SeatHandler` and `PointerHandler` bind pointer-capable seats and
+forward current-surface enter/motion/leave. The isolated peer regression verifies
+disabled input, normalization, leave and stale-surface rejection after removal.
+Completion: verify real pointer focus/cursor behavior, multiple seats, multi-output
+motion and resize in niri. Only exposed wallpaper-surface input is available;
+other windows' global coordinates need a supported compositor-specific source.

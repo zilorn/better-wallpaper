@@ -73,11 +73,14 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 - `general.log_level`: `info` or `debug`; scene quality: `low`, `medium`, `high`.
 - `scene.particle_limit`: 0–100,000; `scene.properties`: at most 256 string entries,
   keys 1–128 bytes, values at most 4,096 bytes.
-- `scene.mouse`, `scene.parallax`, and `scene.particle_limit` are reserved fields:
-  validation and persistence preserve their values, but no runtime behavior uses
-  them. The Web UI shows disabled controls marked unimplemented and preserves
-  stored values on save. Scene playback logs explicitly report these values as
-  ignored, separate from applied runtime settings.
+- `scene.mouse` and `scene.parallax` gate basic authored niri camera parallax.
+  Both must be true, and the scene must contain enabled camera settings and
+  per-layer depth. Pointer motion is available while focused on exposed wallpaper;
+  moving over another window returns the scene toward center. The Web UI enables
+  both controls and explains the niri-only input limitation. No arbitrary mouse
+  scripts or Plasma scene consumer is implied.
+- `scene.particle_limit` remains a reserved field: validation/persistence preserve
+  it, but the runtime ignores it and the Web UI keeps it disabled.
 - `scene.audio_processing` enables niri desktop spectrum capture for supported
   audio-response draws; capture failures fall back to rendering without spectrum
   data. `scene.script_enabled` does not execute scripts.
@@ -102,7 +105,8 @@ Symlinks in configured library traversal are skipped. Scene compatibility contai
 `level`, `level_name`, `supported_features`, `unsupported_features`, `warnings`.
 The level is the highest supported feature tier identified in the scene (L0–L3
 currently), with limitations listed separately even for higher tiers. Package
-analysis includes referenced sprite textures. It does not promise validated
+analysis includes referenced sprite and video textures, plus basic parallax with
+the niri pointer-focus warning. It does not promise validated
 assets, successful playback on the selected backend, or full engine parity.
 Library cards show supported-feature counts/details as well as limits and warnings;
 the optional UI field permits responses from older daemons without support lists.

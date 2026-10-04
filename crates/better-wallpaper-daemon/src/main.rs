@@ -287,10 +287,8 @@ fn run_playback(
         };
         let scene_config = config.scene.clone().unwrap_or_default();
         info!(
-            mouse = scene_config.mouse,
-            parallax = scene_config.parallax,
             particle_limit = scene_config.particle_limit,
-            "scene mouse interaction, parallax and particle limits are not implemented; saved values are ignored"
+            "scene particle limits are not implemented; saved value is ignored"
         );
         let prepared = prepare_scene(project_dir, &scene_config)?;
         info!(
@@ -434,6 +432,15 @@ fn run_niri_scene(
 ) -> Result<()> {
     use std::time::Duration;
 
+    if !scene_config.mouse || !scene_config.parallax {
+        assets.parallax = None;
+    }
+    info!(
+        mouse = scene_config.mouse,
+        parallax = scene_config.parallax,
+        authored = assets.parallax.is_some(),
+        "scene wallpaper-surface mouse parallax configuration applied"
+    );
     let audio_response_draws = assets
         .draws
         .iter()

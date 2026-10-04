@@ -26,6 +26,8 @@ pub struct SceneCamera {
     pub zoom: f32,
     #[serde(default)]
     pub zoom_animation: Option<ScalarAnimation>,
+    #[serde(default)]
+    pub parallax: Option<SceneParallax>,
 }
 
 impl Default for SceneCamera {
@@ -36,8 +38,17 @@ impl Default for SceneCamera {
             projection_size: None,
             zoom: 1.0,
             zoom_animation: None,
+            parallax: None,
         }
     }
+}
+
+/// Bounded basic 2D camera parallax. Depth-map effects remain unsupported.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SceneParallax {
+    pub amount: f32,
+    pub delay: f32,
+    pub mouse_influence: f32,
 }
 
 const fn default_one() -> f32 {
@@ -124,6 +135,8 @@ pub struct SceneNode {
     /// First authored instance texture, used when a system texture is unavailable.
     #[serde(default)]
     pub texture_override: Option<String>,
+    #[serde(default)]
+    pub parallax_depth: Option<Vec2>,
     /// Safe approximation of an animated color-grading fade on a composition layer.
     #[serde(default)]
     pub backdrop_fade: Option<ScalarAnimation>,
@@ -491,6 +504,7 @@ fn parse_camera(root: &Map<String, Value>) -> Result<SceneCamera, SceneParseErro
                 })
             })
             .transpose()?,
+        parallax: parse_camera_parallax(root.get("general").and_then(Value::as_object))?,
         zoom: zoom_value
             .map(unwrap_script_value)
             .map(|value| number_value("general.zoom", value))
@@ -501,6 +515,48 @@ fn parse_camera(root: &Map<String, Value>) -> Result<SceneCamera, SceneParseErro
             .transpose()?
             .flatten(),
     })
+}
+
+fn parse_camera_parallax(
+    general: Option<&Map<String, Value>>,
+) -> Result<Option<SceneParallax>, SceneParseError> {
+    let Some(general) = general else {
+        return Ok(None);
+    };
+    let enabled = general
+        .get("cameraparallax")
+        .map(unwrap_script_value)
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| SceneParseError::InvalidValue {
+                    field: "general.cameraparallax".into(),
+                    detail: "expected a boolean".into(),
+                })
+        })
+        .transpose()?
+        .unwrap_or(false);
+    let bounded = |key: &str, default: f32, max: f32| -> Result<f32, SceneParseError> {
+        let value = general
+            .get(key)
+            .map(unwrap_script_value)
+            .map(|v| number_value(&format!("general.{key}"), v))
+            .transpose()?
+            .unwrap_or(default);
+        if !(0.0..=max).contains(&value) {
+            return Err(SceneParseError::InvalidValue {
+                field: format!("general.{key}"),
+                detail: format!("expected a value in 0..={max}"),
+            });
+        }
+        Ok(value)
+    };
+    let settings = SceneParallax {
+        amount: bounded("cameraparallaxamount", 0.1, 100.0)?,
+        delay: bounded("cameraparallaxdelay", 0.1, 10.0)?,
+        mouse_influence: bounded("cameraparallaxmouseinfluence", 1.0, 10.0)?,
+    };
+    Ok(enabled.then_some(settings))
 }
 
 fn parse_node(
@@ -646,7 +702,6 @@ fn parse_node(
         ("attachment", "model attachment"),
         ("color", "layer color modulation"),
         ("colorBlendMode", "layer color blend mode"),
-        ("parallaxDepth", "per-layer parallax depth"),
         ("transform", "extended layer transform"),
     ] {
         if object.contains_key(field) {
@@ -662,6 +717,14 @@ fn parse_node(
         .and_then(|textures| textures.iter().find_map(Value::as_str))
         .map(validate_resource_path)
         .transpose()?;
+
+    let parallax_depth = optional_vec2(object, "parallaxDepth", &path)?;
+    if parallax_depth.is_some_and(|depth| depth.x.abs() > 100.0 || depth.y.abs() > 100.0) {
+        return Err(SceneParseError::InvalidValue {
+            field: format!("{path}.parallaxDepth"),
+            detail: "depth must be in -100..=100 on each axis".into(),
+        });
+    }
 
     Ok(SceneNode {
         id: scalar_id(object.get("id")).unwrap_or_else(|| format!("index-{index}")),
@@ -706,6 +769,7 @@ fn parse_node(
                 .flatten(),
         },
         texture_override,
+        parallax_depth,
         backdrop_fade,
         dynamic_scale: parse_dynamic_scale(object.get("scale")),
         audio_visualizer,
@@ -1865,6 +1929,29 @@ mod tests {
             }]
         })
         .to_string()
+    }
+
+    #[test]
+    fn parses_bound_camera_parallax_and_axis_depth_and_rejects_invalid_values() {
+        let graph = parse_scene_graph(r#"{"general":{"cameraparallax":{"value":true},"cameraparallaxamount":{"value":0.25},"cameraparallaxdelay":0.2,"cameraparallaxmouseinfluence":0.5},"objects":[{"image":"models/a.json","parallaxDepth":"1 0"}]}"#).unwrap();
+        assert_eq!(
+            graph.camera.parallax.unwrap(),
+            SceneParallax {
+                amount: 0.25,
+                delay: 0.2,
+                mouse_influence: 0.5
+            }
+        );
+        assert_eq!(graph.nodes[0].parallax_depth, Some(Vec2 { x: 1.0, y: 0.0 }));
+        assert!(graph.unsupported_features.is_empty());
+        for json in [
+            r#"{"general":{"cameraparallaxdelay":-1}}"#,
+            r#"{"general":{"cameraparallaxmouseinfluence":11}}"#,
+            r#"{"objects":[{"parallaxDepth":"101 0"}]}"#,
+            r#"{"objects":[{"parallaxDepth":"NaN 1"}]}"#,
+        ] {
+            assert!(parse_scene_graph(json).is_err(), "{json}");
+        }
     }
 
     #[test]
