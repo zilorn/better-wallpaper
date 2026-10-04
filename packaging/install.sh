@@ -24,6 +24,7 @@ if [ "$SKIP_BUILD" != "1" ]; then
 fi
 
 DAEMON_SOURCE="$PROJECT_ROOT/target/release/better-wallpaper-daemon"
+DESKTOP_SOURCE="$PROJECT_ROOT/target/release/better-wallpaper-desktop"
 SCENE_INSPECT_SOURCE="$PROJECT_ROOT/target/release/scene-inspect"
 SCENE_VALIDATE_SOURCE="$PROJECT_ROOT/target/release/scene-validate"
 WEB_SOURCE="$PROJECT_ROOT/web/dist/index.html"
@@ -31,6 +32,10 @@ PLASMA_SOURCE="$PROJECT_ROOT/kde/org.better-wallpaper/contents/ui/main.qml"
 
 test -x "$DAEMON_SOURCE" || {
     printf '%s\n' "错误：daemon 构建产物不存在：$DAEMON_SOURCE" >&2
+    exit 1
+}
+test -x "$DESKTOP_SOURCE" || {
+    printf '%s\n' "错误：桌面客户端构建产物不存在：$DESKTOP_SOURCE" >&2
     exit 1
 }
 test -x "$SCENE_INSPECT_SOURCE" || {
@@ -82,6 +87,9 @@ atomic_install \
     "$DAEMON_SOURCE" \
     "$DESTDIR$PREFIX/bin/better-wallpaper-daemon" \
     755
+atomic_install "$DESKTOP_SOURCE" "$DESTDIR$PREFIX/bin/better-wallpaper-desktop" 755
+atomic_install "$PROJECT_ROOT/assets/icons/better-wallpaper-64.png" \
+    "$DESTDIR$PREFIX/share/icons/hicolor/64x64/apps/better-wallpaper.png" 644
 atomic_install "$SCENE_INSPECT_SOURCE" "$DESTDIR$PREFIX/bin/scene-inspect" 755
 atomic_install "$SCENE_VALIDATE_SOURCE" "$DESTDIR$PREFIX/bin/scene-validate" 755
 install -d "$DESTDIR$PREFIX/share/better-wallpaper/web"
@@ -95,12 +103,18 @@ if [ -d "$LEGACY_PLASMA_MODULE" ]; then
 fi
 cp -R "$PROJECT_ROOT/kde/org.better-wallpaper/." \
     "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper/"
+install -d "$DESTDIR$PREFIX/share/applications"
+sed "s|@PREFIX@|$PREFIX|g" \
+    "$SCRIPT_DIR/desktop/org.betterwallpaper.desktop.desktop.in" \
+    > "$DESTDIR$PREFIX/share/applications/org.betterwallpaper.desktop.desktop"
 install -d "$DESTDIR$SYSTEMD_USER_UNIT_DIR"
 sed "s|@PREFIX@|$PREFIX|g" \
     "$SCRIPT_DIR/systemd/better-wallpaper.service.in" \
     > "$DESTDIR$SYSTEMD_USER_UNIT_DIR/better-wallpaper.service"
 
 test -x "$DESTDIR$PREFIX/bin/better-wallpaper-daemon"
+test -x "$DESTDIR$PREFIX/bin/better-wallpaper-desktop"
+test -f "$DESTDIR$PREFIX/share/applications/org.betterwallpaper.desktop.desktop"
 test -x "$DESTDIR$PREFIX/bin/scene-inspect"
 test -x "$DESTDIR$PREFIX/bin/scene-validate"
 test -f "$DESTDIR$PREFIX/share/better-wallpaper/web/index.html"

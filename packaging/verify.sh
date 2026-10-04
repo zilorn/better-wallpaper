@@ -14,7 +14,7 @@ log() {
     printf '%s\n' "[packaging-verify] $*"
 }
 
-log "构建 release daemon"
+log "构建 release daemon 和桌面客户端"
 cargo build --locked --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
 
 log "构建 Web 静态资源"
@@ -31,6 +31,8 @@ touch "$LEGACY_PLASMA_MODULE/qmldir" "$LEGACY_PLASMA_MODULE/libbetterwallpaperpl
 DESTDIR="$STAGE" PREFIX=/usr SKIP_BUILD=1 "$SCRIPT_DIR/install.sh"
 
 DAEMON="$STAGE/usr/bin/better-wallpaper-daemon"
+DESKTOP="$STAGE/usr/bin/better-wallpaper-desktop"
+ENTRY="$STAGE/usr/share/applications/org.betterwallpaper.desktop.desktop"
 UNIT="$STAGE/usr/lib/systemd/user/better-wallpaper.service"
 WEB="$STAGE/usr/share/better-wallpaper/web/index.html"
 PLASMA="$STAGE/usr/share/plasma/wallpapers/org.better-wallpaper"
@@ -38,6 +40,13 @@ ROOT_INSTALLER="$PROJECT_ROOT/install.sh"
 
 test -x "$ROOT_INSTALLER"
 test -x "$DAEMON"
+test -x "$DESKTOP"
+test -f "$ENTRY"
+test -f "$STAGE/usr/share/icons/hicolor/64x64/apps/better-wallpaper.png"
+grep -q '^Exec="/usr/bin/better-wallpaper-desktop"$' "$ENTRY"
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate "$ENTRY"
+fi
 test -f "$UNIT"
 test -f "$WEB"
 test -f "$PLASMA/metadata.json"
@@ -63,9 +72,10 @@ if ! SYSTEMD_OUTPUT=$(systemd-analyze verify "$UNIT" 2>&1); then
     fi
     log "受限环境无法访问 systemd 用户查询 socket；单元静态检查未发现其他错误"
 fi
-if ldd "$DAEMON" | grep -q 'not found'; then
+if ldd "$DAEMON" | grep -q 'not found' || ldd "$DESKTOP" | grep -q 'not found'; then
     log "发现缺失的动态链接库"
     ldd "$DAEMON"
+    ldd "$DESKTOP"
     exit 1
 fi
 qmllint "$PLASMA/contents/ui/main.qml"
@@ -73,6 +83,9 @@ qmllint "$PLASMA/contents/ui/main.qml"
 log "验证 staging 卸载"
 DESTDIR="$STAGE" PREFIX=/usr "$SCRIPT_DIR/uninstall.sh"
 test ! -e "$DAEMON"
+test ! -e "$DESKTOP"
+test ! -e "$ENTRY"
+test ! -e "$STAGE/usr/share/icons/hicolor/64x64/apps/better-wallpaper.png"
 test ! -e "$STAGE/usr/share/better-wallpaper"
 test ! -e "$PLASMA"
 test ! -e "$UNIT"

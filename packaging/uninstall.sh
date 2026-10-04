@@ -16,6 +16,9 @@ if [ -z "$DESTDIR" ] && command -v systemctl >/dev/null 2>&1; then
 fi
 
 rm -f "$DESTDIR$PREFIX/bin/better-wallpaper-daemon"
+rm -f "$DESTDIR$PREFIX/bin/better-wallpaper-desktop"
+rm -f "$DESTDIR$PREFIX/share/applications/org.betterwallpaper.desktop.desktop"
+rm -f "$DESTDIR$PREFIX/share/icons/hicolor/64x64/apps/better-wallpaper.png"
 rm -rf "$DESTDIR$PREFIX/share/better-wallpaper"
 rm -rf "$DESTDIR$PREFIX/share/plasma/wallpapers/org.better-wallpaper"
 rm -f "$DESTDIR$SYSTEMD_USER_UNIT_DIR/better-wallpaper.service"

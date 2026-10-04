@@ -1,0 +1,7 @@
+{
+  "identifier": "bootstrap",
+  "description": "Only the bundled connection screen may connect to the local daemon.",
+  "windows": ["main"],
+  "local": true,
+  "permissions": ["allow-connect"]
+}

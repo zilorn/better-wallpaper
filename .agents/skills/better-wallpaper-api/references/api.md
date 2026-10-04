@@ -13,6 +13,32 @@ without `XDG_RUNTIME_DIR`, the fallback is
 API version 1 and configuration version 2 are separate version numbers.
 JSON errors have the form `{"error":"message"}`.
 
+## Desktop Client and Tray
+
+`crates/better-wallpaper-desktop` is a Tauri 2 desktop client that loads the existing
+management page from the daemon, preserving same-origin HTTP/media/WebSocket behavior.
+Build/run with `cargo run -p better-wallpaper-desktop`; GTK 3 and WebKitGTK 4.1
+are required. The bundled connection screen reads the endpoint discovery file
+(with a default of `http://127.0.0.1:43129` when absent), permits only HTTP origins
+on `127.0.0.1`, and verifies status API v1 and the HTML page before navigation.
+Without `--url`, an unavailable daemon triggers a nonblocking systemd user-service
+start and up to 10 seconds of readiness polling; failure shows a retry screen.
+`--url <local-origin>` overrides discovery and disables service startup.
+
+Only the bundled screen has the `connect` IPC permission; remote management pages
+receive no native capabilities. Top-level navigation is restricted to the bundled
+screen and the selected management origin. The single-instance plugin focuses an
+existing window. Closing the window exits the client while daemon playback/tray
+continue. The existing daemon owns the only tray, retaining pause/resume, persistent
+mute and backend reload. Its launcher starts the sibling desktop binary with the
+current endpoint, falling back to `xdg-open` if absent, in an independent transient
+user service with graphics overrides removed. Packaging installs the binary,
+application-menu entry and icon; it does not require the Tauri CLI.
+On Linux with the NVIDIA kernel module loaded, the client defaults
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` before initializing WebKit, unless the user
+already set it. This avoids observed GBM allocation failures at the cost of the
+faster WebKit presentation path; other GPU stacks retain their defaults.
+
 ## Configuration and Playback
 
 | Method and route | Contract |

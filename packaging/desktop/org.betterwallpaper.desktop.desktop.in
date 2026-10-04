@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Better Wallpaper
+Comment=Manage animated desktop wallpapers
+Comment[zh_CN]=管理动态桌面壁纸
+Exec="@PREFIX@/bin/better-wallpaper-desktop"
+Icon=better-wallpaper
+Terminal=false
+Categories=Settings;DesktopSettings;
+StartupWMClass=org.betterwallpaper.desktop

@@ -1,4 +1,5 @@
 use std::{
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Arc, RwLock},
 };
@@ -94,7 +95,19 @@ impl WallpaperTray {
     }
 }
 
+fn desktop_client_path() -> Option<PathBuf> {
+    let path = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .join("better-wallpaper-desktop");
+    path.is_file().then_some(path)
+}
+
 fn ui_open_command(url: &str) -> Command {
+    ui_open_command_with_client(url, desktop_client_path().as_deref())
+}
+
+fn ui_open_command_with_client(url: &str, desktop_client: Option<&Path>) -> Command {
     // A direct child inherits ProtectSystem, PrivateTmp and NoNewPrivileges
     // from the wallpaper service. In particular, browsers cannot write their
     // profiles or find existing browser sockets there. A transient *service*
@@ -113,7 +126,13 @@ fn ui_open_command(url: &str) -> Command {
             "--property=UnsetEnvironment={}",
             GRAPHICS_ENV_OVERRIDES.join(" ")
         ))
-        .args(["--", "xdg-open"])
+        .arg("--");
+    if let Some(path) = desktop_client {
+        command.arg(path).arg("--url");
+    } else {
+        command.arg("xdg-open");
+    }
+    command
         .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -186,7 +205,7 @@ impl Tray for WallpaperTray {
             .into(),
             ksni::MenuItem::Separator,
             StandardItem {
-                label: "Open UI".into(),
+                label: "Open desktop client".into(),
                 icon_name: "preferences-system".into(),
                 activate: Box::new(|tray: &mut Self| tray.open_ui()),
                 ..Default::default()
@@ -210,8 +229,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn desktop_launch_uses_sibling_binary_and_explicit_endpoint() {
+        let command = ui_open_command_with_client(
+            "http://127.0.0.1:1234",
+            Some(Path::new(
+                "/opt/better-wallpaper/bin/better-wallpaper-desktop",
+            )),
+        );
+        let args = command.get_args().collect::<Vec<_>>();
+        assert_eq!(
+            &args[args.len() - 4..],
+            &[
+                "--",
+                "/opt/better-wallpaper/bin/better-wallpaper-desktop",
+                "--url",
+                "http://127.0.0.1:1234",
+            ]
+        );
+        assert_eq!(command.get_program(), "systemd-run");
+        for name in GRAPHICS_ENV_OVERRIDES {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(key, value)| key == *name && value.is_none())
+            );
+        }
+    }
+
+    #[test]
     fn browser_launch_uses_independent_service_without_graphics_overrides() {
-        let command = ui_open_command("http://127.0.0.1:1234");
+        let command = ui_open_command_with_client("http://127.0.0.1:1234", None);
         assert_eq!(command.get_program(), "systemd-run");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
