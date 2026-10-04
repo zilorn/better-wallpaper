@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, RwLock,
         atomic::{AtomicU32, Ordering},
     },
 };
@@ -82,6 +82,7 @@ pub struct Scene2dQuad {
     pub node_id: String,
     pub resource: String,
     pub text: Option<SceneText>,
+    pub video: bool,
     pub dynamic_scale: Option<DynamicScaleKind>,
     pub audio_response: Option<SceneAudioResponse>,
     pub layout_transform: Mat3,
@@ -153,6 +154,7 @@ pub struct Scene2dDraw {
     pub blend_mode: BlendMode,
     pub texture_path: String,
     pub texture: TextureImage,
+    pub video: Option<SceneVideoTexture>,
     pub text_render: Option<SceneFontRender>,
     /// Logical image bounds within a potentially padded GPU texture.
     pub uv: [f32; 4],
@@ -167,6 +169,21 @@ pub struct Scene2dDraw {
     pub shine_mask: Option<Scene2dEffectTexture>,
     pub shake_maps: Vec<Option<Scene2dEffectTexture>>,
     pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
+}
+
+/// Immutable encoded media plus a CPU frame shared by every output/context.
+#[derive(Debug, Clone)]
+pub struct SceneVideoTexture {
+    pub encoded: Arc<[u8]>,
+    pub frame: Arc<RwLock<Option<SceneVideoFrame>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SceneVideoFrame {
+    pub rgba: Arc<[u8]>,
+    pub width: u32,
+    pub height: u32,
+    pub generation: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +317,7 @@ pub fn resolve_scene_2d_assets(
         .map(|material| (material.path.as_str(), material.clone()))
         .collect::<HashMap<_, _>>();
 
+    let mut videos = HashMap::<String, SceneVideoTexture>::new();
     let mut draws = Vec::with_capacity(plan.quads.len());
     let mut skipped_nodes = plan.skipped_nodes;
     let projection_size = plan.projection_size;
@@ -311,6 +329,21 @@ pub fn resolve_scene_2d_assets(
     let text_resolution_scale = (projection_size[1] / layout_viewport[1] as f32).clamp(0.25, 8.0);
     for quad in plan.quads {
         let resolved = (|| {
+            if quad.video {
+                let entry = package
+                    .find(&quad.resource)
+                    .ok_or_else(|| Scene2dError::MissingTexture(quad.resource.clone()))?;
+                let video = videos
+                    .entry(quad.resource.clone())
+                    .or_insert_with(|| SceneVideoTexture {
+                        encoded: Arc::from(package.read_entry(entry)),
+                        frame: Arc::new(RwLock::new(None)),
+                    })
+                    .clone();
+                let mut draw = procedural_draw(quad, solid_color_texture([0, 0, 0, 0]), None);
+                draw.video = Some(video);
+                return Ok(draw);
+            }
             if let Some(text) = &quad.text {
                 let initial = match text.dynamic {
                     Some(DynamicTextKind::Clock) => "00:00",
@@ -399,6 +432,7 @@ pub fn resolve_scene_2d_assets(
                     blend_mode: BlendMode::Translucent,
                     texture_path,
                     texture,
+                    video: None,
                     text_render: None,
                     uv: [0.0, 0.0, 1.0, 1.0],
                     animation: None,
@@ -443,50 +477,97 @@ pub fn resolve_scene_2d_assets(
                 .find(&texture_path)
                 .ok_or_else(|| Scene2dError::MissingTexture(texture_path.clone()))?;
             let bytes = package.read_entry(entry);
-            let parsed =
-                TexTexture::parse(bytes).map_err(|error| Scene2dError::InvalidTexture {
-                    path: texture_path.clone(),
-                    detail: error.to_string(),
-                })?;
-            debug!(
-                texture = %texture_path,
-                format = ?parsed.format,
-                embedded_format = ?parsed.free_image_format,
-                mip_levels = parsed.mipmaps.len(),
-                animated_frames = parsed.frames.len(),
-                is_video = parsed.is_video,
-                "Decoded scene texture"
-            );
-            let texture =
-                parsed
-                    .to_texture_image()
-                    .map_err(|error| Scene2dError::InvalidTexture {
+            // Direct material video references and video-bearing TEX containers
+            // enter the same submission path; media is never uploaded as pixels.
+            let parsed = if better_wallpaper_scene_format::is_video_resource(&texture_path) {
+                None
+            } else {
+                Some(
+                    TexTexture::parse(bytes).map_err(|error| Scene2dError::InvalidTexture {
                         path: texture_path.clone(),
                         detail: error.to_string(),
-                    })?;
-            let base_level =
-                texture
-                    .levels
-                    .first()
-                    .ok_or_else(|| Scene2dError::InvalidTexture {
-                        path: texture_path.clone(),
-                        detail: "texture has no uploadable base level".into(),
-                    })?;
-            let upload_width = base_level.width as f32;
-            let upload_height = base_level.height as f32;
-            let uv = [
-                0.0,
-                0.0,
-                parsed.width as f32 / upload_width,
-                parsed.height as f32 / upload_height,
-            ];
-            let animation = sprite_animation(&parsed, upload_width, upload_height);
-            let mesh = model
-                .definition
-                .puppet
-                .as_deref()
-                .map(|path| load_puppet_mesh(package, path, &quad, parsed.width, parsed.height))
-                .transpose()?;
+                    })?,
+                )
+            };
+            let encoded_video = if parsed.as_ref().is_some_and(|tex| tex.is_video) {
+                Some(
+                    parsed
+                        .as_ref()
+                        .unwrap()
+                        .mipmaps
+                        .first()
+                        .ok_or_else(|| Scene2dError::InvalidTexture {
+                            path: texture_path.clone(),
+                            detail: "video TEX has no media payload".into(),
+                        })?
+                        .data
+                        .clone(),
+                )
+            } else if parsed.is_none() {
+                Some(Arc::from(bytes))
+            } else {
+                None
+            };
+            let video = encoded_video.map(|encoded| {
+                videos
+                    .entry(texture_path.clone())
+                    .or_insert_with(|| SceneVideoTexture {
+                        encoded,
+                        frame: Arc::new(RwLock::new(None)),
+                    })
+                    .clone()
+            });
+            let (texture, uv, animation, mesh) = if let Some(parsed) =
+                parsed.as_ref().filter(|tex| !tex.is_video)
+            {
+                debug!(
+                    texture = %texture_path,
+                    format = ?parsed.format,
+                    embedded_format = ?parsed.free_image_format,
+                    mip_levels = parsed.mipmaps.len(),
+                    animated_frames = parsed.frames.len(),
+                    is_video = parsed.is_video,
+                    "Decoded scene texture"
+                );
+                let texture =
+                    parsed
+                        .to_texture_image()
+                        .map_err(|error| Scene2dError::InvalidTexture {
+                            path: texture_path.clone(),
+                            detail: error.to_string(),
+                        })?;
+                let base_level =
+                    texture
+                        .levels
+                        .first()
+                        .ok_or_else(|| Scene2dError::InvalidTexture {
+                            path: texture_path.clone(),
+                            detail: "texture has no uploadable base level".into(),
+                        })?;
+                let upload_width = base_level.width as f32;
+                let upload_height = base_level.height as f32;
+                let uv = [
+                    0.0,
+                    0.0,
+                    parsed.width as f32 / upload_width,
+                    parsed.height as f32 / upload_height,
+                ];
+                let animation = sprite_animation(parsed, upload_width, upload_height);
+                let mesh = model
+                    .definition
+                    .puppet
+                    .as_deref()
+                    .map(|path| load_puppet_mesh(package, path, &quad, parsed.width, parsed.height))
+                    .transpose()?;
+                (texture, uv, animation, mesh)
+            } else {
+                (
+                    solid_color_texture([0, 0, 0, 0]),
+                    [0.0, 0.0, 1.0, 1.0],
+                    None,
+                    None,
+                )
+            };
             let water_wave_masks = quad
                 .water_waves
                 .iter()
@@ -589,6 +670,7 @@ pub fn resolve_scene_2d_assets(
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
                 texture,
+                video,
                 text_render: None,
                 uv,
                 animation,
@@ -634,6 +716,7 @@ fn procedural_draw(
         blend_mode: BlendMode::Translucent,
         texture_path,
         texture,
+        video: None,
         text_render,
         uv: [0.0, 0.0, 1.0, 1.0],
         animation: None,
@@ -1203,7 +1286,9 @@ pub fn build_scene_2d_plan(
     let mut skipped_nodes = 0;
     for (index, node) in graph.nodes.iter().enumerate() {
         let (resource, text) = match &node.kind {
-            SceneNodeKind::Image(resource) => (resource.clone(), None),
+            SceneNodeKind::Image(resource) | SceneNodeKind::Video(resource) => {
+                (resource.clone(), None)
+            }
             SceneNodeKind::Text(text) => (
                 format!("__better_wallpaper/text/{}", node.id),
                 Some(text.clone()),
@@ -1267,6 +1352,7 @@ pub fn build_scene_2d_plan(
                     node_id: format!("{}-audio-{bin}", node.id),
                     resource: resource.clone(),
                     text: None,
+                    video: matches!(node.kind, SceneNodeKind::Video(_)),
                     dynamic_scale: None,
                     audio_response: Some(SceneAudioResponse {
                         bin,
@@ -1296,6 +1382,7 @@ pub fn build_scene_2d_plan(
             node_id: node.id.clone(),
             resource,
             text,
+            video: matches!(node.kind, SceneNodeKind::Video(_)),
             dynamic_scale: node.dynamic_scale,
             audio_response: None,
             layout_transform: transform,
@@ -1805,6 +1892,48 @@ mod tests {
             plan(r#"{"objects":[{"id":1,"image":"a","size":"1 1","alpha":2}]}"#),
             Err(Scene2dError::InvalidOpacity(_))
         ));
+    }
+
+    #[test]
+    fn resolves_direct_and_embedded_video_without_static_pixel_conversion() {
+        let mut tex = b"TEXV0005\0TEXI0001\0".to_vec();
+        for value in [0_u32, 32, 16, 16, 16, 16, 0] {
+            tex.extend(value.to_le_bytes());
+        }
+        tex.extend(b"TEXB0002\0");
+        for value in [1_u32, 1, 16, 16, 0, 5, 5] {
+            tex.extend(value.to_le_bytes());
+        }
+        tex.extend(b"media");
+        let package = package(&[
+            ("videos/a.mp4", b"direct".to_vec()),
+            (
+                "models/bg.json",
+                br#"{"material":"materials/bg.json"}"#.to_vec(),
+            ),
+            (
+                "materials/bg.json",
+                br#"{"passes":[{"shader":"genericimage4","textures":["bg"]}]}"#.to_vec(),
+            ),
+            ("materials/bg.tex", tex),
+        ]);
+        let plan = plan(r#"{"objects":[{"id":1,"video":"videos/a.mp4","size":"16 16"},{"id":2,"image":"models/bg.json","size":"16 16"}]}"#).unwrap();
+        let assets = resolve_scene_2d_assets(&package, plan).unwrap();
+        assert_eq!(assets.skipped_nodes, 0);
+        assert_eq!(assets.draws.len(), 2);
+        assert_eq!(&*assets.draws[0].video.as_ref().unwrap().encoded, b"direct");
+        assert_eq!(&*assets.draws[1].video.as_ref().unwrap().encoded, b"media");
+        assert_eq!(assets.draws[1].uv, [0.0, 0.0, 1.0, 1.0]);
+        let meta = better_wallpaper_scene_format::analyse_scene_with_package(
+            r#"{"objects":[{"image":"models/bg.json"}]}"#,
+            &package,
+        )
+        .unwrap();
+        assert!(meta.has_video_texture);
+        assert_eq!(
+            better_wallpaper_scene_format::compute_compatibility(&meta).level,
+            better_wallpaper_scene_format::CompatibilityLevel::L2
+        );
     }
 
     #[test]

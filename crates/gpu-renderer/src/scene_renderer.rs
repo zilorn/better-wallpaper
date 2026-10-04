@@ -23,6 +23,7 @@ struct GpuTextureState {
     width: u32,
     height: u32,
     dynamic_label: Option<String>,
+    video_generation: u64,
 }
 
 const VERTEX_SHADER: &str = include_str!("shaders/scene.vert");
@@ -206,6 +207,7 @@ impl SceneGpuRenderer {
             width: base.width,
             height: base.height,
             dynamic_label: None,
+            video_generation: 0,
         })
     }
 
@@ -592,6 +594,65 @@ impl SceneGpuRenderer {
                             state.height = level.height;
                         }
                         state.dynamic_label = Some(label);
+                    }
+                }
+                if let Some(video) = &draw.video {
+                    let frame = video
+                        .frame
+                        .read()
+                        .map_err(|_| "scene video frame lock poisoned")?;
+                    let Some(frame) = frame.as_ref() else {
+                        continue;
+                    };
+                    if frame.width == 0
+                        || frame.height == 0
+                        || frame.width > self.max_texture_size
+                        || frame.height > self.max_texture_size
+                        || frame.rgba.len() != frame.width as usize * frame.height as usize * 4
+                    {
+                        return Err("invalid scene video RGBA frame".into());
+                    }
+                    let state = self
+                        .textures
+                        .get_mut(&draw.texture_path)
+                        .ok_or("scene video GPU texture missing")?;
+                    if state.video_generation != frame.generation {
+                        self.gl.active_texture(glow::TEXTURE0);
+                        self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_MIN_FILTER,
+                            glow::LINEAR as i32,
+                        );
+                        self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                        if (state.width, state.height) == (frame.width, frame.height) {
+                            self.gl.tex_sub_image_2d(
+                                glow::TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                frame.width as i32,
+                                frame.height as i32,
+                                glow::RGBA,
+                                glow::UNSIGNED_BYTE,
+                                glow::PixelUnpackData::Slice(&frame.rgba),
+                            );
+                        } else {
+                            self.gl.tex_image_2d(
+                                glow::TEXTURE_2D,
+                                0,
+                                glow::RGBA as i32,
+                                frame.width as i32,
+                                frame.height as i32,
+                                0,
+                                glow::RGBA,
+                                glow::UNSIGNED_BYTE,
+                                Some(&frame.rgba),
+                            );
+                            state.width = frame.width;
+                            state.height = frame.height;
+                        }
+                        state.video_generation = frame.generation;
                     }
                 }
                 let Some(state) = self.textures.get(&draw.texture_path) else {

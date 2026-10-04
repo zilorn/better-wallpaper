@@ -482,6 +482,10 @@ fn run_niri_scene(
             )
         })?;
     }
+    let mut scene_videos = better_wallpaper_daemon::scene_video::SceneVideoRuntime::start(
+        &assets,
+        scene_config.quality,
+    )?;
     let mut background_audio = scene_audio.start(play_background_audio);
     info!(
         output_count = backends.len(),
@@ -574,6 +578,7 @@ fn run_niri_scene(
             );
             was_paused = paused;
         }
+        scene_videos.update(scene_elapsed)?;
         let mut submitted = false;
         for backend in &mut backends {
             submitted |= backend
@@ -630,6 +635,7 @@ fn run_niri_scene(
             std::thread::sleep(frame_interval - elapsed);
         }
     }
+    drop(scene_videos);
     drop(background_audio);
     drop(scene_audio);
     drop(backends);

@@ -757,7 +757,7 @@ impl TexTexture {
             is_animated,
             container_version,
             free_image_format,
-            is_video: is_video || is_video_texb4,
+            is_video: is_video || is_video_texb4 || free_image_format == Some(FreeImageFormat::Mp4),
             spritesheet_cols,
             spritesheet_rows,
             spritesheet_frames: frames.len() as u32,

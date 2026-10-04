@@ -48,3 +48,8 @@ and surface. For shared draw/texture changes, also read
 Smoke command: `cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui`.
 Actual output/hotplug/GPU checks require a real niri session; a headless run cannot
 verify them. Use bounded English diagnostic logs as specified in `AGENTS.md`.
+
+Package video layers are decoded once by the daemon and shared across outputs via
+`SceneVideoTexture.frame`. They freeze with the scene clock on pause/absent outputs.
+Replacement EGL contexts upload the last CPU frame. Workers stop and join on
+pipeline teardown, including while the frame queue is full.

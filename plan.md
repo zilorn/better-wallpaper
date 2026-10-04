@@ -484,3 +484,13 @@ Wallpaper Engine 允许属性值为对象格式以支持动态绑定：
 - daemon 的 niri / Plasma 场景预检现同时执行共享资产解析，并以英语日志记录可提交 draw 数或精确降级原因。
 - 新增完整最小包测试，覆盖模型、材质、半透明混合、TEX 解析到提交 IR；workspace 共 103 项测试通过。
 - 仍未完成实际 GL 多纹理上传与 draw submission，因此 Plasma 能力字段继续保持 false，niri 也不会覆盖当前 surface。
+
+### L2 media follow-up
+
+Package video textures now resolve from direct media layers/material references
+and TEX video payloads into shared RGBA frames. The niri daemon uses bounded FFmpeg
+queues and the shared scene clock for pause, PTS scheduling and loops. Package
+media decoding excludes playlists/network access and external MOV references.
+Original generated video tests cover clock freeze, loop boundaries, shared outputs
+and cancellation. Eight-hour playback and real GPU/hotplug validation are pending;
+these unit checks do not complete the phase 4 exit criterion.

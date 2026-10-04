@@ -3,6 +3,7 @@
 pub mod desktop_audio;
 pub mod playback;
 pub mod scene_audio;
+pub mod scene_video;
 pub mod server;
 pub mod tray;
 

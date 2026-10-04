@@ -69,6 +69,7 @@ pub struct SceneMetadata {
     pub has_effects: bool,
     pub has_timeline_animation: bool,
     pub has_sprite_animation: bool,
+    pub has_video_texture: bool,
     pub has_audio_response: bool,
     pub supported_effects: Vec<String>,
     pub unsupported_effects: Vec<String>,
@@ -284,6 +285,13 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
         }
     }
 
+    if let Ok(graph) = parse_scene_graph(scene_json) {
+        meta.has_video_texture = graph
+            .nodes
+            .iter()
+            .any(|node| matches!(node.kind, crate::SceneNodeKind::Video(_)));
+    }
+
     // Objects analysis
     if let Some(objects) = json.get("objects").and_then(|v| v.as_array()) {
         meta.object_count = objects.len();
@@ -431,12 +439,17 @@ pub fn analyse_scene_with_package(
         }
     }
     for path in textures {
+        if crate::is_video_resource(&path) && package.find(&path).is_some() {
+            meta.has_video_texture = true;
+            continue;
+        }
         let Some(texture) = package
             .find(&path)
             .and_then(|entry| TexTexture::parse(package.read_entry(entry)).ok())
         else {
             continue;
         };
+        meta.has_video_texture |= texture.is_video && !texture.mipmaps.is_empty();
         let Some(mip) = texture.mipmaps.first() else {
             continue;
         };
@@ -465,9 +478,6 @@ pub fn analyse_scene_with_package(
             .sum::<f32>();
         meta.has_sprite_animation |=
             !texture.is_video && valid_frames.len() >= 2 && duration.is_finite() && duration > 0.0;
-        if meta.has_sprite_animation {
-            break;
-        }
     }
     Ok(meta)
 }
@@ -509,6 +519,7 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         .iter()
         .any(|kind| kind.starts_with("image:"))
         || meta.has_text
+        || meta.has_video_texture
     {
         level = CompatibilityLevel::L1;
         supported.push("2D layers and transforms".into());
@@ -520,6 +531,10 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         ),
         (meta.has_sprite_animation, "Sprite sheet animation"),
         (meta.has_sounds, "Scene background audio"),
+        (
+            meta.has_video_texture,
+            "Video textures (package media or embedded TEX video)",
+        ),
     ] {
         if present {
             level = CompatibilityLevel::L2;

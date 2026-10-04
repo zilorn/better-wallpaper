@@ -8,6 +8,7 @@ pub use cache::{GpuCacheError, GpuResourceCache, GpuResourceKey, MAX_GPU_CACHE_B
 pub use nvidia::{NvidiaDeviceInfo, NvidiaVulkanContext, NvidiaVulkanError};
 pub use scene2d::{
     Mat3, Scene2dAssets, Scene2dDraw, Scene2dError, Scene2dMesh, Scene2dOptions, Scene2dPlan,
-    Scene2dQuad, SceneAudioResponse, SceneAudioSpectrum, SceneFontRender, SpriteAnimation,
-    SpriteFrame, build_scene_2d_plan, font_text_texture, resolve_scene_2d_assets,
+    Scene2dQuad, SceneAudioResponse, SceneAudioSpectrum, SceneFontRender, SceneVideoFrame,
+    SceneVideoTexture, SpriteAnimation, SpriteFrame, build_scene_2d_plan, font_text_texture,
+    resolve_scene_2d_assets,
 };

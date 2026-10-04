@@ -25,7 +25,7 @@ metadata. Unknown private-format semantics need legal sample evidence.
 
 `scene::compute_compatibility` reports the highest supported feature tier actually
 identified in a scene: L0 for metadata only, L1 for 2D layers/text, L2 for supported
-scalar timelines, referenced sprite animation or background audio, and L3 for
+scalar timelines, referenced sprite animation, package video textures or background audio, and L3 for
 whitelisted 2D effects or the bounded native audio-spectrum pattern. No current
 feature awards L4. `supported_features`, `unsupported_features`, and `warnings`
 must be read together: mixed scenes retain their supported tier and all known
@@ -56,3 +56,20 @@ into each replacement EGL context. Its upload, render, and teardown paths restor
 the owning context before GL calls; missing outputs defer upload, while a ready
 output without EGL remains an error. See the niri skill for output/retry lifecycle
 contracts and pending desktop verification.
+
+Video submission: `SceneNodeKind::Video` accepts package-relative `video` resources
+and media paths in `image`; image model/material base textures also accept direct
+media and embedded video TEX payloads (TEXB0004 and the TEX video flag). Encoded
+bytes and `SceneVideoTexture.frame` are shared across draws and outputs. Each GL
+context tracks frame generations, updates RGBA storage on size changes, and
+reuploads the retained CPU frame after output replacement. Media uses full UVs.
+The niri daemon owns `SceneVideoRuntime`: at most eight decoders, two queued frames
+per decoder, 128 MiB per encoded payload and 64 MiB per RGBA frame. Quality limits
+height to 720/1080/2160. PTS follows the pause-aware shared scene clock, loops advance
+by media duration/last frame end, and dropped frames are released immediately.
+Private extracted files and workers are released on scene reload/cancellation.
+FFmpeg package decoding permits file-only MOV/Matroska/AVI containers and disables
+external MOV references; playlists and network demuxers are rejected. Video texture
+audio is not mixed; use the scene background audio node. Compatibility detection
+reports references, not successful decoding. Desktop/GPU and eight-hour stability
+verification remain separate requirements.

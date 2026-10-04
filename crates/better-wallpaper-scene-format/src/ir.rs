@@ -259,6 +259,8 @@ pub struct ShineEffect {
 #[serde(tag = "kind", content = "resource", rename_all = "snake_case")]
 pub enum SceneNodeKind {
     Image(String),
+    /// A package-relative video file used as a 2D layer.
+    Video(String),
     Model(String),
     Sound(SceneSound),
     Particle(String),
@@ -542,6 +544,7 @@ fn parse_node(
         "visible",
         "verticalalign",
         "volume",
+        "video",
     ];
     let path = format!("objects[{index}]");
     let unknown_fields = object
@@ -572,10 +575,14 @@ fn parse_node(
         SceneNodeKind::Sound(parse_scene_sound(object, resource, &path, unsupported)?)
     } else if let Some(text) = object.get("text") {
         SceneNodeKind::Text(parse_scene_text(object, text, &path)?)
+    } else if let Some(resource) = string_resource(object, "video", &path)? {
+        video_node_kind(resource)?
     } else if let Some(resource) = string_resource(object, "image", &path)? {
         if resource.ends_with(".mdl") {
             mark(unsupported, &path, &format!("Spriter model: {resource}"));
             SceneNodeKind::Model(resource)
+        } else if crate::resource::is_video_resource(&resource) {
+            video_node_kind(resource)?
         } else {
             SceneNodeKind::Image(resource)
         }
@@ -1679,6 +1686,13 @@ fn string_resource(
     validate_resource_path(value).map(Some)
 }
 
+fn video_node_kind(resource: String) -> Result<SceneNodeKind, SceneParseError> {
+    if resource.contains(':') {
+        return Err(SceneParseError::InvalidPath(resource));
+    }
+    Ok(SceneNodeKind::Video(resource))
+}
+
 fn validate_resource_path(path: &str) -> Result<String, SceneParseError> {
     let normalized = path.replace('\\', "/");
     let has_drive = normalized.len() >= 2
@@ -1851,6 +1865,23 @@ mod tests {
             }]
         })
         .to_string()
+    }
+
+    #[test]
+    fn parses_video_layers_and_preserves_package_boundaries() {
+        let graph = parse_scene_graph(
+            r#"{"objects":[{"video":"videos/a.mp4"},{"image":"videos/b.webm"}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(graph.nodes[0].kind, SceneNodeKind::Video(_)));
+        assert!(matches!(graph.nodes[1].kind, SceneNodeKind::Video(_)));
+        assert!(graph.unsupported_features.is_empty());
+        for path in ["../a.mp4", "/tmp/a.mp4", "https://example.com/a.mp4"] {
+            assert!(
+                parse_scene_graph(&serde_json::json!({"objects":[{"video":path}]}).to_string())
+                    .is_err()
+            );
+        }
     }
 
     #[test]

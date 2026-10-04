@@ -69,6 +69,7 @@ fn enable_cuda(context: &mut ffmpeg::codec::context::Context) -> Result<(), Stri
 
 pub struct FfmpegDecoder {
     input: Option<ffmpeg::format::context::Input>,
+    package_media: bool,
     decoder: Option<ffmpeg::decoder::Video>,
     scaler: Option<ffmpeg::software::scaling::Context>,
     scaler_source: Option<ffmpeg::format::Pixel>,
@@ -89,6 +90,7 @@ impl Default for FfmpegDecoder {
     fn default() -> Self {
         Self {
             input: None,
+            package_media: false,
             decoder: None,
             scaler: None,
             scaler_source: None,
@@ -111,6 +113,15 @@ impl Default for FfmpegDecoder {
 }
 
 impl FfmpegDecoder {
+    /// Package textures must be self-contained media. Disable network protocols,
+    /// playlist demuxers and MOV external data references before probing bytes.
+    pub fn for_package_media() -> Self {
+        Self {
+            package_media: true,
+            ..Self::default()
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -302,7 +313,17 @@ impl VideoDecoder for FfmpegDecoder {
             path: path.display().to_string(),
             message: error.to_string(),
         })?;
-        let input = ffmpeg::format::input(path).map_err(|error| VideoError::Open {
+        let input = if self.package_media {
+            let mut options = ffmpeg::Dictionary::new();
+            options.set("protocol_whitelist", "file");
+            options.set("format_whitelist", "mov,matroska,avi");
+            options.set("enable_drefs", "0");
+            options.set("use_absolute_path", "0");
+            ffmpeg::format::input_with_dictionary(path, options)
+        } else {
+            ffmpeg::format::input(path)
+        }
+        .map_err(|error| VideoError::Open {
             path: path.display().to_string(),
             message: error.to_string(),
         })?;

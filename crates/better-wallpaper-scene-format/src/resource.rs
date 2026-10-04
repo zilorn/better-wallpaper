@@ -253,7 +253,11 @@ impl ResourceManifest {
         for (index, node) in graph.nodes.iter().enumerate() {
             let source = format!("objects[{index}]");
             let resource = match &node.kind {
-                SceneNodeKind::Image(path) | SceneNodeKind::Particle(path) if !path.is_empty() => {
+                SceneNodeKind::Image(path)
+                | SceneNodeKind::Video(path)
+                | SceneNodeKind::Particle(path)
+                    if !path.is_empty() =>
+                {
                     Some(path)
                 }
                 SceneNodeKind::Sound(sound) if !sound.resource.is_empty() => Some(&sound.resource),
@@ -404,12 +408,22 @@ impl MaterialManifest {
 ///
 /// Kept in the format crate so every desktop renderer uses the same canonical
 /// package path instead of duplicating Wallpaper Engine-specific rules.
+pub fn is_video_resource(path: &str) -> bool {
+    matches!(
+        path.rsplit_once('.')
+            .map(|(_, ext)| ext.to_ascii_lowercase())
+            .as_deref(),
+        Some("mp4" | "webm" | "mkv" | "avi" | "mov" | "m4v")
+    )
+}
+
 pub fn resolve_texture_path(_material_path: &str, texture: &str) -> String {
     let extension = texture.rsplit_once('.').map(|(_, extension)| extension);
     let texture = if matches!(
         extension,
         Some("tex" | "dds" | "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tga")
-    ) {
+    ) || is_video_resource(texture)
+    {
         texture.to_owned()
     } else {
         format!("{texture}.tex")

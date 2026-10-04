@@ -38,7 +38,8 @@ pub use puppet::{
 pub use resource::{
     MAX_RESOURCE_CACHE_BYTES, MaterialManifest, MaterialResource, ModelManifest, ModelResource,
     ResourceCache, ResourceCacheError, ResourceCacheKey, ResourceDescriptor, ResourceKind,
-    ResourceManifest, ResourceReference, ResourceValidationReport, resolve_texture_path,
+    ResourceManifest, ResourceReference, ResourceValidationReport, is_video_resource,
+    resolve_texture_path,
 };
 pub use scene::{
     CompatibilityLevel, CompatibilityReport, PropertyType, PropertyValue, SceneMetadata,
