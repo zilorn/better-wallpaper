@@ -12,3 +12,10 @@ better-wallpaper-scene-format = { path = "../better-wallpaper-scene-format" }
 half = "2"
 libc.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+khronos-egl.workspace = true
+png = "0.17"
+serde_json.workspace = true
+tempfile.workspace = true
+better-wallpaper-ffmpeg = { path = "../better-wallpaper-ffmpeg" }

@@ -506,3 +506,16 @@ The approximation is bounded; desktop-wide tracking over other windows and
 reference-sample motion parity remain unverified. Particle systems, SceneScript,
 Spine/Spriter model nodes, 3D/bones, container child groups, unlisted effects,
 model animation layers and attachments remain outside this L2 follow-up.
+
+### Golden/SSIM verification follow-up
+
+The repository now has explicit surfaceless GLES golden regressions in
+`crates/gpu-renderer/tests/scene_golden.rs`, ten independently generated synthetic
+PNG references and local SSIM/RGBA error gates (SSIM ≥0.995, MSE ≤1, max error ≤2).
+They cover transforms, rotation, blend alpha/order, cover/resize, UV padding and
+orientation, scalar timelines, sprites, basic parallax, embedded video texture
+updates and context replacement. All fourteen comparisons pass exactly on
+llvmpipe. They exposed and fixed incorrect translucent framebuffer alpha.
+Stage 3 reference-screenshot parity still needs legal authored Wallpaper Engine
+captures and vendor GPU runs; the synthetic regression harness alone does not
+fulfill that exit condition. Stage 4 eight-hour playback remains unperformed.

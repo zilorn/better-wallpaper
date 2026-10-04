@@ -688,17 +688,30 @@ impl SceneGpuRenderer {
                     }
                     BlendMode::Translucent => {
                         self.gl.enable(glow::BLEND);
-                        self.gl
-                            .blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+                        self.gl.blend_func_separate(
+                            glow::SRC_ALPHA,
+                            glow::ONE_MINUS_SRC_ALPHA,
+                            glow::ONE,
+                            glow::ONE_MINUS_SRC_ALPHA,
+                        );
                     }
                     BlendMode::Additive => {
                         self.gl.enable(glow::BLEND);
-                        self.gl.blend_func(glow::SRC_ALPHA, glow::ONE);
+                        self.gl.blend_func_separate(
+                            glow::SRC_ALPHA,
+                            glow::ONE,
+                            glow::ONE,
+                            glow::ONE,
+                        );
                     }
                     _ => {
                         self.gl.enable(glow::BLEND);
-                        self.gl
-                            .blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+                        self.gl.blend_func_separate(
+                            glow::SRC_ALPHA,
+                            glow::ONE_MINUS_SRC_ALPHA,
+                            glow::ONE,
+                            glow::ONE_MINUS_SRC_ALPHA,
+                        );
                     }
                 }
                 self.gl.active_texture(glow::TEXTURE0);

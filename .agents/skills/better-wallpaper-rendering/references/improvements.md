@@ -42,3 +42,20 @@ are in `crates/better-wallpaper-scene-format/fuzz/`.
 Completion: run the documented targets for the planned duration, record actual
 results and reproducible failures, and address failures within task scope. Unit
 tests or compilation do not fulfill the long-running verification criterion.
+
+## Golden/SSIM Regression Harness — Implemented / Reference Parity Pending
+
+Evidence: `gpu-renderer/tests/scene_golden.rs` renders shared PKG/TEX assets in a
+surfaceless GLES context and compares ten analytical PNG references using local
+SSIM plus RGBA MSE/max error. Fourteen comparisons passed on llvmpipe with SSIM=1
+and zero channel error, including TEXB0004 video updates/context replacement and
+basic pointer parallax. The harness exposed and now covers a translucent alpha
+compositing bug. The ordinary suite tests the comparison gate; GPU cases require
+an explicit command documented in the rendering interfaces.
+
+Completion: add legal authored L1/L2 samples with independently captured Wallpaper
+Engine reference screenshots, fixed time/property/pointer inputs and recorded
+thresholds; run on supported vendor GPUs and real niri sessions. Synthetic exact
+matches do not complete the reference-screenshot fidelity or eight-hour soak exit
+criteria in `plan.md`. Fonts, broader effects and authoring-format variation still
+need reference sample coverage.

@@ -87,3 +87,16 @@ This is a bounded basic approximation, not demonstrated Wallpaper Engine pixel
 parity. Input loss returns smoothly to center. Source semantics:
 [Wallpaper Engine parallax](https://docs.wallpaperengine.io/en/scene/parallax/introduction.html)
 and [IScene parameters](https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/IScene.html).
+
+GPU regression command:
+`LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture`.
+The explicit surfaceless EGL/GLES test builds real shared plans/assets, invokes
+production shaders and compares readback against ten independent synthetic PNG
+references. Gates: local 8×8 SSIM ≥0.995, RGBA MSE ≤1, maximum byte error ≤2.
+Failure emits actual/difference images under `target/scene-golden-failures`.
+The ordinary workspace suite runs comparator checks but explicitly ignores the
+GPU case; missing EGL fails an explicit GPU run. See
+`crates/gpu-renderer/tests/golden/README.md` for regeneration and scope.
+Straight-alpha translucent draws now use separate color and alpha factors:
+source-over preserves alpha=1 on opaque backgrounds. Additive draws saturate
+color/alpha. The golden exposed the previous incorrect alpha multiplication.
