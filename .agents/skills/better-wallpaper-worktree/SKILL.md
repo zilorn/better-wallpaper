@@ -48,14 +48,17 @@ never for their contracts or verification requirements.
    succeed, so a failure never strands the work.
    `git -C .worktrees/<slug> rebase dev`. On a conflict, stop, report the
    conflicting files, and leave the worktree in place for manual resolution.
-4. **Advance dev.** `git -C .worktrees/<slug> push . HEAD:dev`. This moves
-   `dev` to the rebased tip as a fast-forward and is refused otherwise, so it
-   cannot discard commits already on `dev`. Then confirm `dev` resolves to the
-   worktree's HEAD.
+4. **Advance dev.** From the primary checkout, fast-forward `dev` to the rebased
+   branch: `git merge --ff-only wt/<slug>`. Then confirm `dev` resolves to the
+   worktree's HEAD. Do not use `git push . HEAD:dev`, which git rejects while
+   `dev` is checked out in the primary worktree. A fast-forward merge updates
+   the index, so it stays consistent with `dev` and preserves unrelated
+   uncommitted work; moving the `dev` ref directly with `git update-ref` does
+   not, and leaves that work looking staged or deleted.
 5. **Delete.** `git worktree remove .worktrees/<slug>`, then delete the branch
-   with `git branch -D wt/<slug>`, then `git worktree prune`. Force-deleting the
-   branch is correct here: step 4 already put its commits on `dev`, so `-d`
-   would refuse whenever `dev` is not the currently checked-out branch.
+   with `git branch -D wt/<slug>`, then `git worktree prune`. Force-deleting is
+   safe because step 4 already put the branch's commits on `dev`, and it keeps
+   cleanup working when `dev` is not the currently checked-out branch.
 
 Do not force or discard work to make a step pass. If a commit cannot be created,
 the rebase conflicts, or `dev` has diverged, report the state and stop with the
