@@ -104,9 +104,16 @@ local loose textures, validated 2D payloads increased from 370 to 412; the remai
 cover every TEXB1–4/TEXS1–3 combination and malformed records. GPU goldens cover
 all three sprite versions without changing reference pixels.
 
-Completion for remaining layouts: represent multiple atlas images and rotated
-frame bases explicitly, add bounded 3D LUT parsing/upload, and verify reference
-output before advertising support. The current parser rejects these layouts;
+The A1 `TexAtlas` inspection model now represents independent image/mip chains,
+frame image indices and full signed affine bases with count/byte/finite-value
+bounds. Its unit and CLI tests cover the five A0 candidate layouts and retain
+legacy playback rejection. The [atlas report](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
+records native frame-update/image-binding assembly and shipped shader evidence;
+the full uniform-upload mapping and native sample acceptance remain pending.
+
+Completion for remaining layouts: consume these images/bases in bounded resource
+resolution and GPU submission, add bounded 3D LUT parsing/upload, and verify
+reference output before advertising support. The playback adapter still rejects these layouts;
 negative-direction horizontal/vertical bases also fail explicitly. A0 sample
 construction exposed that flipped frames previously parsed successfully, then
 were discarded by `sprite_animation`, silently leaving a static full atlas.

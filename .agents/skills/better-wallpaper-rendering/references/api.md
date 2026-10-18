@@ -61,13 +61,28 @@ native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md
 TEXB1–4 store image count first; TEXB3/4 then store the FreeImage codec.
 TEXS1 reads signed integer coordinates, TEXS2/3 read floats, and TEXS3 adds logical
 frame dimensions. Frame records contain image index, duration, origin and two
-basis vectors; only a single 2D atlas with axis-aligned rectangles is represented.
-Multiple images, volume flag 0x40, off-axis or negative-direction bases and missing frame images return
+basis vectors. The playback `TexTexture` adapter represents one image with
+positive axis-aligned rectangles. Multiple images, volume flag 0x40, off-axis or negative-direction bases and missing frame images return
 explicit errors. Unknown TEXS versions and over-limit/truncated frame records
 are rejected. Zero-duration particle atlases do not imply timed sprite playback.
 `cargo run -p better-wallpaper-scene-format --example texture-audit -- /local/path`
 inspects loose TEX files without following symlinks; pixel validation is not GPU
 or scene-playback validation.
+
+`TexAtlas::parse` is a separate inspection model: independent image/mip lists,
+full signed affine frame bases and TEXS3 logical frame dimensions. It caps 64
+images, 32 mips per image, 10,000 frames and 128 MiB retained bytes across images;
+`parse_with_budget` can lower the byte cap. The existing per-mip/ratio limits
+apply, with one temporary mip during decoding. It requires finite frame fields,
+nonnegative durations, valid indices, complete animation blocks and validated
+2D payload sizes. Zero-duration, degenerate and out-of-range bases remain data,
+not proof of draw support. Single video payloads remain unverified; volume and
+multi-video layouts fail. `to_texture_images` validates independent pixel chains;
+`try_into_single_texture` enforces the existing playback layout gate.
+`scene-inspect /path/atlas.tex --atlas --json` adds bounded (128 MiB file input)
+structural inspection with explicit payload/layout/native-validation fields.
+Legacy playback and compatibility classifications are unchanged. See the
+[atlas evidence and contracts](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md).
 
 `cargo run -p better-wallpaper-scene-format --bin asset-audit -- --help` describes
 the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots

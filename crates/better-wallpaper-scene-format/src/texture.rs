@@ -17,6 +17,15 @@ pub const MAX_COMPRESSION_RATIO: u64 = 512;
 /// Maximum number of frames in an animated texture
 pub const MAX_ANIMATION_FRAMES: u32 = 10_000;
 
+/// Limits for the complete atlas inspection model, independent of image size.
+pub const MAX_ATLAS_IMAGES: u32 = 64;
+pub const MAX_ATLAS_MIPS_PER_IMAGE: u32 = 32;
+pub const MAX_ATLAS_DECODED_BYTES: u64 = 128 * 1024 * 1024;
+
+#[cfg(test)]
+#[path = "texture_atlas_tests.rs"]
+mod atlas_tests;
+
 // ── Data model ──────────────────────────────────────────────────────────────
 
 /// Pixel format of a Wallpaper Engine texture
@@ -122,6 +131,45 @@ pub struct AnimationFrame {
     pub height: f32,
 }
 
+/// One image's mip chain. Images are not interchangeable with mip levels.
+#[derive(Debug, Clone)]
+pub struct TexAtlasImage {
+    pub mipmaps: Vec<Mipmap>,
+}
+
+/// TEXS coordinates in pixels of the selected image's base mip.
+/// Native shaders apply origin + u * horizontal + v * vertical after component
+/// normalization by that image's width/height. No sampling inset is implied.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct TexAtlasFrame {
+    pub image_index: u32,
+    pub duration_seconds: f32,
+    pub origin: [f32; 2],
+    pub horizontal: [f32; 2],
+    pub vertical: [f32; 2],
+}
+
+/// Bounded container model for inspection and future atlas consumers.
+/// Parsing this type does not grant current scene playback support. Use
+/// `try_into_single_texture` to enforce the existing renderer's layout limits.
+#[derive(Debug, Clone)]
+pub struct TexAtlas {
+    pub format: TexFormat,
+    pub width: u32,
+    pub height: u32,
+    pub texture_width: u32,
+    pub texture_height: u32,
+    pub flags: u32,
+    pub images: Vec<TexAtlasImage>,
+    pub frames: Vec<TexAtlasFrame>,
+    /// Authored TEXS3 logical frame dimensions; absent for TEXS1/2.
+    pub frame_dimensions: Option<[u32; 2]>,
+    pub is_animated: bool,
+    pub container_version: u32,
+    pub free_image_format: Option<FreeImageFormat>,
+    pub is_video: bool,
+}
+
 /// A parsed .tex texture file
 #[derive(Debug, Clone)]
 pub struct TexTexture {
@@ -205,54 +253,65 @@ impl TexTexture {
 
     /// Convert container-specific mipmaps into a size-validated renderer input.
     pub fn to_texture_image(&self) -> Result<TextureImage, TexError> {
-        if self.mipmaps.is_empty() {
-            return Err(TexError::MissingMipmaps);
-        }
+        validate_mipmaps(
+            self.format,
+            [self.texture_width, self.texture_height],
+            &self.mipmaps,
+        )
+    }
+}
 
-        let mut levels = Vec::with_capacity(self.mipmaps.len());
-        for (level, mipmap) in self.mipmaps.iter().enumerate() {
-            if mipmap.width == 0
-                || mipmap.height == 0
-                || mipmap.width > MAX_TEXTURE_DIMENSION
-                || mipmap.height > MAX_TEXTURE_DIMENSION
-            {
-                return Err(TexError::InvalidDimensions {
-                    level,
-                    width: mipmap.width,
-                    height: mipmap.height,
-                });
-            }
-            let expected = expected_mipmap_size(self.format, mipmap.width, mipmap.height)?;
-            let divisor = 1_u32.checked_shl(level as u32).unwrap_or(u32::MAX);
-            let storage_width = self.texture_width.div_ceil(divisor).max(1);
-            let storage_height = self.texture_height.div_ceil(divisor).max(1);
-            let storage_expected =
-                expected_mipmap_size(self.format, storage_width, storage_height)?;
-            let (upload_width, upload_height) = if mipmap.data.len() as u64 == expected {
-                (mipmap.width, mipmap.height)
-            } else if mipmap.data.len() as u64 == storage_expected {
-                (storage_width, storage_height)
-            } else {
-                return Err(TexError::InvalidMipmapDataSize {
-                    level,
-                    expected,
-                    actual: mipmap.data.len(),
-                });
-            };
-            levels.push(TextureMipLevel {
-                width: upload_width,
-                height: upload_height,
-                data: Arc::clone(&mipmap.data),
+fn validate_mipmaps(
+    format: TexFormat,
+    storage: [u32; 2],
+    mipmaps: &[Mipmap],
+) -> Result<TextureImage, TexError> {
+    if mipmaps.is_empty() {
+        return Err(TexError::MissingMipmaps);
+    }
+
+    let mut levels = Vec::with_capacity(mipmaps.len());
+    for (level, mipmap) in mipmaps.iter().enumerate() {
+        if mipmap.width == 0
+            || mipmap.height == 0
+            || mipmap.width > MAX_TEXTURE_DIMENSION
+            || mipmap.height > MAX_TEXTURE_DIMENSION
+        {
+            return Err(TexError::InvalidDimensions {
+                level,
+                width: mipmap.width,
+                height: mipmap.height,
             });
         }
-
-        Ok(TextureImage {
-            format: self.format,
-            color_space: color_space(self.format),
-            alpha_mode: alpha_mode(self.format),
-            levels,
-        })
+        let expected = expected_mipmap_size(format, mipmap.width, mipmap.height)?;
+        let divisor = 1_u32.checked_shl(level as u32).unwrap_or(u32::MAX);
+        let storage_width = storage[0].div_ceil(divisor).max(1);
+        let storage_height = storage[1].div_ceil(divisor).max(1);
+        let storage_expected = expected_mipmap_size(format, storage_width, storage_height)?;
+        let (upload_width, upload_height) = if mipmap.data.len() as u64 == expected {
+            (mipmap.width, mipmap.height)
+        } else if mipmap.data.len() as u64 == storage_expected {
+            (storage_width, storage_height)
+        } else {
+            return Err(TexError::InvalidMipmapDataSize {
+                level,
+                expected,
+                actual: mipmap.data.len(),
+            });
+        };
+        levels.push(TextureMipLevel {
+            width: upload_width,
+            height: upload_height,
+            data: Arc::clone(&mipmap.data),
+        });
     }
+
+    Ok(TextureImage {
+        format,
+        color_space: color_space(format),
+        alpha_mode: alpha_mode(format),
+        levels,
+    })
 }
 
 fn expected_mipmap_size(format: TexFormat, width: u32, height: u32) -> Result<u64, TexError> {
@@ -483,6 +542,114 @@ impl TexTexture {
     /// Existing per-mip limits still apply. At most one additional mip's encoded
     /// and decoded buffers are temporarily allocated before this budget is checked.
     pub fn parse_with_budget(data: &[u8], max_decoded_bytes: u64) -> Result<Self, TexError> {
+        TexAtlas::parse_inner(data, max_decoded_bytes, false)?.try_into_single_texture()
+    }
+}
+
+impl TexAtlas {
+    pub fn parse(data: &[u8]) -> Result<Self, TexError> {
+        Self::parse_with_budget(data, MAX_ATLAS_DECODED_BYTES)
+    }
+
+    /// Retained mip bytes are capped across all images. A single temporary mip
+    /// may coexist while decoding, under the existing 64 MiB per-mip ceiling.
+    /// A caller may lower, but cannot raise, the 128 MiB atlas limit.
+    pub fn parse_with_budget(data: &[u8], max_decoded_bytes: u64) -> Result<Self, TexError> {
+        Self::parse_inner(data, max_decoded_bytes.min(MAX_ATLAS_DECODED_BYTES), true)
+    }
+
+    /// Size-validated independent images, without a claim of animation support.
+    pub fn to_texture_images(&self) -> Result<Vec<TextureImage>, TexError> {
+        if self.is_video {
+            return Err(TexError::InvalidData(
+                "Video atlas pixels require a media decoder".into(),
+            ));
+        }
+        self.images
+            .iter()
+            .map(|image| {
+                // A global TEXI size must not stand in for another image's size.
+                let storage = if self.images.len() == 1 {
+                    [self.texture_width, self.texture_height]
+                } else {
+                    let mip = image.mipmaps.first().ok_or(TexError::MissingMipmaps)?;
+                    [mip.width, mip.height]
+                };
+                validate_mipmaps(self.format, storage, &image.mipmaps)
+            })
+            .collect()
+    }
+
+    /// Preserve the current single-image, positive axis-aligned playback gate.
+    pub fn try_into_single_texture(self) -> Result<TexTexture, TexError> {
+        if self.images.len() != 1 {
+            return Err(TexError::InvalidData(format!(
+                "Expected one texture image, got {}; multiple atlas images are not supported",
+                self.images.len()
+            )));
+        }
+        let mut frames = Vec::with_capacity(self.frames.len());
+        for frame in self.frames {
+            if frame.horizontal[1] != 0.0 || frame.vertical[0] != 0.0 {
+                return Err(TexError::InvalidData(
+                    "Rotated or skewed texture animation frames are not supported".into(),
+                ));
+            }
+            if frame.horizontal[0] < 0.0 || frame.vertical[1] < 0.0 {
+                return Err(TexError::InvalidData(
+                    "Flipped texture animation frames are not supported".into(),
+                ));
+            }
+            frames.push(AnimationFrame {
+                frame_number: frame.image_index,
+                frametime: frame.duration_seconds,
+                x: frame.origin[0],
+                y: frame.origin[1],
+                width: frame.horizontal[0],
+                height: frame.vertical[1],
+            });
+        }
+        let (mut spritesheet_cols, mut spritesheet_rows, mut spritesheet_duration) = (0, 0, 0.0);
+        if let Some(frame) = frames.first()
+            && self.width > 0
+            && self.height > 0
+            && frame.width > 0.0
+            && frame.height > 0.0
+        {
+            spritesheet_cols = (self.width as f32 / frame.width).round() as u32;
+            spritesheet_rows = (self.height as f32 / frame.height).round() as u32;
+            if spritesheet_cols > 0
+                && spritesheet_rows > 0
+                && spritesheet_cols.saturating_mul(spritesheet_rows) >= frames.len() as u32
+            {
+                spritesheet_duration = frames.iter().map(|f| f.frametime).sum();
+            }
+        }
+        Ok(TexTexture {
+            format: self.format,
+            width: self.width,
+            height: self.height,
+            texture_width: self.texture_width,
+            texture_height: self.texture_height,
+            flags: self.flags,
+            mipmaps: self.images.into_iter().next().unwrap().mipmaps,
+            spritesheet_frames: frames.len() as u32,
+            frames,
+            is_animated: self.is_animated,
+            container_version: self.container_version,
+            free_image_format: self.free_image_format,
+            is_video: self.is_video,
+            spritesheet_cols,
+            spritesheet_rows,
+            spritesheet_duration,
+        })
+    }
+
+    fn parse_inner(
+        data: &[u8],
+        max_decoded_bytes: u64,
+        atlas_mode: bool,
+    ) -> Result<Self, TexError> {
         let len = data.len();
         let mut offset: usize = 0;
 
@@ -519,6 +686,15 @@ impl TexTexture {
                 max: MAX_TEXTURE_DIMENSION as u64,
             });
         }
+        if atlas_mode
+            && [width, height, texture_width, texture_height]
+                .iter()
+                .any(|value| !(1..=MAX_TEXTURE_DIMENSION).contains(value))
+        {
+            return Err(TexError::InvalidData(
+                "Atlas dimensions are outside the supported range".into(),
+            ));
+        }
 
         // Skip one uint32 (padding)
         read_u32_le(data, &mut offset)?;
@@ -542,9 +718,14 @@ impl TexTexture {
         // FreeImage codec, and version 4 adds video metadata. See the native
         // reader evidence in docs/reverse-engineering/wallpaper-engine-textures.md.
         let image_count = read_u32_le(data, &mut offset)?;
-        if image_count != 1 {
+        if !atlas_mode && image_count != 1 {
             return Err(TexError::InvalidData(format!(
                 "Expected one texture image, got {image_count}; multiple atlas images are not supported"
+            )));
+        }
+        if atlas_mode && !(1..=MAX_ATLAS_IMAGES).contains(&image_count) {
+            return Err(TexError::InvalidData(format!(
+                "Atlas image count {image_count} is outside 1..={MAX_ATLAS_IMAGES}"
             )));
         }
         let mut free_image_format = if container_version >= 3 {
@@ -561,17 +742,20 @@ impl TexTexture {
             }
         }
 
-        let mut mipmaps = Vec::new();
+        let mut images = Vec::new();
         let mut decoded_bytes = 0_u64;
 
         let mut frames = Vec::new();
-        let mut spritesheet_cols = 0u32;
-        let mut spritesheet_rows = 0u32;
-        let mut spritesheet_duration = 0f32;
+        let mut frame_dimensions = None;
 
         for _image_idx in 0..image_count {
             let mip_count = read_u32_le(data, &mut offset)?;
-
+            if atlas_mode && !(1..=MAX_ATLAS_MIPS_PER_IMAGE).contains(&mip_count) {
+                return Err(TexError::InvalidData(format!(
+                    "Atlas mip count {mip_count} is outside 1..={MAX_ATLAS_MIPS_PER_IMAGE}"
+                )));
+            }
+            let mut mipmaps = Vec::new();
             for _mip_idx in 0..mip_count {
                 // Video-flavoured TEXB0004 entries carry editor metadata before
                 // the payload. Non-video TEXB0004 FreeImage mip chains use the
@@ -596,6 +780,11 @@ impl TexTexture {
                     (0u32, 0i32)
                 };
 
+                if atlas_mode && compression > 1 {
+                    return Err(TexError::InvalidData(format!(
+                        "Unsupported atlas compression {compression}"
+                    )));
+                }
                 let compressed_size = read_u32_le(data, &mut offset)?;
 
                 let actual_uncompressed = if compression == 0 {
@@ -605,6 +794,11 @@ impl TexTexture {
                 };
 
                 if actual_uncompressed <= 0 {
+                    if atlas_mode {
+                        return Err(TexError::InvalidData(
+                            "Atlas mip payload must be nonempty".into(),
+                        ));
+                    }
                     continue;
                 }
 
@@ -635,7 +829,13 @@ impl TexTexture {
                     let mut decomp_buf = vec![0u8; actual_uncompressed as usize];
                     let result = lz4_flex::decompress_into(comp_bytes, &mut decomp_buf);
                     match result {
-                        Ok(_) => decomp_buf,
+                        Ok(decoded) if !atlas_mode || decoded == decomp_buf.len() => decomp_buf,
+                        Ok(decoded) => {
+                            return Err(TexError::InvalidData(format!(
+                                "Atlas LZ4 payload decoded {decoded} bytes, expected {}",
+                                decomp_buf.len()
+                            )));
+                        }
                         Err(e) => {
                             return Err(TexError::Lz4Error(e.to_string()));
                         }
@@ -670,10 +870,17 @@ impl TexTexture {
                     json: None,
                 });
             }
+            images.push(TexAtlasImage { mipmaps });
         }
 
-        // Optional animation frames
-        if is_animated && offset + 9 <= len {
+        // The inspection model requires an entire declared animation block;
+        // preserve the legacy adapter's optional-block behavior for playback.
+        if atlas_mode && is_animated && !data[offset..].starts_with(b"TEXS") {
+            return Err(TexError::InvalidData(
+                "Animated atlas has no complete TEXS block".into(),
+            ));
+        }
+        if is_animated && (atlas_mode || offset + 9 <= len) {
             // Try to read TEXS block
             if data[offset..].starts_with(b"TEXS") {
                 let anim_version = read_magic(data, &mut offset)?;
@@ -691,8 +898,10 @@ impl TexTexture {
 
                 if anim_version == "TEXS0003" {
                     // Logical frame dimensions; atlas UVs use mip dimensions.
-                    read_u32_le(data, &mut offset)?; // gif_width
-                    read_u32_le(data, &mut offset)?; // gif_height
+                    frame_dimensions = Some([
+                        read_u32_le(data, &mut offset)?,
+                        read_u32_le(data, &mut offset)?,
+                    ]);
                 }
 
                 for _ in 0..frame_count {
@@ -712,62 +921,49 @@ impl TexTexture {
                             "Animation frame references missing texture image {frame_number}"
                         )));
                     }
-                    if horizontal_y != 0.0 || vertical_x != 0.0 {
-                        return Err(TexError::InvalidData(
-                            "Rotated or skewed texture animation frames are not supported".into(),
-                        ));
+                    if atlas_mode
+                        && (!components.iter().all(|v| v.is_finite())
+                            || !frametime.is_finite()
+                            || frametime < 0.0)
+                    {
+                        return Err(TexError::InvalidData("Atlas frame requires finite coordinates and a finite nonnegative duration".into()));
                     }
-                    if width < 0.0 || height < 0.0 {
-                        return Err(TexError::InvalidData(
-                            "Flipped texture animation frames are not supported".into(),
-                        ));
-                    }
-                    frames.push(AnimationFrame {
-                        frame_number,
-                        frametime,
-                        x,
-                        y,
-                        width,
-                        height,
+                    frames.push(TexAtlasFrame {
+                        image_index: frame_number,
+                        duration_seconds: frametime,
+                        origin: [x, y],
+                        horizontal: [width, horizontal_y],
+                        vertical: [vertical_x, height],
                     });
-                }
-
-                // Calculate spritesheet grid
-                if !frames.is_empty() && width > 0 && height > 0 {
-                    let fw = frames[0].width;
-                    let fh = frames[0].height;
-                    if fw > 0.0 && fh > 0.0 {
-                        spritesheet_cols = (width as f32 / fw).round() as u32;
-                        spritesheet_rows = (height as f32 / fh).round() as u32;
-                        if spritesheet_cols > 0
-                            && spritesheet_rows > 0
-                            && spritesheet_cols.saturating_mul(spritesheet_rows) >= frame_count
-                        {
-                            spritesheet_duration = frames.iter().map(|f| f.frametime).sum();
-                        }
-                    }
                 }
             }
         }
-
-        Ok(TexTexture {
+        let atlas = TexAtlas {
             format,
             width,
             height,
             texture_width,
             texture_height,
             flags,
-            mipmaps,
-            frames: frames.clone(),
+            images,
+            frames,
+            frame_dimensions,
             is_animated,
             container_version,
             free_image_format,
             is_video: is_video || is_video_texb4 || free_image_format == Some(FreeImageFormat::Mp4),
-            spritesheet_cols,
-            spritesheet_rows,
-            spritesheet_frames: frames.len() as u32,
-            spritesheet_duration,
-        })
+        };
+        if atlas_mode {
+            if atlas.is_video && atlas.images.len() != 1 {
+                return Err(TexError::InvalidData(
+                    "Multiple video atlas images are not supported".into(),
+                ));
+            }
+            if !atlas.is_video {
+                atlas.to_texture_images()?;
+            }
+        }
+        Ok(atlas)
     }
 }
 

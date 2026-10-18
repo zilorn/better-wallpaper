@@ -1,9 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::{fs, io::Read, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
-    PkgReader, PuppetModel, SceneNodeKind, TexTexture, analyse_scene, compute_compatibility,
-    parse_scene_graph,
+    PkgReader, PuppetModel, SceneNodeKind, TexAtlas, TexTexture, analyse_scene,
+    compute_compatibility, parse_scene_graph,
 };
 use clap::Parser;
 
@@ -21,12 +21,75 @@ struct Args {
     /// Parse texture headers and report dimensions and animation metadata.
     #[arg(long, conflicts_with_all = ["json", "entry"])]
     textures: bool,
+    /// Inspect independent atlas images and affine frames in an unpacked TEX.
+    /// This does not enable advanced layouts in the playback renderer.
+    #[arg(long, conflicts_with_all = ["entry", "textures"])]
+    atlas: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let data = fs::read(&args.input)
-        .with_context(|| format!("failed to read input {}", args.input.display()))?;
+    let data = if args.atlas {
+        if !args
+            .input
+            .extension()
+            .is_some_and(|value| value.eq_ignore_ascii_case("tex"))
+        {
+            bail!("--atlas requires an unpacked .tex file");
+        }
+        const MAX_INPUT: u64 = 128 * 1024 * 1024;
+        let mut data = Vec::new();
+        fs::File::open(&args.input)?
+            .take(MAX_INPUT + 1)
+            .read_to_end(&mut data)?;
+        if data.len() as u64 > MAX_INPUT {
+            bail!("atlas input exceeds 128 MiB");
+        }
+        data
+    } else {
+        fs::read(&args.input)
+            .with_context(|| format!("failed to read input {}", args.input.display()))?
+    };
+    if args.atlas {
+        let atlas = TexAtlas::parse(&data).context("atlas validation failed")?;
+        let mut report = serde_json::json!({
+            "path": args.input,
+            "format": format!("{:?}", atlas.format),
+            "logical_size": [atlas.width, atlas.height],
+            "storage_size": [atlas.texture_width, atlas.texture_height],
+            "container_version": atlas.container_version,
+            "frame_dimensions": atlas.frame_dimensions,
+            "images": atlas.images.iter().enumerate().map(|(index, image)| serde_json::json!({
+                "index": index,
+                "mips": image.mipmaps.iter().map(|mip| serde_json::json!({
+                    "width": mip.width, "height": mip.height, "decoded_bytes": mip.data.len(),
+                })).collect::<Vec<_>>()
+            })).collect::<Vec<_>>(),
+            "frames": atlas.frames,
+            "payload_status": if atlas.is_video { "video_unverified" } else { "validated_2d_images" },
+            "native_visual_validation": "pending",
+        });
+        let layout_error = atlas
+            .try_into_single_texture()
+            .err()
+            .map(|error| error.to_string());
+        report["single_image_layout"] = serde_json::json!({
+            "accepted": layout_error.is_none(), "error": layout_error,
+        });
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!(
+                "{}\timages={}\tframes={}\tpayload={}\tsingle_image_layout={}",
+                args.input.display(),
+                report["images"].as_array().unwrap().len(),
+                report["frames"].as_array().unwrap().len(),
+                report["payload_status"],
+                layout_error.as_deref().unwrap_or("accepted")
+            );
+        }
+        return Ok(());
+    }
     if args
         .input
         .file_name()

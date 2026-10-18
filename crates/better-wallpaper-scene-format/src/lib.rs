@@ -47,6 +47,6 @@ pub use scene::{
     parse_project_properties,
 };
 pub use texture::{
-    AnimationFrame, FreeImageFormat, Mipmap, TexFormat, TexTexture, TextureAlphaMode,
-    TextureColorSpace, TextureImage, TextureMipLevel,
+    AnimationFrame, FreeImageFormat, Mipmap, TexAtlas, TexAtlasFrame, TexAtlasImage, TexFormat,
+    TexTexture, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
 };

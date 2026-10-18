@@ -70,10 +70,10 @@ checks that recorded gates match the comparator. Failure artifacts and reference
 generation remain documented in the
 [golden README](../../../crates/gpu-renderer/tests/golden/README.md).
 
-## A1 failure probes
+## A1 playback failure probes
 
 These complete synthetic candidate layouts do not prove original-engine UV
-consumption. Each must produce a specific TEX rejection, then one skipped image
+consumption. The legacy `TexTexture` playback parser must produce a specific TEX rejection, then one skipped image
 node and zero draws during asset resolution. They have no GPU steps because
 these layouts are unsupported. Parsing has no scene clock/pointer input. Future
 native probes should sample t=0, 0.5 and 1 without a pointer; both candidate frames
@@ -92,6 +92,14 @@ does not validate native semantics. The proposed bases expose direction/image
 selection; native visual results remain unknown. Convert rejection probes into
 positive parser/render/capture cases when support is implemented, rather than
 deleting them to make a test pass.
+
+The A1 `TexAtlas` inspection model now parses all five candidate TEX layouts,
+retaining each image's mip chain, image indices and full affine bases. Separate
+format-library tests verify these values and require conversion to `TexTexture`
+to retain the failures above. Thus the matrix's playback outcomes and native
+reference status remain unchanged. The
+[atlas report](../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
+records the static evidence, bounds, inspection command and remaining GPU work.
 
 ## Original-program capture protocol and pending coverage
 
