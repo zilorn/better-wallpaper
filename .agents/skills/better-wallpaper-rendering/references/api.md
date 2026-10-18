@@ -62,7 +62,7 @@ TEXB1–4 store image count first; TEXB3/4 then store the FreeImage codec.
 TEXS1 reads signed integer coordinates, TEXS2/3 read floats, and TEXS3 adds logical
 frame dimensions. Frame records contain image index, duration, origin and two
 basis vectors; only a single 2D atlas with axis-aligned rectangles is represented.
-Multiple images, volume flag 0x40, off-axis bases and missing frame images return
+Multiple images, volume flag 0x40, off-axis or negative-direction bases and missing frame images return
 explicit errors. Unknown TEXS versions and over-limit/truncated frame records
 are rejected. Zero-duration particle atlases do not imply timed sprite playback.
 `cargo run -p better-wallpaper-scene-format --example texture-audit -- /local/path`

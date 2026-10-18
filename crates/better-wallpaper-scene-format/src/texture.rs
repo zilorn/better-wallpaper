@@ -717,6 +717,11 @@ impl TexTexture {
                             "Rotated or skewed texture animation frames are not supported".into(),
                         ));
                     }
+                    if width < 0.0 || height < 0.0 {
+                        return Err(TexError::InvalidData(
+                            "Flipped texture animation frames are not supported".into(),
+                        ));
+                    }
                     frames.push(AnimationFrame {
                         frame_number,
                         frametime,
@@ -951,6 +956,29 @@ mod tests {
             matches!(TexTexture::parse(&volume), Err(TexError::InvalidData(message))
             if message.contains("Volume textures"))
         );
+    }
+
+    #[test]
+    fn rejects_flipped_sprite_bases_in_each_animation_version() {
+        for version in 1..=3 {
+            for component in [2, 5] {
+                let mut bytes = observed_texture(2);
+                let block = bytes.len();
+                append_observed_frames(&mut bytes, version);
+                let frame = block + 13 + if version == 3 { 8 } else { 0 };
+                let start = frame + 8 + component * 4;
+                let negative = if version == 1 {
+                    (-1_i32).to_le_bytes()
+                } else {
+                    (-1.0_f32).to_le_bytes()
+                };
+                bytes[start..start + 4].copy_from_slice(&negative);
+                assert!(
+                    matches!(TexTexture::parse(&bytes), Err(TexError::InvalidData(message))
+                    if message.contains("Flipped texture animation"))
+                );
+            }
+        }
     }
 
     #[test]

@@ -98,6 +98,10 @@ all three sprite versions without changing reference pixels.
 Completion for remaining layouts: represent multiple atlas images and rotated
 frame bases explicitly, add bounded 3D LUT parsing/upload, and verify reference
 output before advertising support. The current parser rejects these layouts;
+negative-direction horizontal/vertical bases also fail explicitly. A0 sample
+construction exposed that flipped frames previously parsed successfully, then
+were discarded by `sprite_animation`, silently leaving a static full atlas.
+Regression coverage rejects both axes in TEXS1/2/3; flip rendering remains pending.
 TEXB4 video/editor metadata still needs separate native/sample corroboration.
 Particle atlases do not establish particle simulation support. Local pixel-size
 validation and synthetic goldens do not establish Wallpaper Engine visual parity.
