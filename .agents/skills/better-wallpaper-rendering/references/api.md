@@ -126,6 +126,12 @@ GPU regression command:
 The explicit surfaceless EGL/GLES test builds real shared plans/assets, invokes
 production shaders and compares readback against ten independent synthetic PNG
 references. Gates: local 8×8 SSIM ≥0.995, RGBA MSE ≤1, maximum byte error ≤2.
+Inputs now come from 13 committed projects and `tests/fixtures/scene-behavior/matrix.json`:
+eight renderable samples with 20 ordered steps and five explicit A1 rejection
+probes. The ordinary suite checks package/project/PNG hashes and asset outcomes.
+`python3 tests/fixtures/scene-behavior/generate.py` checks deterministic regeneration;
+`--write` deliberately refreshes inputs without changing PNGs. Native acceptance
+and reference captures are pending; video frame replacement is a consumer probe.
 Failure emits actual/difference images under `target/scene-golden-failures`.
 The ordinary workspace suite runs comparator checks but explicitly ignores the
 GPU case; missing EGL fails an explicit GPU run. See

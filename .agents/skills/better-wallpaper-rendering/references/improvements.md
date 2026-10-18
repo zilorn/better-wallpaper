@@ -77,6 +77,15 @@ basic pointer parallax and all TEXS1/2/3 rectangular sprite versions. The harnes
 compositing bug. The ordinary suite tests the comparison gate; GPU cases require
 an explicit command documented in the rendering interfaces.
 
+The A0 behavior matrix now commits 13 standalone synthetic projects, their
+SHA-256 identities and fixed inputs. The same eight renderable packages drive
+all 20 comparisons, while five complete A1 candidate layouts exercise explicit
+texture rejection/skipped draws. Regeneration is checked separately from
+analytical PNG generation. See `tests/fixtures/scene-behavior/README.md` for
+per-sample timing, properties, unused random seeds, pointer inputs, native-capture
+protocol and uncovered work packages. Native acceptance of these synthetic
+projects remains unverified; Wine/Proton availability alone does not establish it.
+
 Completion: add legal authored L1/L2 samples with independently captured Wallpaper
 Engine reference screenshots, fixed time/property/pointer inputs and recorded
 thresholds; run on supported vendor GPUs and real niri sessions. Synthetic exact

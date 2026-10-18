@@ -5,11 +5,13 @@ use better_wallpaper_ffmpeg::FfmpegDecoder;
 use better_wallpaper_renderer::{
     Scene2dAssets, Scene2dOptions, SceneVideoFrame, build_scene_2d_plan, resolve_scene_2d_assets,
 };
-use better_wallpaper_scene_format::{PkgReader, parse_scene_graph};
+use better_wallpaper_scene_format::{PkgReader, TexTexture, parse_scene_graph};
 use glow::HasContext;
 use gpu_renderer::SceneGpuRenderer;
 use khronos_egl as egl;
-use serde_json::{Value, json};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::{io::Write, path::Path, sync::Arc};
 
 struct Offscreen {
@@ -135,108 +137,6 @@ impl Drop for Offscreen {
             .unwrap();
         self.egl.terminate(self.display).unwrap();
     }
-}
-
-fn package(entries: Vec<(String, Vec<u8>)>) -> PkgReader {
-    let string = |s: &str| {
-        let mut b = (s.len() as u32).to_le_bytes().to_vec();
-        b.extend(s.as_bytes());
-        b
-    };
-    let mut bytes = string("PKGV0001");
-    bytes.extend((entries.len() as u32).to_le_bytes());
-    let mut offset = 0_u32;
-    for (name, data) in &entries {
-        bytes.extend(string(name));
-        bytes.extend(offset.to_le_bytes());
-        bytes.extend((data.len() as u32).to_le_bytes());
-        offset += data.len() as u32;
-    }
-    for (_, data) in entries {
-        bytes.extend(data);
-    }
-    PkgReader::parse(bytes).unwrap()
-}
-
-fn texture(width: u32, height: u32, storage_width: u32, rgba: Vec<u8>) -> Vec<u8> {
-    let mut bytes = b"TEXV0005\0TEXI0001\0".to_vec();
-    for word in [0_u32, 0, storage_width, height, width, height, 0] {
-        bytes.extend(word.to_le_bytes());
-    }
-    bytes.extend(b"TEXB0002\0");
-    for word in [
-        1_u32,
-        1,
-        storage_width,
-        height,
-        0,
-        rgba.len() as u32,
-        rgba.len() as u32,
-    ] {
-        bytes.extend(word.to_le_bytes());
-    }
-    bytes.extend(rgba);
-    bytes
-}
-
-fn assets(scene: Value, textures: Vec<(&str, Vec<u8>, &str)>) -> Scene2dAssets {
-    let mut entries = vec![("scene.json".into(), scene.to_string().into_bytes())];
-    for (name, texture, blend) in textures {
-        entries.push((
-            format!("models/{name}.json"),
-            json!({"material":format!("materials/{name}.json")})
-                .to_string()
-                .into_bytes(),
-        ));
-        entries.push((
-            format!("materials/{name}.json"),
-            json!({"passes":[{"shader":"genericimage4","blending":blend,"textures":[name]}]})
-                .to_string()
-                .into_bytes(),
-        ));
-        entries.push((format!("materials/{name}.tex"), texture));
-    }
-    let pkg = package(entries);
-    let graph = parse_scene_graph(&scene.to_string()).unwrap();
-    assert!(
-        graph.unsupported_features.is_empty(),
-        "{:?}",
-        graph.unsupported_features
-    );
-    let plan = build_scene_2d_plan(
-        &graph,
-        Scene2dOptions {
-            viewport_width: 32,
-            viewport_height: 32,
-        },
-    )
-    .unwrap();
-    resolve_scene_2d_assets(&pkg, plan).unwrap()
-}
-
-fn layers_scene() -> Value {
-    json!({"general":{"orthogonalprojection":{"width":32,"height":32},"cameraparallax":true,
-        "cameraparallaxamount":0.25,"cameraparallaxdelay":0,"cameraparallaxmouseinfluence":1},"objects":[
-        {"id":"bg","image":"models/bg.json","origin":"16 16 0","size":"32 32","parallaxDepth":"0 0"},
-        {"id":"parent","container":true,"origin":"4 0 0"},
-        {"id":"fg","parent":"parent","image":"models/fg.json","origin":"8 20 0","size":"8 12","angles":"0 0 1.5707963267948966","alpha":0.5,"parallaxDepth":"1 0"},
-        {"id":"add","image":"models/add.json","origin":"24 8 0","size":"8 8","alpha":0.5,"parallaxDepth":"0 1"}
-    ]})
-}
-
-fn layers(scene: Value) -> Scene2dAssets {
-    assets(
-        scene,
-        vec![
-            ("bg", texture(1, 1, 1, vec![24, 40, 80, 255]), "opaque"),
-            (
-                "fg",
-                texture(1, 1, 1, vec![200, 80, 32, 128]),
-                "translucent",
-            ),
-            ("add", texture(1, 1, 1, vec![32, 48, 16, 255]), "additive"),
-        ],
-    )
 }
 
 #[derive(Debug)]
@@ -380,164 +280,331 @@ fn ssim_and_pixel_gates_reject_channel_errors_and_local_damage() {
     assert!(metrics(&shifted, &pixels, 16, 16).ssim < 0.995);
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Matrix {
+    schema_version: u32,
+    provenance: String,
+    pointer_coordinates: String,
+    randomness: String,
+    reference_kind: String,
+    gate: Gate,
+    samples: Vec<Sample>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Gate {
+    ssim_min: f64,
+    rgba_mse_max: f64,
+    channel_error_max: u8,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Sample {
+    id: String,
+    purpose: String,
+    artifacts: BTreeMap<String, Artifact>,
+    canvas: [u32; 2],
+    properties: BTreeMap<String, serde_json::Value>,
+    random_seed: Option<u64>,
+    native_reference: String,
+    steps: Vec<Step>,
+    outcome: Outcome,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Artifact {
+    path: String,
+    bytes: usize,
+    sha256: String,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum Outcome {
+    Render { draws: usize, skipped_nodes: usize },
+    RejectTexture { error: String },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Step {
+    time_seconds: f64,
+    viewport: [u32; 2],
+    pointer: Option<[f32; 2]>,
+    video_action: Option<VideoAction>,
+    recreate_context: bool,
+    reference: String,
+    reference_sha256: String,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum VideoAction {
+    DecodeNext,
+    ReplaceSolid { size: [u32; 2], rgba: [u8; 4] },
+}
+
+fn fixture_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/scene-behavior")
+}
+
+fn checked_artifact(artifact: &Artifact) -> Vec<u8> {
+    assert!(
+        Path::new(&artifact.path)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+    );
+    let data = std::fs::read(fixture_root().join(&artifact.path)).unwrap();
+    assert_eq!(data.len(), artifact.bytes, "{}", artifact.path);
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&data)),
+        artifact.sha256,
+        "{}",
+        artifact.path
+    );
+    data
+}
+
+fn matrix() -> Matrix {
+    let matrix: Matrix =
+        serde_json::from_slice(&std::fs::read(fixture_root().join("matrix.json")).unwrap())
+            .unwrap();
+    assert_eq!(matrix.schema_version, 1);
+    assert_eq!(matrix.provenance, "independently_authored_synthetic");
+    assert_eq!(
+        matrix.pointer_coordinates,
+        "normalized_y_up_minus_one_to_one"
+    );
+    assert_eq!(
+        matrix.randomness,
+        "unused; null seed means no random operators"
+    );
+    assert_eq!(
+        matrix.reference_kind,
+        "analytical_png_not_wallpaper_engine_capture"
+    );
+    // Keep recorded thresholds identical to the independently tested comparator.
+    assert_eq!(
+        (
+            matrix.gate.ssim_min,
+            matrix.gate.rgba_mse_max,
+            matrix.gate.channel_error_max
+        ),
+        (0.995, 1.0, 2)
+    );
+    let mut ids = BTreeSet::new();
+    for sample in &matrix.samples {
+        assert!(ids.insert(&sample.id), "duplicate sample {}", sample.id);
+        assert!(!sample.purpose.is_empty());
+        assert_eq!(sample.native_reference, "pending");
+        assert!(sample.properties.is_empty() && sample.random_seed.is_none());
+        assert_eq!(sample.artifacts.len(), 2);
+        assert!(sample.canvas.iter().all(|v| (1..=64).contains(v)));
+        for filename in ["scene.pkg", "project.json"] {
+            assert_eq!(
+                sample.artifacts[filename].path,
+                format!("{}/{filename}", sample.id)
+            );
+        }
+        let project: serde_json::Value =
+            serde_json::from_slice(&checked_artifact(&sample.artifacts["project.json"])).unwrap();
+        assert_eq!(project["type"], "scene");
+        assert_eq!(project["file"], "scene.json");
+        for step in &sample.steps {
+            assert!(step.time_seconds.is_finite() && step.time_seconds >= 0.0);
+            assert!(step.viewport.iter().all(|v| (1..=64).contains(v)));
+            if let Some(pointer) = step.pointer {
+                assert!(
+                    pointer
+                        .iter()
+                        .all(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+                );
+            }
+            if let Some(VideoAction::ReplaceSolid { size, .. }) = &step.video_action {
+                assert!(size.iter().all(|v| (1..=64).contains(v)));
+            }
+            assert!(
+                step.reference
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            );
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/golden")
+                .join(format!("{}.png", step.reference));
+            let data = std::fs::read(path).unwrap();
+            assert_eq!(
+                format!("{:x}", Sha256::digest(&data)),
+                step.reference_sha256
+            );
+            let reader = png::Decoder::new(std::io::Cursor::new(data))
+                .read_info()
+                .unwrap();
+            assert_eq!([reader.info().width, reader.info().height], step.viewport);
+            assert_eq!(reader.info().color_type, png::ColorType::Rgba);
+        }
+    }
+    assert_eq!(matrix.samples.len(), 13);
+    assert_eq!(
+        matrix.samples.iter().map(|s| s.steps.len()).sum::<usize>(),
+        20
+    );
+    matrix
+}
+
+fn sample_assets(
+    sample: &Sample,
+) -> Result<Scene2dAssets, better_wallpaper_renderer::Scene2dError> {
+    let pkg = PkgReader::parse(checked_artifact(&sample.artifacts["scene.pkg"])).unwrap();
+    let scene = pkg
+        .read_entry_string(pkg.find("scene.json").unwrap())
+        .unwrap();
+    let graph = parse_scene_graph(&scene).unwrap();
+    assert!(
+        graph.unsupported_features.is_empty(),
+        "{}: {:?}",
+        sample.id,
+        graph.unsupported_features
+    );
+    let plan = build_scene_2d_plan(
+        &graph,
+        Scene2dOptions {
+            viewport_width: sample.canvas[0],
+            viewport_height: sample.canvas[1],
+        },
+    )
+    .unwrap();
+    resolve_scene_2d_assets(&pkg, plan)
+}
+
+#[test]
+fn committed_behavior_samples_match_declared_outcomes_and_hashes() {
+    for sample in matrix().samples {
+        match &sample.outcome {
+            Outcome::Render {
+                draws,
+                skipped_nodes,
+            } => {
+                let assets = sample_assets(&sample).unwrap();
+                assert_eq!(assets.draws.len(), *draws, "{}", sample.id);
+                assert_eq!(assets.skipped_nodes, *skipped_nodes, "{}", sample.id);
+                assert!(!sample.steps.is_empty());
+            }
+            Outcome::RejectTexture { error } => {
+                let pkg =
+                    PkgReader::parse(checked_artifact(&sample.artifacts["scene.pkg"])).unwrap();
+                let textures = pkg.find_by_ext("tex");
+                assert_eq!(textures.len(), 1);
+                let actual = TexTexture::parse(pkg.read_entry(textures[0])).unwrap_err();
+                assert!(
+                    actual.to_string().contains(error),
+                    "{}: {actual}",
+                    sample.id
+                );
+                // Asset resolution intentionally retains supported scene nodes.
+                // These single-image samples must skip the failed texture draw.
+                let assets = sample_assets(&sample).unwrap();
+                assert!(assets.draws.is_empty(), "{}", sample.id);
+                assert_eq!(assets.skipped_nodes, 1, "{}", sample.id);
+                assert!(sample.steps.is_empty());
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "requires surfaceless EGL/GLES; run explicitly with software rendering"]
 fn gpu_scene_goldens() {
-    let context = Offscreen::new();
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    let layered = layers(layers_scene());
-    assert_eq!(layered.draws.len(), 3);
-    renderer.upload_scene_textures(&layered).unwrap();
-    renderer.draw_scene(&layered, 0.0).unwrap();
-    compare("layers", &context.pixels(32, 32), 32, 32);
-    renderer.resize(64, 32);
-    renderer.draw_scene(&layered, 0.0).unwrap();
-    compare("cover", &context.pixels(64, 32), 64, 32);
-    renderer.resize(32, 32);
-    renderer
-        .draw_scene_with_pointer(&layered, 1.0, Some([1.0, 1.0]))
-        .unwrap();
-    compare("parallax", &context.pixels(32, 32), 32, 32);
-    // A paused scene must retain the prior pointer transform.
-    renderer
-        .draw_scene_with_pointer(&layered, 1.0, Some([-1.0, -1.0]))
-        .unwrap();
-    compare("parallax", &context.pixels(32, 32), 32, 32);
-    drop(renderer);
-    let mut scene = layers_scene();
-    scene["objects"][2]["alpha"] = json!({"value":0.5,"animation":{"c0":[{"frame":0,"value":0},{"frame":60,"value":1}],"options":{"fps":30,"length":60,"mode":"single"}}});
-    let animated = layers(scene);
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&animated).unwrap();
-    renderer.draw_scene(&animated, 2.0).unwrap();
-    compare("opacity-end", &context.pixels(32, 32), 32, 32);
-    drop(renderer);
-    let mut scene = layers_scene();
-    scene["general"]["zoom"] = json!({"value":1,"animation":{"c0":[{"frame":0,"value":1},{"frame":60,"value":2}],"options":{"fps":30,"length":60,"mode":"single"}}});
-    let zoomed = layers(scene);
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&zoomed).unwrap();
-    renderer.draw_scene(&zoomed, 2.0).unwrap();
-    compare("zoom-end", &context.pixels(32, 32), 32, 32);
-    drop(renderer);
-    let mut atlas = Vec::new();
-    for _ in 0..32 {
-        atlas.extend([255, 0, 0, 255].repeat(32));
-        atlas.extend([0, 255, 0, 255].repeat(32));
-    }
-    for animation_version in 1..=3 {
-        let mut tex = texture(64, 32, 64, atlas.clone());
-        tex[22..26].copy_from_slice(&4_u32.to_le_bytes()); // TEX animated flag.
-        tex.extend(format!("TEXS{animation_version:04}\0").as_bytes());
-        tex.extend(2_u32.to_le_bytes());
-        if animation_version == 3 {
-            tex.extend(32_u32.to_le_bytes());
-            tex.extend(32_u32.to_le_bytes());
+    let matrix = matrix();
+    let mut context = Some(Offscreen::new());
+    for sample in matrix.samples {
+        let Outcome::Render { draws, .. } = sample.outcome else {
+            continue;
+        };
+        println!("Sample: {}", sample.id);
+        let assets = sample_assets(&sample).unwrap();
+        assert_eq!(assets.draws.len(), draws);
+        let video = assets.draws.iter().find_map(|draw| draw.video.as_ref());
+        let mut media = tempfile::NamedTempFile::new().unwrap();
+        let mut decoder = FfmpegDecoder::for_package_media();
+        if let Some(video) = video {
+            media.write_all(&video.encoded).unwrap();
+            decoder
+                .open(media.path(), DecodeOptions::default())
+                .unwrap();
         }
-        for frame in 0..2_u32 {
-            tex.extend(0_u32.to_le_bytes()); // atlas image index
-            tex.extend(0.5_f32.to_le_bytes());
-            for value in [frame * 32, 0, 32, 0, 0, 32] {
-                if animation_version == 1 {
-                    tex.extend(value.to_le_bytes());
-                } else {
-                    tex.extend((value as f32).to_le_bytes());
-                }
+        let mut generation = 0;
+        let mut renderer = Some(
+            SceneGpuRenderer::new(
+                context.as_ref().unwrap().gl(),
+                sample.canvas[0],
+                sample.canvas[1],
+            )
+            .unwrap(),
+        );
+        renderer
+            .as_mut()
+            .unwrap()
+            .upload_scene_textures(&assets)
+            .unwrap();
+        for step in sample.steps {
+            if let Some(action) = step.video_action {
+                generation += 1;
+                let frame = match action {
+                    VideoAction::DecodeNext => {
+                        let frame = decoder.next_frame().unwrap();
+                        SceneVideoFrame {
+                            rgba: Arc::from(frame.pixels),
+                            width: frame.width,
+                            height: frame.height,
+                            generation,
+                        }
+                    }
+                    VideoAction::ReplaceSolid { size, rgba } => SceneVideoFrame {
+                        rgba: Arc::from(rgba.repeat((size[0] * size[1]) as usize)),
+                        width: size[0],
+                        height: size[1],
+                        generation,
+                    },
+                };
+                *video
+                    .expect("video action requires a video asset")
+                    .frame
+                    .write()
+                    .unwrap() = Some(frame);
             }
+            if step.recreate_context {
+                drop(renderer.take());
+                drop(context.take());
+                context = Some(Offscreen::new());
+                let mut replacement = SceneGpuRenderer::new(
+                    context.as_ref().unwrap().gl(),
+                    step.viewport[0],
+                    step.viewport[1],
+                )
+                .unwrap();
+                replacement.upload_scene_textures(&assets).unwrap();
+                renderer = Some(replacement);
+            }
+            let renderer = renderer.as_mut().unwrap();
+            renderer.resize(step.viewport[0], step.viewport[1]);
+            renderer
+                .draw_scene_with_pointer(&assets, step.time_seconds, step.pointer)
+                .unwrap();
+            compare(
+                &step.reference,
+                &context
+                    .as_ref()
+                    .unwrap()
+                    .pixels(step.viewport[0], step.viewport[1]),
+                step.viewport[0],
+                step.viewport[1],
+            );
         }
-        let scene = json!({"general":{"orthogonalprojection":{"width":32,"height":32}},"objects":[{"image":"models/sprite.json","origin":"16 16 0","size":"32 32"}]});
-        let sprites = assets(scene, vec![("sprite", tex, "opaque")]);
-        assert_eq!(sprites.draws[0].animation.as_ref().unwrap().frames.len(), 2);
-        let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-        renderer.upload_scene_textures(&sprites).unwrap();
-        for (time, name) in [
-            (0.0, "sprite-red"),
-            (0.5, "sprite-green"),
-            (1.0, "sprite-red"),
-        ] {
-            renderer.draw_scene(&sprites, time).unwrap();
-            compare(name, &context.pixels(32, 32), 32, 32);
-        }
+        // The owning EGL context is still current during resource deletion.
         drop(renderer);
     }
-    let mut rgba = vec![0; 64 * 32 * 4];
-    for y in 0..32 {
-        for x in 0..64 {
-            let color = if x >= 32 {
-                [255, 0, 255, 255]
-            } else if y < 16 {
-                if x < 16 {
-                    [180, 20, 40, 255]
-                } else {
-                    [20, 160, 60, 255]
-                }
-            } else if x < 16 {
-                [30, 50, 170, 255]
-            } else {
-                [150, 120, 10, 255]
-            };
-            rgba[(y * 64 + x) * 4..(y * 64 + x + 1) * 4].copy_from_slice(&color);
-        }
-    }
-    let scene = json!({"general":{"orthogonalprojection":{"width":32,"height":32}},"objects":[{"image":"models/uv.json","origin":"16 16 0","size":"32 32"}]});
-    let padded = assets(scene, vec![("uv", texture(32, 32, 64, rgba), "opaque")]);
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&padded).unwrap();
-    renderer.draw_scene(&padded, 0.0).unwrap();
-    compare("uv-padding", &context.pixels(32, 32), 32, 32);
-    drop(renderer);
-    // A real TEXB0004 video payload passes through package and scene resolution.
-    let media = include_bytes!("../../../tests/fixtures/scene-video.mp4");
-    let mut tex = b"TEXV0005\0TEXI0001\0".to_vec();
-    for value in [0_u32, 32, 16, 16, 16, 16, 0] {
-        tex.extend(value.to_le_bytes());
-    }
-    tex.extend(b"TEXB0004\0");
-    for value in [1_u32, 0, 1, 1, 0, 0] {
-        tex.extend(value.to_le_bytes());
-    }
-    tex.push(0);
-    for value in [0_u32, 16, 16, 0, media.len() as u32, media.len() as u32] {
-        tex.extend(value.to_le_bytes());
-    }
-    tex.extend(media);
-    let scene = json!({"general":{"orthogonalprojection":{"width":32,"height":32}},"objects":[{"image":"models/video.json","origin":"16 16 0","size":"32 32"}]});
-    let video_assets = assets(scene, vec![("video", tex, "opaque")]);
-    assert_eq!(video_assets.draws.len(), 1);
-    let video = video_assets.draws[0].video.as_ref().unwrap();
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    file.write_all(&video.encoded).unwrap();
-    let mut decoder = FfmpegDecoder::for_package_media();
-    decoder.open(file.path(), DecodeOptions::default()).unwrap();
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&video_assets).unwrap();
-    for (generation, name) in [(1, "video-red"), (2, "video-green")] {
-        let frame = decoder.next_frame().unwrap();
-        *video.frame.write().unwrap() = Some(SceneVideoFrame {
-            rgba: Arc::from(frame.pixels),
-            width: frame.width,
-            height: frame.height,
-            generation,
-        });
-        renderer
-            .draw_scene(&video_assets, 0.5 * (generation - 1) as f64)
-            .unwrap();
-        compare(name, &context.pixels(32, 32), 32, 32);
-    }
-    // Force the storage-reallocation path, then recreate the owning GL context.
-    *video.frame.write().unwrap() = Some(SceneVideoFrame {
-        rgba: Arc::from([0, 255, 0, 255].repeat(64)),
-        width: 8,
-        height: 8,
-        generation: 3,
-    });
-    renderer.draw_scene(&video_assets, 1.0).unwrap();
-    compare("video-green", &context.pixels(32, 32), 32, 32);
-    drop(renderer);
-    drop(context);
-    let replacement = Offscreen::new();
-    let mut renderer = SceneGpuRenderer::new(replacement.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&video_assets).unwrap();
-    renderer.draw_scene(&video_assets, 1.0).unwrap();
-    compare("video-green", &replacement.pixels(32, 32), 32, 32);
 }

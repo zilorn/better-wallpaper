@@ -23,8 +23,12 @@ retaining CPU frames, exercising the output-replacement upload contract.
 
 References are original synthetic fixtures generated independently by
 `generate_references.py` from documented geometry, source-over/additive arithmetic
-and explicit texture pixels. The test builds PKG/model/material/TEX assets and
-calls the production `SceneGpuRenderer`, then reads actual RGBA pixels. References
+and explicit texture pixels. The test reads committed packages and ordered inputs
+from the [behavior matrix](../../../../tests/fixtures/scene-behavior/README.md),
+calls the production `SceneGpuRenderer`, then reads actual RGBA pixels. The
+ordinary suite verifies all 13 project/package identities, PNG hashes and parser
+outcomes. Eight renderable packages retain these same twenty comparisons; five
+advanced layout probes require explicit rejection and skipped draws. References
 are never regenerated from renderer output. Update them deliberately with:
 
 ```sh

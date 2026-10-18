@@ -1,0 +1,656 @@
+{
+  "gate": {
+    "channel_error_max": 2,
+    "rgba_mse_max": 1.0,
+    "ssim_min": 0.995
+  },
+  "pointer_coordinates": "normalized_y_up_minus_one_to_one",
+  "provenance": "independently_authored_synthetic",
+  "randomness": "unused; null seed means no random operators",
+  "reference_kind": "analytical_png_not_wallpaper_engine_capture",
+  "samples": [
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 73,
+          "path": "layers/project.json",
+          "sha256": "147bb7562b1fd711e2d5f8555808b039ca6e2572cee037c00a67979fadddf5e8"
+        },
+        "scene.pkg": {
+          "bytes": 1469,
+          "path": "layers/scene.pkg",
+          "sha256": "4ac9f2d088bb417fd756f8722db69e5fc52531e84c5b713537a7b7b9f2841229"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "layers",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 3,
+        "kind": "render",
+        "skipped_nodes": 1
+      },
+      "properties": {},
+      "purpose": "Parent transform, radians, blending/order, cover, per-axis parallax and paused pointer.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "layers",
+          "reference_sha256": "a7efdfc0b190052baee25a792d777a6bfdc703a847a601e20cad21da9351c496",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "cover",
+          "reference_sha256": "c4b441a3fd96e3395fdc831a6a672cfd4808cd6b1c0d25847bafa919684da6d1",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            64,
+            32
+          ]
+        },
+        {
+          "pointer": [
+            1,
+            1
+          ],
+          "recreate_context": false,
+          "reference": "parallax",
+          "reference_sha256": "ac84d9780742131d81c1efe883c26f4b73d4c6d290fb387682e7e58248f1f702",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": [
+            -1,
+            -1
+          ],
+          "recreate_context": false,
+          "reference": "parallax",
+          "reference_sha256": "ac84d9780742131d81c1efe883c26f4b73d4c6d290fb387682e7e58248f1f702",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 74,
+          "path": "opacity/project.json",
+          "sha256": "ba5858aefd4d0e7cc88101fbba3429aa5c9c0e6788bf763ad9930749754f3417"
+        },
+        "scene.pkg": {
+          "bytes": 1594,
+          "path": "opacity/scene.pkg",
+          "sha256": "eacc91b6a413c21a425b406b339ce56129b64f33a6d98af0d7da4a4ae3a3713d"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "opacity",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 3,
+        "kind": "render",
+        "skipped_nodes": 1
+      },
+      "properties": {},
+      "purpose": "Single scalar opacity timeline endpoint.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "opacity-end",
+          "reference_sha256": "bb9f09609f91fd8b63f528c26f4c324cabf9b709b422756977e06f82de927e2b",
+          "time_seconds": 2,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 71,
+          "path": "zoom/project.json",
+          "sha256": "c388825b09a441054fca6e6874353b61626384f87b1dd0e3c0ff8bce657162bc"
+        },
+        "scene.pkg": {
+          "bytes": 1603,
+          "path": "zoom/scene.pkg",
+          "sha256": "a49aaa4f61b54dbfc14a8453375ada9717a12352ded8ae00bd80dcdcec25e779"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "zoom",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 3,
+        "kind": "render",
+        "skipped_nodes": 1
+      },
+      "properties": {},
+      "purpose": "Single scalar zoom timeline endpoint.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "zoom-end",
+          "reference_sha256": "2038e61a2239f41e2be3bbf3e66844dbdba2e904fdf66d7e0ecccc5045bacb7c",
+          "time_seconds": 2,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 76,
+          "path": "sprite-v1/project.json",
+          "sha256": "8e005e0302383dab17893ad70997ea4a739ac50b9813d29d5b976380115a4292"
+        },
+        "scene.pkg": {
+          "bytes": 8740,
+          "path": "sprite-v1/scene.pkg",
+          "sha256": "576880f1247ec96f248e266863f2d889b6385712636e6a8c3e4c1ec22adcb1d0"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "sprite-v1",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
+      },
+      "properties": {},
+      "purpose": "TEXS1 rectangular frame selection and one-second loop.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 76,
+          "path": "sprite-v2/project.json",
+          "sha256": "fbf92ad84ec14988a1093d4359f827b1bec8d1b4e52646eaab87f0b1ea8c2487"
+        },
+        "scene.pkg": {
+          "bytes": 8740,
+          "path": "sprite-v2/scene.pkg",
+          "sha256": "88626ed44c62d8bbc7937dd6aff780c8320d84c7c80c4d36ef226a86740fc0b8"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "sprite-v2",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
+      },
+      "properties": {},
+      "purpose": "TEXS2 rectangular frame selection and one-second loop.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 76,
+          "path": "sprite-v3/project.json",
+          "sha256": "962816a0b3b546a68606a047b3a2ba38e809e36ef74447dd7dcd002626563485"
+        },
+        "scene.pkg": {
+          "bytes": 8748,
+          "path": "sprite-v3/scene.pkg",
+          "sha256": "cff35b7fee3446c79f1eceb58ea22716fb321850e7735fd868e7011779b5a45b"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "sprite-v3",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
+      },
+      "properties": {},
+      "purpose": "TEXS3 rectangular frame selection and one-second loop.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "sprite-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 74,
+          "path": "padding/project.json",
+          "sha256": "4dce6892cc516506cbcaf554d18a06e5ed7642f230915e25b66cb43c624f3057"
+        },
+        "scene.pkg": {
+          "bytes": 8639,
+          "path": "padding/scene.pkg",
+          "sha256": "d27561c1c20003bbd0af302cd257d957563f27405fabea241069eb8824f78fe2"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "padding",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
+      },
+      "properties": {},
+      "purpose": "Top-down asymmetric quadrants; magenta storage padding must not appear.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "uv-padding",
+          "reference_sha256": "fc2f85c8c96aa558e0e1a604ec27547094b3198b2c6d81b2d34a1e84a3b1aa52",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 72,
+          "path": "video/project.json",
+          "sha256": "57286995ed0a6ec99d75dc9f86baf9a78ba36481f734b27bca7f9cf756fcebcd"
+        },
+        "scene.pkg": {
+          "bytes": 7837,
+          "path": "video/scene.pkg",
+          "sha256": "392cbe0729a6490412d59e7595e7be57e2df17b5072f2270132f0bed9c537c36"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "video",
+      "native_reference": "pending",
+      "outcome": {
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
+      },
+      "properties": {},
+      "purpose": "Synthetic current-parser TEXB4 layout (native structure unverified); decode, storage resize, context replacement.",
+      "random_seed": null,
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "video-red",
+          "reference_sha256": "92352ae0133129c4cba2085c5118c1858471329e7440e612bfd1d62e7236876c",
+          "time_seconds": 0,
+          "video_action": {
+            "kind": "decode_next"
+          },
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "video-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 0.5,
+          "video_action": {
+            "kind": "decode_next"
+          },
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "video-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 1,
+          "video_action": {
+            "kind": "replace_solid",
+            "rgba": [
+              0,
+              255,
+              0,
+              255
+            ],
+            "size": [
+              8,
+              8
+            ]
+          },
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "video-green",
+          "reference_sha256": "51df2ff10cab827662832f4bed115f3840eee15ee5b064f62cc187c980de4114",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 78,
+          "path": "multi-image/project.json",
+          "sha256": "44dba72ad1094c87d715603031c53cfd682c1cb1474f4129390e35849bf42d7c"
+        },
+        "scene.pkg": {
+          "bytes": 614,
+          "path": "multi-image/scene.pkg",
+          "sha256": "ee74c00c41da6adca7c5f9fa82102471f49009d2daac543058cfa119fd034144"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "multi-image",
+      "native_reference": "pending",
+      "outcome": {
+        "error": "multiple atlas images are not supported",
+        "kind": "reject_texture"
+      },
+      "properties": {},
+      "purpose": "A1: image 0 has 2x2 and 1x1 mips; image 1 has one 1x2 mip; frames select image 0 then 1.",
+      "random_seed": null,
+      "steps": []
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 74,
+          "path": "rotated/project.json",
+          "sha256": "555f5cd0dbf4b9680f2add700148bf57bf7f18cf1fa863f6225c4cbe19ef1811"
+        },
+        "scene.pkg": {
+          "bytes": 558,
+          "path": "rotated/scene.pkg",
+          "sha256": "2abc600bb79bcc10762f4f662522ffe45c063c539fd713685f191ee3f1d656cc"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "rotated",
+      "native_reference": "pending",
+      "outcome": {
+        "error": "Rotated or skewed",
+        "kind": "reject_texture"
+      },
+      "properties": {},
+      "purpose": "A1 candidate rotated basis, then identity; native UV consumption/visual result still unverified.",
+      "random_seed": null,
+      "steps": []
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 73,
+          "path": "skewed/project.json",
+          "sha256": "4ac510f4ccb188b9dcc09fc9a90d7e59c19a8972a8b9b6c3068658235c3579aa"
+        },
+        "scene.pkg": {
+          "bytes": 558,
+          "path": "skewed/scene.pkg",
+          "sha256": "acb4313c35d3a5db93efe12d660805ef66eb677ecdccfefb5e3a0b901661a5d8"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "skewed",
+      "native_reference": "pending",
+      "outcome": {
+        "error": "Rotated or skewed",
+        "kind": "reject_texture"
+      },
+      "properties": {},
+      "purpose": "A1 candidate skewed basis, then identity; native UV consumption/visual result still unverified.",
+      "random_seed": null,
+      "steps": []
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 76,
+          "path": "flipped-x/project.json",
+          "sha256": "9d3c89908537021341ca36ed127987518128d9f0163654b910426823eb8501ce"
+        },
+        "scene.pkg": {
+          "bytes": 558,
+          "path": "flipped-x/scene.pkg",
+          "sha256": "9ff3f6b4fccf098c9a621739238e3ac2a4fe1cb5d0caa290f566fa6a5eeb3ae2"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "flipped-x",
+      "native_reference": "pending",
+      "outcome": {
+        "error": "Flipped texture animation",
+        "kind": "reject_texture"
+      },
+      "properties": {},
+      "purpose": "A1 candidate flipped-x basis, then identity; native UV consumption/visual result still unverified.",
+      "random_seed": null,
+      "steps": []
+    },
+    {
+      "artifacts": {
+        "project.json": {
+          "bytes": 76,
+          "path": "flipped-y/project.json",
+          "sha256": "aa104eaf198441e371ff23fdc0e0636145c2b8f494e7f9a0e51c982dc46b0b1a"
+        },
+        "scene.pkg": {
+          "bytes": 558,
+          "path": "flipped-y/scene.pkg",
+          "sha256": "86594abe011a099dbd0f9ddc6fb366d67efe134afc4ee6c681aa76f7485de5c3"
+        }
+      },
+      "canvas": [
+        32,
+        32
+      ],
+      "id": "flipped-y",
+      "native_reference": "pending",
+      "outcome": {
+        "error": "Flipped texture animation",
+        "kind": "reject_texture"
+      },
+      "properties": {},
+      "purpose": "A1 candidate flipped-y basis, then identity; native UV consumption/visual result still unverified.",
+      "random_seed": null,
+      "steps": []
+    }
+  ],
+  "schema_version": 1
+}

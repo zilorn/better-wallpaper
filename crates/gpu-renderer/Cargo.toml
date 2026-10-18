@@ -14,6 +14,8 @@ libc.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+serde.workspace = true
+sha2.workspace = true
 khronos-egl.workspace = true
 png = "0.17"
 serde_json.workspace = true

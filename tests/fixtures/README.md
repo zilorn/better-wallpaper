@@ -1,5 +1,11 @@
 # Test fixtures
 
+[`scene-behavior/`](scene-behavior/README.md) contains 13 reproducible standalone
+synthetic scene projects and a fixed-input matrix. GPU goldens consume these
+packages directly: eight scenes retain the existing 20 comparisons; five A1
+probes require explicit layout rejection. The matrix records hashes and
+analytical reference provenance, not native captures.
+
 `dynamic-scene/scene.pkg` is an original generated 4×2 scene containing one 4×2
 RGBA TEXB2/TEXS2 atlas with two 2×2 frames: cyan `[0,220,255,255]`, then orange
 `[255,90,0,255]`. Both frames select atlas image zero and last 0.5 seconds.
