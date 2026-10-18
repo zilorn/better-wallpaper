@@ -69,6 +69,16 @@ are rejected. Zero-duration particle atlases do not imply timed sprite playback.
 inspects loose TEX files without following symlinks; pixel validation is not GPU
 or scene-playback validation.
 
+`cargo run -p better-wallpaper-scene-format --bin asset-audit -- --help` describes
+the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots
+and selected PKGs. It records SHA-256, package member offsets, format/payload
+results and JSON-field candidate references without loading unselected resources.
+`TexTexture::parse_with_budget` adds a caller-selected retained mip-byte ceiling;
+ordinary `parse` behavior is unchanged. Exit 2 still emits a report but indicates
+incomplete traversal/read/reference coverage. Candidate matches and pixel-size
+validation are not proof of supported scene playback. See
+[audit contracts](../../../../docs/asset-audit.md) for limits and coverage.
+
 Texture dimensions, RGBA channel layout, mip data, and UV coordinates must agree
 with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existing
 mip selection and filtering behavior is implemented; do not classify it as missing

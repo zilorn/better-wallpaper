@@ -11,6 +11,8 @@ clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
+sha2.workspace = true
+libc.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 zerocopy.workspace = true
@@ -18,6 +20,9 @@ zerocopy.workspace = true
 lz4_flex = "0.11"
 jpeg-decoder = { version = "0.3", default-features = false }
 png = "0.17"
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [[bin]]
 name = "scene-inspect"

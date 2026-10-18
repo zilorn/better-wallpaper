@@ -476,6 +476,13 @@ fn decode_embedded_image(
 impl TexTexture {
     /// Parse a .tex texture from raw bytes
     pub fn parse(data: &[u8]) -> Result<Self, TexError> {
+        Self::parse_with_budget(data, u64::MAX)
+    }
+
+    /// Parse with a caller-selected ceiling for retained decoded mip bytes.
+    /// Existing per-mip limits still apply. At most one additional mip's encoded
+    /// and decoded buffers are temporarily allocated before this budget is checked.
+    pub fn parse_with_budget(data: &[u8], max_decoded_bytes: u64) -> Result<Self, TexError> {
         let len = data.len();
         let mut offset: usize = 0;
 
@@ -555,6 +562,7 @@ impl TexTexture {
         }
 
         let mut mipmaps = Vec::new();
+        let mut decoded_bytes = 0_u64;
 
         let mut frames = Vec::new();
         let mut spritesheet_cols = 0u32;
@@ -648,6 +656,13 @@ impl TexTexture {
                     Arc::from(encoded)
                 };
 
+                decoded_bytes = decoded_bytes.saturating_add(data_slice.len() as u64);
+                if decoded_bytes > max_decoded_bytes {
+                    return Err(TexError::MipmapTooLarge {
+                        size: decoded_bytes,
+                        max: max_decoded_bytes,
+                    });
+                }
                 mipmaps.push(Mipmap {
                     width: mip_w,
                     height: mip_h,

@@ -1,5 +1,21 @@
 # Rendering Improvements
 
+## Bounded Resource Audit — Implemented / Reference Coverage Explicit
+
+`asset-audit` inventories named loose TEX/JSON roots and selected PKGs with hashes,
+format and failure categories, absolute member offsets and bounded candidate
+reference discovery. Tests cover transitive field references, shared fallback,
+package isolation, malformed assets, symlinks, deterministic output and budgets.
+The audit calls `TexTexture::parse_with_budget` to cap retained decoded mip bytes.
+
+Local inventory found JSON with comments/trailing commas (for example builtin
+`effects/blend/preview/effects/blend/effect.json` and
+`effects/fluidsimulation/effect.json`). Strict JSON parsing records those failures
+and incomplete reference coverage. It does not imply the native engine rejects
+them. Complete broader reference discovery only after defining and testing the
+additional syntax/fields and lookup rules against samples; do not silently treat
+unknown dependencies as resolved or absent from the installation.
+
 ## Basic Mouse Parallax — Implemented / Desktop Verification Needed
 
 Evidence: scene IR parses bounded camera parameters and per-axis layer depth;
