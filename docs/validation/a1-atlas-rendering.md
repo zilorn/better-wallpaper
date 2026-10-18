@@ -1,6 +1,6 @@
 # A1 shared atlas rendering validation
 
-Date: 2026-10-18. This batch connects the bounded atlas model to main scene
+Date: 2026-10-18. Implementation commit: `3152a70`. This batch connects the bounded atlas model to main scene
 material resources and shared GPU rendering. Multiple images with independent
 mips, rotation, reflection and finite in-bounds skew now render. This is verified
 synthetic behavior, not completed original-program or desktop parity.
