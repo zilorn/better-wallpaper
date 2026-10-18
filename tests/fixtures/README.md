@@ -1,5 +1,24 @@
 # Test fixtures
 
+`dynamic-scene/scene.pkg` is an original generated 4×2 scene containing one 4×2
+RGBA TEXB2/TEXS2 atlas with two 2×2 frames: cyan `[0,220,255,255]`, then orange
+`[255,90,0,255]`. Both frames select atlas image zero and last 0.5 seconds.
+Expected sample times are 0 seconds (cyan), 0.5 seconds (orange), and 1 second
+(cyan after looping). Properties are empty, no random seed is used, and pointer
+input is irrelevant. Regenerate with:
+
+```sh
+cargo run -p better-wallpaper-scene-format --example generate-dynamic-scene -- tests/fixtures/dynamic-scene
+```
+
+The checked-in package was regenerated after the A0 audit found stale frame
+bases from the old coordinate layout. Its current SHA-256 is
+`2408281477093c829fa10ceeeadf590c4aa40e867bdf9e0f2e54ec1d558d3aae`.
+`checked_in_dynamic_scene_uses_current_sprite_layout` parses the actual checked-in
+bytes and verifies image indices, rectangles and timing, so a correct generator
+alone cannot hide a stale package again. This is a synthetic input, not an
+independently captured Wallpaper Engine reference.
+
 `h264.mp4`, `vp9.webm` and `av1.mkv` are the existing 64×36, five-frame decoder
 fixtures. `vfr-h264.mp4` has five frames with unequal presentation intervals;
 `corrupt-video.bin` must fail to open. The H.264 fixture is YUV420P, 10 FPS,

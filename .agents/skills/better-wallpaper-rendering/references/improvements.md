@@ -7,6 +7,9 @@ format and failure categories, absolute member offsets and bounded candidate
 reference discovery. Tests cover transitive field references, shared fallback,
 package isolation, malformed assets, symlinks, deterministic output and budgets.
 The audit calls `TexTexture::parse_with_budget` to cap retained decoded mip bytes.
+It also exposed stale TEXS frame bases in `tests/fixtures/dynamic-scene/scene.pkg`;
+the package is regenerated from the current generator and a regression now reads
+the checked-in bytes to verify atlas indices, rectangles and timing.
 
 Local inventory found JSON with comments/trailing commas (for example builtin
 `effects/blend/preview/effects/blend/effect.json` and

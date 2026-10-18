@@ -840,6 +840,25 @@ fn get_slice<'a>(data: &'a [u8], offset: &mut usize, size: usize) -> Result<&'a 
 mod tests {
     use super::*;
 
+    #[test]
+    fn checked_in_dynamic_scene_uses_current_sprite_layout() {
+        let pkg = crate::PkgReader::parse(
+            include_bytes!("../../../tests/fixtures/dynamic-scene/scene.pkg").as_slice(),
+        )
+        .unwrap();
+        let entry = pkg.find("materials/animated.tex").unwrap();
+        let texture = TexTexture::parse(pkg.read_entry(entry)).unwrap();
+        assert_eq!((texture.width, texture.height), (4, 2));
+        assert_eq!(texture.to_texture_image().unwrap().levels.len(), 1);
+        assert_eq!(texture.frames.len(), 2);
+        for (index, frame) in texture.frames.iter().enumerate() {
+            assert_eq!(frame.frame_number, 0);
+            assert_eq!((frame.x, frame.y), (index as f32 * 2.0, 0.0));
+            assert_eq!((frame.width, frame.height), (2.0, 2.0));
+            assert_eq!(frame.frametime, 0.5);
+        }
+    }
+
     // Synthetic pixels with the layout observed in the installed engine's
     // TEXB reader. No Wallpaper Engine asset bytes are embedded here.
     fn observed_texture(container_version: u32) -> Vec<u8> {
