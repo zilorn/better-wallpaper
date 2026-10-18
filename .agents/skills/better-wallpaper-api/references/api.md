@@ -111,6 +111,23 @@ assets, successful playback on the selected backend, or full engine parity.
 Library cards show supported-feature counts/details as well as limits and warnings;
 the optional UI field permits responses from older daemons without support lists.
 
+Library requests, thumbnail authorization, and video/media authorization share a
+daemon-lifetime in-memory index (`server/library_index.rs`). The first request
+builds it; unchanged requests reuse an immutable snapshot without enumerating
+directories, reading descriptors, or analysing scene packages. Linux inotify
+events are drained on the next library/thumbnail/media request. Additions,
+deletions, renames and writes invalidate only the affected directory listings
+or Wallpaper Engine projects; unchanged projects retain their parsed metadata
+and scene reports. Saving library paths adds/removes indexed roots while retaining
+unaffected caches. Missing roots, new nested directories, Steam library-folder
+changes and Workshop additions are watched through their existing ancestors.
+The UI's refresh button reads this same index; changes appear on the next request,
+not through automatic page updates. Restarting the daemon rebuilds the index on
+first use. Notification overflow/read failure rebuilds it; unavailable watches
+fall back to scanning with a warning to avoid silently returning stale entries.
+Cached media lookups use a path map and revalidate the requested canonical file;
+thumbnail sources must still resolve to the indexed path before being opened.
+
 Thumbnail cache: `$XDG_CACHE_HOME/better-wallpaper/thumbnails`, falling back to
 `~/.cache/better-wallpaper/thumbnails`. Cache keys include source path, size, and
 modification time.

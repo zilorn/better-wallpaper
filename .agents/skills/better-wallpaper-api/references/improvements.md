@@ -1,5 +1,21 @@
 # Management API Improvements
 
+## Incremental Library Index — Resolved
+
+Previously `library_response`, `library_thumbnail_response` and `media_response`
+each called the full scanner, including descriptor parsing and scene package
+analysis. `server/library_index.rs` now shares cached directory listings, project
+metadata and a path lookup map across these routes. inotify invalidates changed
+directories/projects on the next request; unchanged requests reuse the snapshot.
+Watch failure/overflow has a logged scanning/rebuild fallback. The cache lasts
+until daemon exit; the UI refresh button requests an incremental update.
+
+Regression tests verify snapshot reuse, directory read/project parse counts,
+file writes/additions/deletions/moves, root additions/removals/recreation, newly
+discovered Steam libraries, aliases and nested project dependencies, depth/entry
+limits, fallback freshness, shared list/thumbnail/media requests and rejection of
+cached paths replaced with symlinks outside the library.
+
 ## Backend Reload Reporting — Resolved
 
 `server.rs::update_config` compares the saved backend preference, resolving

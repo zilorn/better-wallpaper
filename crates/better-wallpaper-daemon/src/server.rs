@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -27,6 +27,9 @@ use sha1::{Digest, Sha1};
 use tiny_http::{Header, Method, Request, Response, ResponseBox, Server, StatusCode};
 use tracing::{info, warn};
 
+mod library_index;
+use library_index::LibraryIndex;
+
 const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const STATUS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
@@ -44,6 +47,7 @@ pub struct ApiState {
     home: PathBuf,
     plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
     thumbnail_generation: Arc<Mutex<()>>,
+    library_index: Arc<Mutex<LibraryIndex>>,
     pub log_store: LogStore,
     log_level: LogLevelController,
 }
@@ -93,6 +97,7 @@ impl ApiState {
             home,
             plasma_instances: Arc::new(Mutex::new(HashMap::new())),
             thumbnail_generation: Arc::new(Mutex::new(())),
+            library_index: Arc::new(Mutex::new(LibraryIndex::new())),
             log_store,
             log_level,
         }
@@ -393,7 +398,7 @@ fn config_revision(config: &AppConfig) -> u64 {
         })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct LibraryEntry {
     name: String,
     path: PathBuf,
@@ -408,7 +413,7 @@ struct LibraryEntry {
     scene_properties: Vec<UserProperty>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct CompatibilityPayload {
     level: u32,
     level_name: String,
@@ -423,28 +428,19 @@ struct LibraryPayload {
     roots: Vec<PathBuf>,
     engine_roots: Vec<PathBuf>,
     truncated: bool,
+    #[serde(skip)]
+    by_path: HashMap<PathBuf, usize>,
+}
+
+impl LibraryPayload {
+    fn entry(&self, path: &Path) -> Option<&LibraryEntry> {
+        self.by_path.get(path).map(|index| &self.entries[*index])
+    }
 }
 
 fn library_response(state: &ApiState) -> Response<std::io::Cursor<Vec<u8>>> {
-    let roots = library_roots(state);
-    let engine_roots = wallpaper_engine_roots(&state.home);
-    let (entries, truncated) = scan_library(&roots, &engine_roots);
-    info!(
-        roots = roots.len(),
-        engine_roots = engine_roots.len(),
-        entries = entries.len(),
-        truncated,
-        "library scan complete"
-    );
-    json_response(
-        StatusCode(200),
-        &LibraryPayload {
-            entries,
-            roots,
-            engine_roots,
-            truncated,
-        },
-    )
+    let snapshot = library_snapshot(state);
+    json_response(StatusCode(200), &*snapshot)
 }
 
 fn library_roots(state: &ApiState) -> Vec<PathBuf> {
@@ -474,10 +470,8 @@ fn library_thumbnail_response(request_url: &str, state: &ApiState) -> ResponseBo
     let Some(path) = percent_decode(encoded_path).map(PathBuf::from) else {
         return error_response(StatusCode(400), "invalid media path parameter encoding").boxed();
     };
-    let requested = scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
-        .0
-        .into_iter()
-        .find(|entry| entry.path == path);
+    let snapshot = library_snapshot(state);
+    let requested = snapshot.entry(&path);
     if requested.as_ref().is_some_and(|entry| {
         entry.wallpaper_type == WallpaperType::Web && entry.preview_path.is_none()
     }) {
@@ -494,7 +488,7 @@ fn library_thumbnail_response(request_url: &str, state: &ApiState) -> ResponseBo
             return error_response(StatusCode(404), "media file does not exist").boxed();
         }
     };
-    let allowed = requested.is_some();
+    let allowed = requested.is_some() && canonical == *thumbnail_path;
     if !allowed {
         warn!(path = %canonical.display(), "refusing to create thumbnail outside library");
         return error_response(StatusCode(403), "media file is not in the library").boxed();
@@ -662,16 +656,7 @@ fn media_response(
             return error_response(StatusCode(404), "media file does not exist").boxed();
         }
     };
-    let allowed = !require_library_entry
-        || scan_library(&library_roots(state), &wallpaper_engine_roots(&state.home))
-            .0
-            .iter()
-            .any(|entry| {
-                entry
-                    .path
-                    .canonicalize()
-                    .is_ok_and(|candidate| candidate == canonical)
-            });
+    let allowed = !require_library_entry || library_snapshot(state).entry(&canonical).is_some();
     if !allowed {
         warn!(path = %canonical.display(), "refusing to read media file outside library");
         return error_response(StatusCode(403), "media file is not in the library").boxed();
@@ -781,79 +766,26 @@ pub(crate) fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name, value).expect("valid HTTP response header")
 }
 
-fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
-    let mut entries = Vec::new();
-    let mut visited = HashSet::new();
-    let mut pending: Vec<_> = roots.iter().map(|path| (path.clone(), 0)).collect();
-    let mut truncated = false;
-    while let Some((directory, depth)) = pending.pop() {
-        let canonical = match directory.canonicalize() {
-            Ok(path) if visited.insert(path.clone()) => path,
-            _ => continue,
-        };
-        if engine_roots.contains(&canonical) {
-            continue;
-        }
-        let children = match fs::read_dir(&canonical) {
-            Ok(children) => children,
-            Err(error) => {
-                warn!(path = %canonical.display(), %error, "skipping unreadable library directory");
-                continue;
-            }
-        };
-        for child in children.flatten() {
-            let path = child.path();
-            if child.file_type().is_ok_and(|kind| kind.is_symlink()) {
-                warn!(path = %path.display(), "skipping symlink in library");
-                continue;
-            }
-            let metadata = match child.metadata() {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    warn!(path = %path.display(), %error, "skipping library entry with unreadable metadata");
-                    continue;
-                }
-            };
-            if metadata.is_dir() && depth < MAX_LIBRARY_DEPTH {
-                pending.push((path, depth + 1));
-            } else if metadata.is_file() && is_video_path(&path) && path.to_str().is_some() {
-                let modified_unix_seconds = metadata
-                    .modified()
-                    .ok()
-                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|duration| duration.as_secs());
-                entries.push(LibraryEntry {
-                    name: child.file_name().to_string_lossy().into_owned(),
-                    path,
-                    engine_mode: false,
-                    wallpaper_type: WallpaperType::Video,
-                    preview_path: None,
-                    size_bytes: metadata.len(),
-                    modified_unix_seconds,
-                    scene_compatibility: None,
-                    scene_properties: Vec::new(),
-                });
-                if entries.len() >= MAX_LIBRARY_ENTRIES {
-                    truncated = true;
-                    break;
-                }
-            }
-        }
-        if truncated {
-            break;
-        }
-    }
-    for root in engine_roots {
-        scan_wallpaper_engine_library(root, &mut entries, &mut truncated);
-        if truncated {
-            break;
-        }
-    }
-    entries.sort_by_key(|entry| entry.name.to_lowercase());
-    (entries, truncated)
+fn library_snapshot(state: &ApiState) -> Arc<LibraryPayload> {
+    let roots = library_roots(state);
+    let mut index = state.library_index.lock().unwrap_or_else(|error| {
+        warn!("Library index lock poisoned; rebuilding index");
+        let mut index = error.into_inner();
+        *index = LibraryIndex::new();
+        state.library_index.clear_poison();
+        index
+    });
+    index.refresh(roots, &state.home)
 }
 
-fn wallpaper_engine_roots(home: &Path) -> Vec<PathBuf> {
+#[cfg(test)]
+fn scan_library(roots: &[PathBuf], engine_roots: &[PathBuf]) -> (Vec<LibraryEntry>, bool) {
+    let snapshot = LibraryIndex::new().scan(roots.to_vec(), engine_roots.to_vec());
+    // Existing scanner contract tests inspect the serialized public entry fields.
+    (snapshot.entries.clone(), snapshot.truncated)
+}
+
+fn wallpaper_engine_candidates(home: &Path) -> Vec<PathBuf> {
     let steam_roots = [
         home.join(".local/share/Steam"),
         home.join(".steam/steam"),
@@ -877,8 +809,6 @@ fn wallpaper_engine_roots(home: &Path) -> Vec<PathBuf> {
     let mut roots = libraries
         .into_iter()
         .map(|library| library.join("steamapps/workshop/content/431960"))
-        .filter(|path| path.is_dir())
-        .filter_map(|path| path.canonicalize().ok())
         .collect::<Vec<_>>();
     roots.sort();
     roots.dedup();
@@ -922,164 +852,143 @@ fn analyse_scene_pkg(project_dir: &Path) -> Option<CompatibilityPayload> {
     })
 }
 
-fn scan_wallpaper_engine_library(
-    root: &Path,
-    entries: &mut Vec<LibraryEntry>,
-    truncated: &mut bool,
-) {
-    let projects = match fs::read_dir(root) {
-        Ok(projects) => projects,
+fn scan_wallpaper_engine_project(project_directory: &Path) -> Option<LibraryEntry> {
+    let descriptor = project_directory.join("project.json");
+    let descriptor_json = match fs::read_to_string(&descriptor) {
+        Ok(json) => json,
         Err(error) => {
-            warn!(path = %root.display(), %error, "skipping unreadable Wallpaper Engine workshop directory");
-            return;
+            warn!(path = %descriptor.display(), %error, "skipping unreadable Wallpaper Engine project");
+            return None;
         }
     };
-    for project_directory in projects
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-    {
-        let descriptor = project_directory.join("project.json");
-        let descriptor_json = match fs::read_to_string(&descriptor) {
-            Ok(json) => json,
-            Err(error) => {
-                warn!(path = %descriptor.display(), %error, "skipping unreadable Wallpaper Engine project");
-                continue;
-            }
-        };
-        let project: WallpaperEngineProject = match serde_json::from_str(&descriptor_json) {
-            Ok(project) => project,
-            Err(error) => {
-                warn!(path = %descriptor.display(), %error, "skipping invalid Wallpaper Engine project");
-                continue;
-            }
-        };
-        let wallpaper_type = match project.kind.to_ascii_lowercase().as_str() {
-            "video" => WallpaperType::Video,
-            "web" => WallpaperType::Web,
-            "scene" => WallpaperType::Scene,
-            _ => {
-                info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
-                continue;
-            }
-        };
-        let mut scene_properties = if wallpaper_type == WallpaperType::Scene {
-            match parse_project_properties(&descriptor_json) {
-                Ok(properties) => properties
-                    .into_iter()
-                    .map(|(_, property)| property)
-                    .collect(),
-                Err(error) => {
-                    warn!(path = %descriptor.display(), %error, "failed to parse scene user properties");
-                    Vec::new()
-                }
-            }
-        } else {
-            Vec::new()
-        };
-        scene_properties.sort_by(|left, right| {
-            left.order
-                .unwrap_or(u32::MAX)
-                .cmp(&right.order.unwrap_or(u32::MAX))
-                .then_with(|| left.key.cmp(&right.key))
-        });
-
-        let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
-            WallpaperType::Scene => {
-                // Scene wallpapers: the entry path is the project directory itself.
-                let canonical_project = match project_directory.canonicalize() {
-                    Ok(path) => path,
-                    Err(_) => continue,
-                };
-                let preview = project.preview.and_then(|relative| {
-                    if relative.is_absolute() {
-                        return None;
-                    }
-                    project_directory
-                        .join(relative)
-                        .canonicalize()
-                        .ok()
-                        .filter(|path| path.starts_with(&canonical_project) && path.is_file())
-                });
-                // Analyse scene.pkg for compatibility
-                let compatibility = analyse_scene_pkg(&canonical_project);
-                (canonical_project, preview, compatibility)
-            }
-            _ => {
-                let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
-                    warn!(path = %descriptor.display(), "skipping Wallpaper Engine project without a safe entry path");
-                    continue;
-                };
-                let media_path = project_directory.join(relative_file);
-                let canonical_project = match project_directory.canonicalize() {
-                    Ok(path) => path,
-                    Err(_) => continue,
-                };
-                let media_path = match media_path.canonicalize() {
-                    Ok(path) if path.starts_with(&canonical_project) => path,
-                    _ => {
-                        warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine entry path");
-                        continue;
-                    }
-                };
-                let _ = match media_path.metadata() {
-                    Ok(md) if md.is_file() => md,
-                    Ok(_) => continue,
-                    Err(error) => {
-                        warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine entry file");
-                        continue;
-                    }
-                };
-                let preview = project.preview.and_then(|relative| {
-                    if relative.is_absolute() {
-                        return None;
-                    }
-                    project_directory
-                        .join(relative)
-                        .canonicalize()
-                        .ok()
-                        .filter(|path| path.starts_with(&canonical_project) && path.is_file())
-                });
-                (media_path, preview, None)
-            }
-        };
-
-        let metadata = match media_path.metadata() {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                warn!(path = %media_path.display(), %error, "skipping unreadable project metadata");
-                continue;
-            }
-        };
-        entries.push(LibraryEntry {
-            name: project
-                .title
-                .filter(|title| !title.trim().is_empty())
-                .unwrap_or_else(|| {
-                    project_directory
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned()
-                }),
-            path: media_path,
-            engine_mode: true,
-            wallpaper_type,
-            preview_path,
-            size_bytes: metadata.len(),
-            modified_unix_seconds: metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|duration| duration.as_secs()),
-            scene_compatibility,
-            scene_properties,
-        });
-        if entries.len() >= MAX_LIBRARY_ENTRIES {
-            *truncated = true;
-            break;
+    let project: WallpaperEngineProject = match serde_json::from_str(&descriptor_json) {
+        Ok(project) => project,
+        Err(error) => {
+            warn!(path = %descriptor.display(), %error, "skipping invalid Wallpaper Engine project");
+            return None;
         }
-    }
+    };
+    let wallpaper_type = match project.kind.to_ascii_lowercase().as_str() {
+        "video" => WallpaperType::Video,
+        "web" => WallpaperType::Web,
+        "scene" => WallpaperType::Scene,
+        _ => {
+            info!(path = %descriptor.display(), kind = %project.kind, "skipping unsupported Wallpaper Engine project type");
+            return None;
+        }
+    };
+    let mut scene_properties = if wallpaper_type == WallpaperType::Scene {
+        match parse_project_properties(&descriptor_json) {
+            Ok(properties) => properties
+                .into_iter()
+                .map(|(_, property)| property)
+                .collect(),
+            Err(error) => {
+                warn!(path = %descriptor.display(), %error, "failed to parse scene user properties");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    scene_properties.sort_by(|left, right| {
+        left.order
+            .unwrap_or(u32::MAX)
+            .cmp(&right.order.unwrap_or(u32::MAX))
+            .then_with(|| left.key.cmp(&right.key))
+    });
+
+    let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
+        WallpaperType::Scene => {
+            // Scene wallpapers: the entry path is the project directory itself.
+            let canonical_project = match project_directory.canonicalize() {
+                Ok(path) => path,
+                Err(_) => return None,
+            };
+            let preview = project.preview.and_then(|relative| {
+                if relative.is_absolute() {
+                    return None;
+                }
+                project_directory
+                    .join(relative)
+                    .canonicalize()
+                    .ok()
+                    .filter(|path| path.starts_with(&canonical_project) && path.is_file())
+            });
+            // Analyse scene.pkg for compatibility
+            let compatibility = analyse_scene_pkg(&canonical_project);
+            (canonical_project, preview, compatibility)
+        }
+        _ => {
+            let Some(relative_file) = project.file.filter(|path| !path.is_absolute()) else {
+                warn!(path = %descriptor.display(), "skipping Wallpaper Engine project without a safe entry path");
+                return None;
+            };
+            let media_path = project_directory.join(relative_file);
+            let canonical_project = match project_directory.canonicalize() {
+                Ok(path) => path,
+                Err(_) => return None,
+            };
+            let media_path = match media_path.canonicalize() {
+                Ok(path) if path.starts_with(&canonical_project) => path,
+                _ => {
+                    warn!(path = %media_path.display(), "skipping unsafe Wallpaper Engine entry path");
+                    return None;
+                }
+            };
+            let _ = match media_path.metadata() {
+                Ok(md) if md.is_file() => md,
+                Ok(_) => return None,
+                Err(error) => {
+                    warn!(path = %media_path.display(), %error, "skipping missing Wallpaper Engine entry file");
+                    return None;
+                }
+            };
+            let preview = project.preview.and_then(|relative| {
+                if relative.is_absolute() {
+                    return None;
+                }
+                project_directory
+                    .join(relative)
+                    .canonicalize()
+                    .ok()
+                    .filter(|path| path.starts_with(&canonical_project) && path.is_file())
+            });
+            (media_path, preview, None)
+        }
+    };
+
+    let metadata = match media_path.metadata() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            warn!(path = %media_path.display(), %error, "skipping unreadable project metadata");
+            return None;
+        }
+    };
+    Some(LibraryEntry {
+        name: project
+            .title
+            .filter(|title| !title.trim().is_empty())
+            .unwrap_or_else(|| {
+                project_directory
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            }),
+        path: media_path,
+        engine_mode: true,
+        wallpaper_type,
+        preview_path,
+        size_bytes: metadata.len(),
+        modified_unix_seconds: metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs()),
+        scene_compatibility,
+        scene_properties,
+    })
 }
 
 fn is_video_path(path: &Path) -> bool {
