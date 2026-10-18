@@ -18,6 +18,11 @@ and incomplete reference coverage. It does not imply the native engine rejects
 them. Complete broader reference discovery only after defining and testing the
 additional syntax/fields and lookup rules against samples; do not silently treat
 unknown dependencies as resolved or absent from the installation.
+The retained [A0 inventory report](../../../../docs/validation/a0-asset-inventory.md)
+records 2,593 assets/container entries and 3,858 candidate references from two
+identical scans. Its machine-readable manifest preserves 32 strict-JSON failures
+and incomplete reference coverage; 459 size-validated TEX payloads are not a
+wallpaper playback success count.
 
 ## Basic Mouse Parallax — Implemented / Desktop Verification Needed
 
