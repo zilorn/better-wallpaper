@@ -1,6 +1,6 @@
 # A1 bounded atlas model validation
 
-Date: 2026-10-18. This is the first A1 implementation batch: independent image/mip
+Date: 2026-10-18. Implementation commit: `d012f50`. This is the first A1 implementation batch: independent image/mip
 chains, full frame bases and opt-in structural inspection. Advanced scene/GPU
 playback and native screenshot parity remain incomplete. The
 [atlas investigation](../reverse-engineering/wallpaper-engine-atlases.md) records
