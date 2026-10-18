@@ -29,10 +29,10 @@ fn animated_texture() -> Vec<u8> {
     }
     bytes.extend_from_slice(b"TEXS0002\0");
     bytes.extend_from_slice(&2_u32.to_le_bytes());
-    for (number, x) in [(0_u32, 0.0_f32), (1, 2.0)] {
-        bytes.extend_from_slice(&number.to_le_bytes());
+    for x in [0.0_f32, 2.0] {
+        bytes.extend_from_slice(&0_u32.to_le_bytes()); // atlas image index
         bytes.extend_from_slice(&0.5_f32.to_le_bytes());
-        for value in [x, 0.0, 2.0, 2.0, 0.0, 0.0] {
+        for value in [x, 0.0, 2.0, 0.0, 0.0, 2.0] {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
     }

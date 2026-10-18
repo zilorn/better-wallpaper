@@ -425,30 +425,41 @@ fn gpu_scene_goldens() {
         atlas.extend([255, 0, 0, 255].repeat(32));
         atlas.extend([0, 255, 0, 255].repeat(32));
     }
-    let mut tex = texture(64, 32, 64, atlas);
-    tex[22..26].copy_from_slice(&4_u32.to_le_bytes()); // TEX animated flag.
-    tex.extend(b"TEXS0002\0");
-    tex.extend(2_u32.to_le_bytes());
-    for frame in 0..2_u32 {
-        tex.extend(frame.to_le_bytes());
-        for value in [0.5_f32, frame as f32 * 32.0, 0.0, 32.0, 32.0, 0.0, 0.0] {
-            tex.extend(value.to_le_bytes());
+    for animation_version in 1..=3 {
+        let mut tex = texture(64, 32, 64, atlas.clone());
+        tex[22..26].copy_from_slice(&4_u32.to_le_bytes()); // TEX animated flag.
+        tex.extend(format!("TEXS{animation_version:04}\0").as_bytes());
+        tex.extend(2_u32.to_le_bytes());
+        if animation_version == 3 {
+            tex.extend(32_u32.to_le_bytes());
+            tex.extend(32_u32.to_le_bytes());
         }
+        for frame in 0..2_u32 {
+            tex.extend(0_u32.to_le_bytes()); // atlas image index
+            tex.extend(0.5_f32.to_le_bytes());
+            for value in [frame * 32, 0, 32, 0, 0, 32] {
+                if animation_version == 1 {
+                    tex.extend(value.to_le_bytes());
+                } else {
+                    tex.extend((value as f32).to_le_bytes());
+                }
+            }
+        }
+        let scene = json!({"general":{"orthogonalprojection":{"width":32,"height":32}},"objects":[{"image":"models/sprite.json","origin":"16 16 0","size":"32 32"}]});
+        let sprites = assets(scene, vec![("sprite", tex, "opaque")]);
+        assert_eq!(sprites.draws[0].animation.as_ref().unwrap().frames.len(), 2);
+        let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
+        renderer.upload_scene_textures(&sprites).unwrap();
+        for (time, name) in [
+            (0.0, "sprite-red"),
+            (0.5, "sprite-green"),
+            (1.0, "sprite-red"),
+        ] {
+            renderer.draw_scene(&sprites, time).unwrap();
+            compare(name, &context.pixels(32, 32), 32, 32);
+        }
+        drop(renderer);
     }
-    let scene = json!({"general":{"orthogonalprojection":{"width":32,"height":32}},"objects":[{"image":"models/sprite.json","origin":"16 16 0","size":"32 32"}]});
-    let sprites = assets(scene, vec![("sprite", tex, "opaque")]);
-    assert_eq!(sprites.draws[0].animation.as_ref().unwrap().frames.len(), 2);
-    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
-    renderer.upload_scene_textures(&sprites).unwrap();
-    for (time, name) in [
-        (0.0, "sprite-red"),
-        (0.5, "sprite-green"),
-        (1.0, "sprite-red"),
-    ] {
-        renderer.draw_scene(&sprites, time).unwrap();
-        compare(name, &context.pixels(32, 32), 32, 32);
-    }
-    drop(renderer);
     let mut rgba = vec![0; 64 * 32 * 4];
     for y in 0..32 {
         for x in 0..64 {

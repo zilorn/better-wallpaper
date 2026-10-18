@@ -14,8 +14,10 @@ in ordinary tests. Keep GPU cases on one thread so EGL display teardown is safe.
 
 Ten committed PNG references cover parent transforms, radians/rotation, layer
 order, opaque/translucent/additive blending, output cover/resize, padded TEX UVs
-and orientation, opacity and camera-zoom timelines, TEX sprite frames/loops,
+and orientation, opacity and camera-zoom timelines, TEXS1/2/3 sprite frames/loops,
 basic parallax axes/pause, and real embedded TEXB0004 video decoding/uploads.
+Sprite fixtures use image indices and six-component frame bases established by
+[local native analysis](../../../../docs/reverse-engineering/wallpaper-engine-textures.md).
 Video checks also change RGBA storage size and recreate the EGL context while
 retaining CPU frames, exercising the output-replacement upload contract.
 
@@ -42,7 +44,7 @@ gates additionally catch alpha and channel errors that luminance SSIM can miss.
 Failure writes actual and amplified RGB difference PNGs under
 `target/scene-golden-failures/`, and reports the metrics/path in the assertion.
 
-On the recorded llvmpipe run all fourteen comparisons had SSIM 1.0 and zero MSE
+On the recorded llvmpipe run all twenty comparisons had SSIM 1.0 and zero MSE
 and maximum channel error. These fixtures establish deterministic regression
 coverage. They do not establish Wallpaper Engine screenshot parity, real niri
 pointer/hotplug behavior, vendor GPU coverage, or the eight-hour L2 soak criterion.

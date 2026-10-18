@@ -1640,7 +1640,7 @@ mod tests {
                     height: 2.0,
                 },
                 better_wallpaper_scene_format::AnimationFrame {
-                    frame_number: 1,
+                    frame_number: 0,
                     frametime: 0.5,
                     x: 2.0,
                     y: 0.0,
@@ -1720,8 +1720,8 @@ mod tests {
         }
         bytes.extend_from_slice(b"TEXB0003\0");
         for value in [
-            13u32,
-            1,
+            1u32,
+            u32::MAX,
             1,
             width,
             height,

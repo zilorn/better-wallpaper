@@ -834,16 +834,16 @@ mod tests {
             texture.extend(value.to_le_bytes());
         }
         texture.extend(b"TEXB0001\0");
-        for value in [1u32, 2, 1, 8] {
+        for value in [1u32, 1, 2, 1, 8] {
             texture.extend(value.to_le_bytes());
         }
         texture.extend([255u8; 8]);
         texture.extend(b"TEXS0001\0");
         texture.extend(2u32.to_le_bytes());
         for index in 0..2u32 {
-            texture.extend(index.to_le_bytes());
+            texture.extend(0_u32.to_le_bytes());
             texture.extend(0.5f32.to_le_bytes());
-            for value in [index, 0, 1, 1, 0, 0] {
+            for value in [index, 0, 1, 0, 0, 1] {
                 texture.extend(value.to_le_bytes());
             }
         }

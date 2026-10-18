@@ -47,9 +47,9 @@ tests or compilation do not fulfill the long-running verification criterion.
 
 Evidence: `gpu-renderer/tests/scene_golden.rs` renders shared PKG/TEX assets in a
 surfaceless GLES context and compares ten analytical PNG references using local
-SSIM plus RGBA MSE/max error. Fourteen comparisons passed on llvmpipe with SSIM=1
+SSIM plus RGBA MSE/max error. Twenty comparisons passed on llvmpipe with SSIM=1
 and zero channel error, including TEXB0004 video updates/context replacement and
-basic pointer parallax. The harness exposed and now covers a translucent alpha
+basic pointer parallax and all TEXS1/2/3 rectangular sprite versions. The harness exposed and now covers a translucent alpha
 compositing bug. The ordinary suite tests the comparison gate; GPU cases require
 an explicit command documented in the rendering interfaces.
 
@@ -59,3 +59,21 @@ thresholds; run on supported vendor GPUs and real niri sessions. Synthetic exact
 matches do not complete the reference-screenshot fidelity or eight-hour soak exit
 criteria in `plan.md`. Fonts, broader effects and authoring-format variation still
 need reference sample coverage.
+
+## Native TEX Reader Compatibility — Implemented / Advanced Layouts Pending
+
+Evidence: `docs/reverse-engineering/wallpaper-engine-textures.md` records the
+Wallpaper Engine 2.8.42 binary identity, REA Evidence IDs, assembly corroboration,
+and exact local sample hashes. Corrected TEXB1 image count, TEXB3 field order,
+TEXS NUL/version dispatch, image indices and six-component frame bases. Of 440
+local loose textures, validated 2D payloads increased from 370 to 412; the remaining
+28 volume/LUT textures now produce explicit unsupported errors. Synthetic tests
+cover every TEXB1–4/TEXS1–3 combination and malformed records. GPU goldens cover
+all three sprite versions without changing reference pixels.
+
+Completion for remaining layouts: represent multiple atlas images and rotated
+frame bases explicitly, add bounded 3D LUT parsing/upload, and verify reference
+output before advertising support. The current parser rejects these layouts;
+TEXB4 video/editor metadata still needs separate native/sample corroboration.
+Particle atlases do not establish particle simulation support. Local pixel-size
+validation and synthetic goldens do not establish Wallpaper Engine visual parity.

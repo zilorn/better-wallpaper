@@ -113,6 +113,7 @@ pub struct Mipmap {
 /// An animation frame in a spritesheet or GIF texture
 #[derive(Debug, Clone)]
 pub struct AnimationFrame {
+    /// Index of the texture image containing this frame, not a sequence number.
     pub frame_number: u32,
     pub frametime: f32,
     pub x: f32,
@@ -301,12 +302,6 @@ fn color_space(format: TexFormat) -> TextureColorSpace {
     let _ = format;
     // Pixel storage alone does not prove whether authored values use an sRGB transfer function.
     TextureColorSpace::Unknown
-}
-
-/// Returns true when `v` matches a known FreeImage format identifier used in
-/// Wallpaper Engine TEXB0003/0004 containers.
-fn is_known_freeimage_format_u32(v: u32) -> bool {
-    matches!(v, 0 | 2 | 13 | 17 | 18 | 24 | 25 | 35)
 }
 
 fn alpha_mode(format: TexFormat) -> TextureAlphaMode {
@@ -499,6 +494,13 @@ impl TexTexture {
         let format_raw = read_u32_le(data, &mut offset)?;
         let mut format = TexFormat::try_from(format_raw)?;
         let flags = read_u32_le(data, &mut offset)?;
+        // Volume textures carry an extra depth in TEXI and in each mip. They
+        // cannot be represented by the current 2D upload contract.
+        if flags & 64 != 0 {
+            return Err(TexError::InvalidData(
+                "Volume textures are not supported by the 2D renderer".into(),
+            ));
+        }
         let texture_width = read_u32_le(data, &mut offset)?;
         let texture_height = read_u32_le(data, &mut offset)?;
         let width = read_u32_le(data, &mut offset)?;
@@ -529,60 +531,34 @@ impl TexTexture {
             }
         };
 
-        let mut free_image_format = None;
+        // All TEXB versions start with image_count. Version 3 then adds the
+        // FreeImage codec, and version 4 adds video metadata. See the native
+        // reader evidence in docs/reverse-engineering/wallpaper-engine-textures.md.
+        let image_count = read_u32_le(data, &mut offset)?;
+        if image_count != 1 {
+            return Err(TexError::InvalidData(format!(
+                "Expected one texture image, got {image_count}; multiple atlas images are not supported"
+            )));
+        }
+        let mut free_image_format = if container_version >= 3 {
+            Some(FreeImageFormat::from(read_u32_le(data, &mut offset)?))
+        } else {
+            None
+        };
         let mut is_video_texb4 = false;
-        let mut image_count_override = None;
 
         if container_version == 4 {
-            let image_count = read_u32_le(data, &mut offset)?;
-            let fif_raw = read_u32_le(data, &mut offset)?;
             is_video_texb4 = read_u32_le(data, &mut offset)? == 1;
-            image_count_override = Some(image_count);
-            free_image_format = if is_video_texb4 {
-                Some(FreeImageFormat::Mp4)
-            } else {
-                Some(FreeImageFormat::from(fif_raw))
-            };
-        }
-
-        if container_version == 3 {
-            // TEXB0003 has two layout variants in the wild:
-            //   A) TEXB0003 freeimage_fmt image_count …  (our test fixtures)
-            //   B) TEXB0003 image_count freeimage_fmt …  (many real scenes)
-            // Heuristic: peek ahead four bytes. A known FreeImage format value
-            // (0,2,13,17,18,24,25,35) signals variant A; a small plausible
-            // image count like 1 signals variant B.
-            let next = read_u32_le(data, &mut offset)?;
-            let (fif_raw, is_variant_b) = if is_known_freeimage_format_u32(next) {
-                (next, false)
-            } else {
-                let fif = read_u32_le(data, &mut offset)?;
-                (fif, true)
-            };
-            free_image_format = Some(FreeImageFormat::from(fif_raw));
-            // For variant B, `next` was the image count — skip the
-            // standard image_count read below.
-            if is_variant_b {
-                image_count_override = Some(next);
+            if is_video_texb4 {
+                free_image_format = Some(FreeImageFormat::Mp4);
             }
         }
 
-        // Read mipmap count — stored differently per version
-        // For TEXB0002/0003/0004: the count is the number of images,
-        // each image has its own mipmap count
         let mut mipmaps = Vec::new();
-        let image_count = if let Some(count) = image_count_override {
-            count
-        } else if container_version >= 2 {
-            read_u32_le(data, &mut offset)?
-        } else {
-            1
-        };
 
         let mut frames = Vec::new();
         let mut spritesheet_cols = 0u32;
         let mut spritesheet_rows = 0u32;
-        let mut _spritesheet_frames = 0u32;
         let mut spritesheet_duration = 0f32;
 
         for _image_idx in 0..image_count {
@@ -684,47 +660,56 @@ impl TexTexture {
         // Optional animation frames
         if is_animated && offset + 9 <= len {
             // Try to read TEXS block
-            let anim_magic = std::str::from_utf8(&data[offset..offset + 9]).unwrap_or("");
-            if anim_magic.starts_with("TEXS") {
-                offset += 9;
+            if data[offset..].starts_with(b"TEXS") {
+                let anim_version = read_magic(data, &mut offset)?;
+                if !matches!(anim_version, "TEXS0001" | "TEXS0002" | "TEXS0003") {
+                    return Err(TexError::InvalidData(format!(
+                        "Unsupported texture animation block {anim_version}"
+                    )));
+                }
                 let frame_count = read_u32_le(data, &mut offset)?;
+                if frame_count > MAX_ANIMATION_FRAMES {
+                    return Err(TexError::InvalidData(format!(
+                        "Texture animation exceeds {MAX_ANIMATION_FRAMES} frames"
+                    )));
+                }
 
-                let anim_version = anim_magic;
                 if anim_version == "TEXS0003" {
-                    // read gif dimensions
-                    _spritesheet_frames = frame_count;
+                    // Logical frame dimensions; atlas UVs use mip dimensions.
                     read_u32_le(data, &mut offset)?; // gif_width
                     read_u32_le(data, &mut offset)?; // gif_height
                 }
 
-                for _ in 0..frame_count.min(MAX_ANIMATION_FRAMES) {
-                    let frame: AnimationFrame;
-                    if anim_version == "TEXS0001" {
-                        frame = AnimationFrame {
-                            frame_number: read_u32_le(data, &mut offset)?,
-                            frametime: read_f32_le(data, &mut offset)?,
-                            x: read_u32_le(data, &mut offset)? as f32,
-                            y: read_u32_le(data, &mut offset)? as f32,
-                            width: read_u32_le(data, &mut offset)? as f32,
-                            height: read_u32_le(data, &mut offset)? as f32,
+                for _ in 0..frame_count {
+                    let frame_number = read_u32_le(data, &mut offset)?;
+                    let frametime = read_f32_le(data, &mut offset)?;
+                    let mut components = [0.0; 6];
+                    for component in &mut components {
+                        *component = if anim_version == "TEXS0001" {
+                            read_i32_le(data, &mut offset)? as f32
+                        } else {
+                            read_f32_le(data, &mut offset)?
                         };
-                        // skip unknown fields
-                        read_u32_le(data, &mut offset)?;
-                        read_u32_le(data, &mut offset)?;
-                    } else {
-                        frame = AnimationFrame {
-                            frame_number: read_u32_le(data, &mut offset)?,
-                            frametime: read_f32_le(data, &mut offset)?,
-                            x: read_f32_le(data, &mut offset)?,
-                            y: read_f32_le(data, &mut offset)?,
-                            width: read_f32_le(data, &mut offset)?,
-                            height: read_f32_le(data, &mut offset)?,
-                        };
-                        // skip additional fields
-                        read_f32_le(data, &mut offset)?;
-                        read_f32_le(data, &mut offset)?;
-                    };
-                    frames.push(frame);
+                    }
+                    let [x, y, width, horizontal_y, vertical_x, height] = components;
+                    if frame_number >= image_count {
+                        return Err(TexError::InvalidData(format!(
+                            "Animation frame references missing texture image {frame_number}"
+                        )));
+                    }
+                    if horizontal_y != 0.0 || vertical_x != 0.0 {
+                        return Err(TexError::InvalidData(
+                            "Rotated or skewed texture animation frames are not supported".into(),
+                        ));
+                    }
+                    frames.push(AnimationFrame {
+                        frame_number,
+                        frametime,
+                        x,
+                        y,
+                        width,
+                        height,
+                    });
                 }
 
                 // Calculate spritesheet grid
@@ -840,6 +825,145 @@ fn get_slice<'a>(data: &'a [u8], offset: &mut usize, size: usize) -> Result<&'a 
 mod tests {
     use super::*;
 
+    // Synthetic pixels with the layout observed in the installed engine's
+    // TEXB reader. No Wallpaper Engine asset bytes are embedded here.
+    fn observed_texture(container_version: u32) -> Vec<u8> {
+        let mut bytes = b"TEXV0005\0TEXI0001\0".to_vec();
+        for value in [0_u32, 4, 2, 1, 2, 1, 0] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(format!("TEXB{container_version:04}\0").as_bytes());
+        bytes.extend(1_u32.to_le_bytes()); // image count, including TEXB0001
+        if container_version >= 3 {
+            bytes.extend(u32::MAX.to_le_bytes()); // raw pixels, no FreeImage codec
+        }
+        if container_version >= 4 {
+            bytes.extend(0_u32.to_le_bytes()); // non-video
+        }
+        for value in [1_u32, 2, 1] {
+            // mip count, width, height
+            bytes.extend(value.to_le_bytes());
+        }
+        if container_version >= 2 {
+            bytes.extend([0_u8; 8]); // no compression
+        }
+        bytes.extend(8_u32.to_le_bytes());
+        bytes.extend([10, 20, 30, 255, 40, 50, 60, 255]);
+        bytes
+    }
+
+    fn append_observed_frames(bytes: &mut Vec<u8>, version: u32) {
+        bytes.extend(format!("TEXS{version:04}\0").as_bytes());
+        bytes.extend(2_u32.to_le_bytes());
+        if version == 3 {
+            bytes.extend(1_u32.to_le_bytes()); // logical frame width and height
+            bytes.extend(1_u32.to_le_bytes());
+        }
+        for x in 0..2_u32 {
+            bytes.extend(0_u32.to_le_bytes()); // both frames use texture image 0
+            bytes.extend(0.5_f32.to_le_bytes());
+            // Origin, horizontal basis, vertical basis (six components).
+            for value in [x, 0, 1, 0, 0, 1] {
+                if version == 1 {
+                    bytes.extend(value.to_le_bytes());
+                } else {
+                    bytes.extend((value as f32).to_le_bytes());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parses_observed_container_headers_and_sprite_versions() {
+        for container in 1..=4 {
+            for animation in 1..=3 {
+                let mut bytes = observed_texture(container);
+                append_observed_frames(&mut bytes, animation);
+                let texture = TexTexture::parse(&bytes).unwrap();
+                assert_eq!(texture.mipmaps.len(), 1);
+                let image = texture.to_texture_image().unwrap();
+                assert_eq!((image.levels[0].width, image.levels[0].height), (2, 1));
+                assert_eq!(
+                    image.levels[0].data.as_ref(),
+                    &[10, 20, 30, 255, 40, 50, 60, 255]
+                );
+                assert_eq!(texture.frames.len(), 2);
+                assert_eq!(texture.frames[1].frame_number, 0);
+                assert_eq!(texture.frames[1].x, 1.0);
+                assert_eq!(texture.frames[1].y, 0.0);
+                assert_eq!(texture.frames[1].width, 1.0);
+                assert_eq!(texture.frames[1].height, 1.0);
+                assert_eq!(texture.spritesheet_cols, 2);
+                assert_eq!(texture.spritesheet_rows, 1);
+                assert_eq!(texture.spritesheet_duration, 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_unrepresentable_texture_layouts() {
+        // Counts that collide with FreeImage IDs must not be guessed as codecs.
+        for count in [0_u32, 2, 13, 25, u32::MAX] {
+            let mut bytes = observed_texture(3);
+            bytes[55..59].copy_from_slice(&count.to_le_bytes());
+            assert!(
+                matches!(TexTexture::parse(&bytes), Err(TexError::InvalidData(message))
+                if message.contains("Expected one texture image"))
+            );
+        }
+        let mut volume = observed_texture(3);
+        volume[22..26].copy_from_slice(&64_u32.to_le_bytes());
+        assert!(
+            matches!(TexTexture::parse(&volume), Err(TexError::InvalidData(message))
+            if message.contains("Volume textures"))
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_sprite_records_without_partial_animation() {
+        for version in 1..=3 {
+            let mut bytes = observed_texture(3);
+            let block = bytes.len();
+            append_observed_frames(&mut bytes, version);
+            let frame = block + 13 + if version == 3 { 8 } else { 0 };
+
+            // Every truncated record is rejected, including the last basis component.
+            for end in frame..bytes.len() {
+                assert!(TexTexture::parse(&bytes[..end]).is_err());
+            }
+            let mut missing_image = bytes.clone();
+            missing_image[frame..frame + 4].copy_from_slice(&1_u32.to_le_bytes());
+            assert!(
+                matches!(TexTexture::parse(&missing_image), Err(TexError::InvalidData(message))
+                if message.contains("missing texture image"))
+            );
+
+            let mut rotated = bytes.clone();
+            let one = if version == 1 {
+                1_u32
+            } else {
+                1.0_f32.to_bits()
+            };
+            rotated[frame + 20..frame + 24].copy_from_slice(&one.to_le_bytes());
+            assert!(
+                matches!(TexTexture::parse(&rotated), Err(TexError::InvalidData(message))
+                if message.contains("Rotated or skewed"))
+            );
+
+            bytes[block + 9..block + 13].copy_from_slice(&(MAX_ANIMATION_FRAMES + 1).to_le_bytes());
+            assert!(
+                matches!(TexTexture::parse(&bytes), Err(TexError::InvalidData(message))
+                if message.contains("exceeds"))
+            );
+        }
+        let mut bytes = observed_texture(3);
+        bytes.extend(b"TEXS0009\0");
+        assert!(
+            matches!(TexTexture::parse(&bytes), Err(TexError::InvalidData(message))
+            if message.contains("Unsupported texture animation block"))
+        );
+    }
+
     fn rgb_png(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
         let mut encoded = Vec::new();
         {
@@ -905,9 +1029,8 @@ mod tests {
         buf.extend(0u32.to_le_bytes()); // padding
         // TEXB0003 container
         buf.extend(b"TEXB0003\0");
-        buf.extend(13u32.to_le_bytes()); // FIF_PNG = 13
-        // image count = 1
-        buf.extend(1u32.to_le_bytes());
+        buf.extend(1u32.to_le_bytes()); // image count
+        buf.extend(u32::MAX.to_le_bytes()); // raw pixels
         // mip count per image = 1
         buf.extend(1u32.to_le_bytes());
         // mipmap: width, height
@@ -974,8 +1097,8 @@ mod tests {
         buf.extend(64u32.to_le_bytes());
         buf.extend(0u32.to_le_bytes());
         buf.extend(b"TEXB0003\0");
-        buf.extend(13u32.to_le_bytes()); // FIF_PNG
         buf.extend(1u32.to_le_bytes()); // image count
+        buf.extend(u32::MAX.to_le_bytes()); // raw pixels
         buf.extend(1u32.to_le_bytes()); // mip count
         buf.extend(64u32.to_le_bytes()); // w
         buf.extend(64u32.to_le_bytes()); // h
@@ -1019,8 +1142,8 @@ mod tests {
         buf.extend(1u32.to_le_bytes());
         buf.extend(0u32.to_le_bytes());
         buf.extend(b"TEXB0003\0");
-        buf.extend(13u32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
+        buf.extend(u32::MAX.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
         buf.extend(1u32.to_le_bytes());
