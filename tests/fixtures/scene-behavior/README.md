@@ -1,7 +1,7 @@
 # Deterministic scene behavior samples
 
 These 13 independently authored scene projects are inputs for the A0 adaptation
-baseline. Each directory contains `project.json` and `scene.pkg`; the package has
+baseline and A1 atlas regressions. Each directory contains `project.json` and `scene.pkg`; the package has
 the scene, models, materials and original TEX pixels. No Wallpaper Engine binary
 or commercial artwork is included. Native acceptance has not been tested. The
 synthetic video container establishes the current Better Wallpaper parser
@@ -29,7 +29,10 @@ python3 tests/fixtures/scene-behavior/generate.py --write
 # Ordinary hash, input-contract, asset-resolution and rejection checks.
 cargo test -p gpu-renderer --test scene_golden
 
-# Explicit GPU check against the same packages and ordered matrix inputs.
+# Read-only check of the seven independent analytical A1 references.
+python3 crates/gpu-renderer/tests/golden/generate_atlas_references.py
+
+# Explicit GPU checks against the packages and ordered matrix inputs.
 LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture
 ```
 
@@ -64,22 +67,23 @@ third frame is blue. The three layered samples have three draws and one
 non-drawable parent container: `skipped_nodes: 1` counts that container, not a
 missing layer. Other renderable samples have one draw and no skipped node.
 
-There are 20 comparisons against ten independent PNGs. All require local 8×8
+These baseline rows retain 20 comparisons against ten independent PNGs. All require local 8×8
 luminance SSIM >= 0.995, RGBA MSE <= 1 and maximum channel error <= 2. The test
 checks that recorded gates match the comparator. Failure artifacts and reference
 generation remain documented in the
 [golden README](../../../crates/gpu-renderer/tests/golden/README.md).
 
-## A1 playback failure probes
+## A1 atlas samples and legacy adapter probes
 
-These complete synthetic candidate layouts do not prove original-engine UV
-consumption. The legacy `TexTexture` playback parser must produce a specific TEX rejection, then one skipped image
-node and zero draws during asset resolution. They have no GPU steps because
-these layouts are unsupported. Parsing has no scene clock/pointer input. Future
-native probes should sample t=0, 0.5 and 1 without a pointer; both candidate frames
-last 0.5 seconds. Properties are empty and randomness is unused.
+These complete synthetic layouts now render through the shared `TexAtlas` scene
+path: one draw, no skipped nodes. Both frames last 0.5 seconds. Each sample uses
+six ordered steps: t=0, 0.499999, 0.5, 0.5 again (fixed-time pause), 1 (loop), then
+0.5 after recreating the EGL context. There is no pointer, no property override
+and no random input. The legacy `TexTexture` adapter still rejects the layouts;
+the matrix's `legacy_rejection` field checks those diagnostics separately.
+Neither path establishes original-program sample acceptance or UV parity.
 
-| Sample | Texture input | Required rejection |
+| Sample | Texture input | Legacy adapter rejection |
 | --- | --- | --- |
 | `multi-image` | Image 0: 2×2 plus 1×1 mip; image 1: one 1×2 mip; frames select images 0 then 1 | Multiple atlas images |
 | `rotated` | Asymmetric 2×2 pixels; basis (origin 2,0; horizontal 0,2; vertical -2,0), then identity | Rotated or skewed frame |
@@ -87,19 +91,26 @@ last 0.5 seconds. Properties are empty and randomness is unused.
 | `flipped-x` | Same pixels; basis (2,0; -2,0; 0,2), then identity | Flipped frame |
 | `flipped-y` | Same pixels; basis (0,2; 2,0; 0,-2), then identity | Flipped frame |
 
-Both multi-image mip chains are fully encoded independently. Rejecting the count
-does not validate native semantics. The proposed bases expose direction/image
-selection; native visual results remain unknown. Convert rejection probes into
-positive parser/render/capture cases when support is implemented, rather than
-deleting them to make a test pass.
+Both multi-image mip chains are fully encoded independently and normalized to
+their own image dimensions. Seven new analytical PNGs describe the two uniform
+image colors, identity and four affine transforms. The asymmetric 2×2 texture
+uses bilinear interpolation at explicit pixel centers. A half-texel inset along
+each authored basis specifies Better Wallpaper sampling; the skew sample's
+one-texel horizontal axis samples its center. This is not a native edge/filtering
+claim. The generator has explicit coordinate permutations for rotation/flips and
+does not read renderer output.
 
-The A1 `TexAtlas` inspection model now parses all five candidate TEX layouts,
-retaining each image's mip chain, image indices and full affine bases. Separate
-format-library tests verify these values and require conversion to `TexTexture`
-to retain the failures above. Thus the matrix's playback outcomes and native
-reference status remain unchanged. The
+The full matrix now contains 50 comparisons against 17 analytical PNGs. A separate
+GPU case adds five comparisons for failed-upload retry, preserving resident
+atlases at the image-count limit, clear/reload, and composing a reverse logical
+quarter-turn effect with an atlas rotation. These five are consumer probes, not
+native-capture steps. Existing packages and ten baseline PNGs are unchanged.
+Format-library tests retain the legacy failures above and verify shared sprite
+admission, which rejects an entire malformed sequence rather than dropping frames.
+The
 [atlas report](../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
-records the static evidence, bounds, inspection command and remaining GPU work.
+records static evidence; the [rendering record](../../../docs/validation/a1-atlas-rendering.md)
+records current behavior, verification and remaining native/desktop work.
 
 ## Original-program capture protocol and pending coverage
 
@@ -133,7 +144,7 @@ For a future controlled capture:
    failure/difference images. Do not overwrite analytical PNGs, loosen gates
    after viewing results, or label Better Wallpaper output a native reference.
 
-This covers the shared 2D golden baseline and A1 candidate failures. A2 still
+This covers the shared 2D golden baseline and A1 synthetic atlas rendering. A2 still
 needs a minimal LUT effect/volume sample (the audit records the local neutral
 LUT's identity); A3 needs native video-TEX/metadata evidence; A4 needs an observed
 effect mismatch and broader motion coverage. A5 web callbacks, A6 particles,

@@ -27,6 +27,7 @@
         32
       ],
       "id": "layers",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 3,
@@ -111,6 +112,7 @@
         32
       ],
       "id": "opacity",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 3,
@@ -153,6 +155,7 @@
         32
       ],
       "id": "zoom",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 3,
@@ -195,6 +198,7 @@
         32
       ],
       "id": "sprite-v1",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 1,
@@ -261,6 +265,7 @@
         32
       ],
       "id": "sprite-v2",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 1,
@@ -327,6 +332,7 @@
         32
       ],
       "id": "sprite-v3",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 1,
@@ -393,6 +399,7 @@
         32
       ],
       "id": "padding",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 1,
@@ -435,6 +442,7 @@
         32
       ],
       "id": "video",
+      "legacy_rejection": null,
       "native_reference": "pending",
       "outcome": {
         "draws": 1,
@@ -529,15 +537,90 @@
         32
       ],
       "id": "multi-image",
+      "legacy_rejection": "multiple atlas images are not supported",
       "native_reference": "pending",
       "outcome": {
-        "error": "multiple atlas images are not supported",
-        "kind": "reject_texture"
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
       },
       "properties": {},
       "purpose": "A1: image 0 has 2x2 and 1x1 mips; image 1 has one 1x2 mip; frames select image 0 then 1.",
       "random_seed": null,
-      "steps": []
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-image0",
+          "reference_sha256": "9b3539e528d16bcf2eaf43fb23d0283717a115f7dbe310e5d32af58fd851a641",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-image0",
+          "reference_sha256": "9b3539e528d16bcf2eaf43fb23d0283717a115f7dbe310e5d32af58fd851a641",
+          "time_seconds": 0.499999,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-image1",
+          "reference_sha256": "f8a37fc1404bb7e784a5726fe836d87e736a0190629249cea6d1d902d2b14caa",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-image1",
+          "reference_sha256": "f8a37fc1404bb7e784a5726fe836d87e736a0190629249cea6d1d902d2b14caa",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-image0",
+          "reference_sha256": "9b3539e528d16bcf2eaf43fb23d0283717a115f7dbe310e5d32af58fd851a641",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "atlas-image1",
+          "reference_sha256": "f8a37fc1404bb7e784a5726fe836d87e736a0190629249cea6d1d902d2b14caa",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
     },
     {
       "artifacts": {
@@ -557,15 +640,90 @@
         32
       ],
       "id": "rotated",
+      "legacy_rejection": "Rotated or skewed",
       "native_reference": "pending",
       "outcome": {
-        "error": "Rotated or skewed",
-        "kind": "reject_texture"
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
       },
       "properties": {},
-      "purpose": "A1 candidate rotated basis, then identity; native UV consumption/visual result still unverified.",
+      "purpose": "A1 rotated basis, then identity; synthetic rendering regression, native visual result still unverified.",
       "random_seed": null,
-      "steps": []
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-rotated",
+          "reference_sha256": "3c82f175ff029e5284ad861cb155e411c0c2a4480ffd376c2cffdac68005e84b",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-rotated",
+          "reference_sha256": "3c82f175ff029e5284ad861cb155e411c0c2a4480ffd376c2cffdac68005e84b",
+          "time_seconds": 0.499999,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-rotated",
+          "reference_sha256": "3c82f175ff029e5284ad861cb155e411c0c2a4480ffd376c2cffdac68005e84b",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
     },
     {
       "artifacts": {
@@ -585,15 +743,90 @@
         32
       ],
       "id": "skewed",
+      "legacy_rejection": "Rotated or skewed",
       "native_reference": "pending",
       "outcome": {
-        "error": "Rotated or skewed",
-        "kind": "reject_texture"
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
       },
       "properties": {},
-      "purpose": "A1 candidate skewed basis, then identity; native UV consumption/visual result still unverified.",
+      "purpose": "A1 skewed basis, then identity; synthetic rendering regression, native visual result still unverified.",
       "random_seed": null,
-      "steps": []
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-skewed",
+          "reference_sha256": "146924f6c97b0eebb4d016b97b4ddff15b545918d96d5bd4e5e667d9cd1e67b9",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-skewed",
+          "reference_sha256": "146924f6c97b0eebb4d016b97b4ddff15b545918d96d5bd4e5e667d9cd1e67b9",
+          "time_seconds": 0.499999,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-skewed",
+          "reference_sha256": "146924f6c97b0eebb4d016b97b4ddff15b545918d96d5bd4e5e667d9cd1e67b9",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
     },
     {
       "artifacts": {
@@ -613,15 +846,90 @@
         32
       ],
       "id": "flipped-x",
+      "legacy_rejection": "Flipped texture animation",
       "native_reference": "pending",
       "outcome": {
-        "error": "Flipped texture animation",
-        "kind": "reject_texture"
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
       },
       "properties": {},
-      "purpose": "A1 candidate flipped-x basis, then identity; native UV consumption/visual result still unverified.",
+      "purpose": "A1 flipped-x basis, then identity; synthetic rendering regression, native visual result still unverified.",
       "random_seed": null,
-      "steps": []
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-x",
+          "reference_sha256": "78dcb8d326bde68fe631d1cdea1438f1509e2ef41bdc4a0c42fa94e3625e2d3c",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-x",
+          "reference_sha256": "78dcb8d326bde68fe631d1cdea1438f1509e2ef41bdc4a0c42fa94e3625e2d3c",
+          "time_seconds": 0.499999,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-x",
+          "reference_sha256": "78dcb8d326bde68fe631d1cdea1438f1509e2ef41bdc4a0c42fa94e3625e2d3c",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
     },
     {
       "artifacts": {
@@ -641,15 +949,90 @@
         32
       ],
       "id": "flipped-y",
+      "legacy_rejection": "Flipped texture animation",
       "native_reference": "pending",
       "outcome": {
-        "error": "Flipped texture animation",
-        "kind": "reject_texture"
+        "draws": 1,
+        "kind": "render",
+        "skipped_nodes": 0
       },
       "properties": {},
-      "purpose": "A1 candidate flipped-y basis, then identity; native UV consumption/visual result still unverified.",
+      "purpose": "A1 flipped-y basis, then identity; synthetic rendering regression, native visual result still unverified.",
       "random_seed": null,
-      "steps": []
+      "steps": [
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-y",
+          "reference_sha256": "30bd9de858c9f118bff0c3a2318c3f0e8ed5d95a9414b92319836e094bd49288",
+          "time_seconds": 0,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-y",
+          "reference_sha256": "30bd9de858c9f118bff0c3a2318c3f0e8ed5d95a9414b92319836e094bd49288",
+          "time_seconds": 0.499999,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": false,
+          "reference": "atlas-flipped-y",
+          "reference_sha256": "30bd9de858c9f118bff0c3a2318c3f0e8ed5d95a9414b92319836e094bd49288",
+          "time_seconds": 1,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        },
+        {
+          "pointer": null,
+          "recreate_context": true,
+          "reference": "atlas-identity",
+          "reference_sha256": "2e590e06aa7a9cd1712e0c3a79b7dbf506e46b9b48f0b67dd59cc475339f6b6f",
+          "time_seconds": 0.5,
+          "video_action": null,
+          "viewport": [
+            32,
+            32
+          ]
+        }
+      ]
     }
   ],
   "schema_version": 1

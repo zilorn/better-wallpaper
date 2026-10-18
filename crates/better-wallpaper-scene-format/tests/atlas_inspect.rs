@@ -26,10 +26,11 @@ fn atlas_inspection_distinguishes_structure_from_current_playback_layout() {
     assert_eq!(report["images"][1]["mips"][0]["width"], 1);
     assert_eq!(report["frames"][1]["image_index"], 1);
     assert_eq!(report["single_image_layout"]["accepted"], false);
+    assert_eq!(report["sprite_layout"]["accepted"], true);
     assert_eq!(report["payload_status"], "validated_2d_images");
     assert_eq!(report["native_visual_validation"], "pending");
 
-    // The existing CLI entry point still uses the guarded playback adapter.
+    // The default CLI entry point retains the legacy single-image adapter.
     let legacy = Command::new(env!("CARGO_BIN_EXE_scene-inspect"))
         .arg(&input)
         .arg("--json")

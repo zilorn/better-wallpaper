@@ -9,9 +9,11 @@ use std::{
 
 use better_wallpaper_scene_format::{
     BlendMode, DynamicScaleKind, DynamicTextKind, MaterialManifest, ModelManifest, PkgReader,
-    PuppetModel, ScalarAnimation, SceneGraph, SceneNodeKind, SceneText, TexFormat, TexTexture,
-    TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel, resolve_texture_path,
+    PuppetModel, ScalarAnimation, SceneGraph, SceneNodeKind, SceneText, TexAtlas, TexFormat,
+    TexTexture, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
+    resolve_texture_path,
 };
+pub use better_wallpaper_scene_format::{SpriteAnimation, SpriteFrame};
 use thiserror::Error;
 use tracing::{debug, warn};
 
@@ -216,6 +218,8 @@ pub struct Scene2dDraw {
     pub blend_mode: BlendMode,
     pub texture_path: String,
     pub texture: TextureImage,
+    /// Atlas image indices 1 and above; image zero remains in `texture`.
+    pub additional_textures: Vec<TextureImage>,
     pub video: Option<SceneVideoTexture>,
     pub text_render: Option<SceneFontRender>,
     /// Logical image bounds within a potentially padded GPU texture.
@@ -273,37 +277,6 @@ impl Scene2dMesh {
 pub struct Scene2dEffectTexture {
     pub path: String,
     pub texture: TextureImage,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SpriteFrame {
-    /// Normalized top-left and bottom-right texture coordinates.
-    pub uv: [f32; 4],
-    pub duration_seconds: f32,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SpriteAnimation {
-    pub frames: Vec<SpriteFrame>,
-    pub duration_seconds: f32,
-}
-
-impl SpriteAnimation {
-    pub fn uv_at(&self, elapsed_seconds: f64) -> [f32; 4] {
-        if self.frames.is_empty() || self.duration_seconds <= 0.0 {
-            return [0.0, 0.0, 1.0, 1.0];
-        }
-        let mut cursor = elapsed_seconds.rem_euclid(f64::from(self.duration_seconds)) as f32;
-        for frame in &self.frames {
-            if cursor < frame.duration_seconds {
-                return frame.uv;
-            }
-            cursor -= frame.duration_seconds;
-        }
-        self.frames
-            .last()
-            .map_or([0.0, 0.0, 1.0, 1.0], |frame| frame.uv)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -381,6 +354,12 @@ pub fn resolve_scene_2d_assets(
         .collect::<HashMap<_, _>>();
 
     let mut videos = HashMap::<String, SceneVideoTexture>::new();
+    // Share decoded atlas bytes for repeated material references. The per-atlas
+    // 128 MiB cap also applies; this budget bounds all main TEX payloads retained
+    // by one resolved scene, including encoded video TEX data.
+    let mut atlases = HashMap::<String, TexAtlas>::new();
+    let mut atlas_bytes = 0_u64;
+    const MAX_SCENE_ATLAS_BYTES: u64 = 512 * 1024 * 1024;
     let mut draws = Vec::with_capacity(plan.quads.len());
     let mut skipped_nodes = plan.skipped_nodes;
     let projection_size = plan.projection_size;
@@ -495,6 +474,7 @@ pub fn resolve_scene_2d_assets(
                     blend_mode: BlendMode::Translucent,
                     texture_path,
                     texture,
+                    additional_textures: Vec::new(),
                     video: None,
                     text_render: None,
                     uv: [0.0, 0.0, 1.0, 1.0],
@@ -545,20 +525,31 @@ pub fn resolve_scene_2d_assets(
             let parsed = if better_wallpaper_scene_format::is_video_resource(&texture_path) {
                 None
             } else {
-                Some(
-                    TexTexture::parse(bytes).map_err(|error| Scene2dError::InvalidTexture {
-                        path: texture_path.clone(),
-                        detail: error.to_string(),
-                    })?,
-                )
+                if !atlases.contains_key(&texture_path) {
+                    let atlas =
+                        TexAtlas::parse_with_budget(bytes, MAX_SCENE_ATLAS_BYTES - atlas_bytes)
+                            .map_err(|error| Scene2dError::InvalidTexture {
+                                path: texture_path.clone(),
+                                detail: error.to_string(),
+                            })?;
+                    atlas_bytes += atlas
+                        .images
+                        .iter()
+                        .flat_map(|image| &image.mipmaps)
+                        .map(|mip| mip.data.len() as u64)
+                        .sum::<u64>();
+                    atlases.insert(texture_path.clone(), atlas);
+                }
+                atlases.get(&texture_path)
             };
             let encoded_video = if parsed.as_ref().is_some_and(|tex| tex.is_video) {
                 Some(
                     parsed
                         .as_ref()
                         .unwrap()
-                        .mipmaps
+                        .images
                         .first()
+                        .and_then(|image| image.mipmaps.first())
                         .ok_or_else(|| Scene2dError::InvalidTexture {
                             path: texture_path.clone(),
                             detail: "video TEX has no media payload".into(),
@@ -580,57 +571,64 @@ pub fn resolve_scene_2d_assets(
                     })
                     .clone()
             });
-            let (texture, uv, animation, mesh) = if let Some(parsed) =
-                parsed.as_ref().filter(|tex| !tex.is_video)
-            {
-                debug!(
-                    texture = %texture_path,
-                    format = ?parsed.format,
-                    embedded_format = ?parsed.free_image_format,
-                    mip_levels = parsed.mipmaps.len(),
-                    animated_frames = parsed.frames.len(),
-                    is_video = parsed.is_video,
-                    "Decoded scene texture"
-                );
-                let texture =
-                    parsed
-                        .to_texture_image()
-                        .map_err(|error| Scene2dError::InvalidTexture {
+            let (texture, additional_textures, uv, animation, mesh) =
+                if let Some(parsed) = parsed.as_ref().filter(|tex| !tex.is_video) {
+                    debug!(
+                        texture = %texture_path,
+                        format = ?parsed.format,
+                        embedded_format = ?parsed.free_image_format,
+                        images = parsed.images.len(),
+                        animated_frames = parsed.frames.len(),
+                        is_video = parsed.is_video,
+                        "Decoded scene texture"
+                    );
+                    let mut images = parsed.to_texture_images().map_err(|error| {
+                        Scene2dError::InvalidTexture {
                             path: texture_path.clone(),
                             detail: error.to_string(),
-                        })?;
-                let base_level =
-                    texture
-                        .levels
-                        .first()
-                        .ok_or_else(|| Scene2dError::InvalidTexture {
+                        }
+                    })?;
+                    let texture = images.remove(0);
+                    let base_level =
+                        texture
+                            .levels
+                            .first()
+                            .ok_or_else(|| Scene2dError::InvalidTexture {
+                                path: texture_path.clone(),
+                                detail: "texture has no uploadable base level".into(),
+                            })?;
+                    let upload_width = base_level.width as f32;
+                    let upload_height = base_level.height as f32;
+                    let uv = [
+                        0.0,
+                        0.0,
+                        parsed.width as f32 / upload_width,
+                        parsed.height as f32 / upload_height,
+                    ];
+                    let animation = parsed.sprite_animation().map_err(|error| {
+                        Scene2dError::InvalidTexture {
                             path: texture_path.clone(),
-                            detail: "texture has no uploadable base level".into(),
-                        })?;
-                let upload_width = base_level.width as f32;
-                let upload_height = base_level.height as f32;
-                let uv = [
-                    0.0,
-                    0.0,
-                    parsed.width as f32 / upload_width,
-                    parsed.height as f32 / upload_height,
-                ];
-                let animation = sprite_animation(parsed, upload_width, upload_height);
-                let mesh = model
-                    .definition
-                    .puppet
-                    .as_deref()
-                    .map(|path| load_puppet_mesh(package, path, &quad, parsed.width, parsed.height))
-                    .transpose()?;
-                (texture, uv, animation, mesh)
-            } else {
-                (
-                    solid_color_texture([0, 0, 0, 0]),
-                    [0.0, 0.0, 1.0, 1.0],
-                    None,
-                    None,
-                )
-            };
+                            detail: error.to_string(),
+                        }
+                    })?;
+                    let mesh = model
+                        .definition
+                        .puppet
+                        .as_deref()
+                        .map(|path| {
+                            load_puppet_mesh(package, path, &quad, parsed.width, parsed.height)
+                        })
+                        .transpose()?;
+                    (texture, images, uv, animation, mesh)
+                } else {
+                    (
+                        solid_color_texture([0, 0, 0, 0]),
+                        Vec::new(),
+                        [0.0, 0.0, 1.0, 1.0],
+                        None,
+                        None,
+                    )
+                };
             let water_wave_masks = quad
                 .water_waves
                 .iter()
@@ -733,6 +731,7 @@ pub fn resolve_scene_2d_assets(
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
                 texture,
+                additional_textures,
                 video,
                 text_render: None,
                 uv,
@@ -780,6 +779,7 @@ fn procedural_draw(
         blend_mode: BlendMode::Translucent,
         texture_path,
         texture,
+        additional_textures: Vec::new(),
         video: None,
         text_render,
         uv: [0.0, 0.0, 1.0, 1.0],
@@ -1180,62 +1180,6 @@ fn load_effect_texture(
     Ok(Scene2dEffectTexture { path, texture })
 }
 
-fn sprite_animation(
-    texture: &TexTexture,
-    upload_width: f32,
-    upload_height: f32,
-) -> Option<SpriteAnimation> {
-    let width = upload_width;
-    let height = upload_height;
-    if width <= 0.0 || height <= 0.0 || texture.frames.len() < 2 {
-        return None;
-    }
-    let frames = texture
-        .frames
-        .iter()
-        .filter_map(|frame| {
-            if !frame.frametime.is_finite()
-                || frame.frametime <= 0.0
-                || !frame.x.is_finite()
-                || !frame.y.is_finite()
-                || !frame.width.is_finite()
-                || !frame.height.is_finite()
-                || frame.x < 0.0
-                || frame.y < 0.0
-                || frame.width <= 0.0
-                || frame.height <= 0.0
-                || frame.x + frame.width > width
-                || frame.y + frame.height > height
-            {
-                return None;
-            }
-            Some(SpriteFrame {
-                uv: [
-                    (frame.x + 0.5) / width,
-                    (frame.y + 0.5) / height,
-                    (frame.x + frame.width - 0.5) / width,
-                    (frame.y + frame.height - 0.5) / height,
-                ],
-                duration_seconds: frame.frametime,
-            })
-        })
-        .collect::<Vec<_>>();
-    if frames.len() < 2 {
-        return None;
-    }
-    let duration_seconds = frames
-        .iter()
-        .map(|frame| frame.duration_seconds)
-        .sum::<f32>();
-    if !duration_seconds.is_finite() || duration_seconds <= 0.0 {
-        return None;
-    }
-    Some(SpriteAnimation {
-        frames,
-        duration_seconds,
-    })
-}
-
 /// Builds a deterministic backend-independent list of 2D draws from validated scene IR.
 pub fn build_scene_2d_plan(
     graph: &SceneGraph,
@@ -1605,61 +1549,21 @@ mod tests {
         let animation = SpriteAnimation {
             frames: vec![
                 SpriteFrame {
-                    uv: [0.0, 0.0, 0.5, 1.0],
+                    image_index: 0,
+                    uv: [0.0, 0.0, 0.5, 1.0].into(),
                     duration_seconds: 0.1,
                 },
                 SpriteFrame {
-                    uv: [0.5, 0.0, 1.0, 1.0],
+                    image_index: 1,
+                    uv: [0.5, 0.0, 1.0, 1.0].into(),
                     duration_seconds: 0.2,
                 },
             ],
             duration_seconds: 0.3,
         };
-        assert_eq!(animation.uv_at(0.05), [0.0, 0.0, 0.5, 1.0]);
-        assert_eq!(animation.uv_at(0.15), [0.5, 0.0, 1.0, 1.0]);
-        assert_eq!(animation.uv_at(0.35), [0.0, 0.0, 0.5, 1.0]);
-    }
-
-    #[test]
-    fn sprite_animation_insets_uvs_to_prevent_adjacent_frame_bleeding() {
-        let texture = TexTexture {
-            format: better_wallpaper_scene_format::TexFormat::ARGB8888,
-            width: 4,
-            height: 2,
-            texture_width: 4,
-            texture_height: 2,
-            flags: 4,
-            mipmaps: Vec::new(),
-            frames: vec![
-                better_wallpaper_scene_format::AnimationFrame {
-                    frame_number: 0,
-                    frametime: 0.5,
-                    x: 0.0,
-                    y: 0.0,
-                    width: 2.0,
-                    height: 2.0,
-                },
-                better_wallpaper_scene_format::AnimationFrame {
-                    frame_number: 0,
-                    frametime: 0.5,
-                    x: 2.0,
-                    y: 0.0,
-                    width: 2.0,
-                    height: 2.0,
-                },
-            ],
-            is_animated: true,
-            container_version: 2,
-            free_image_format: None,
-            is_video: false,
-            spritesheet_cols: 2,
-            spritesheet_rows: 1,
-            spritesheet_frames: 2,
-            spritesheet_duration: 1.0,
-        };
-        let animation = sprite_animation(&texture, 4.0, 2.0).unwrap();
-        assert_eq!(animation.uv_at(0.25), [0.125, 0.25, 0.375, 0.75]);
-        assert_eq!(animation.uv_at(0.75), [0.625, 0.25, 0.875, 0.75]);
+        assert_eq!(animation.uv_at(0.05), [0.0, 0.0, 0.5, 1.0].into());
+        assert_eq!(animation.uv_at(0.15), [0.5, 0.0, 1.0, 1.0].into());
+        assert_eq!(animation.uv_at(0.35), [0.0, 0.0, 0.5, 1.0].into());
     }
 
     fn plan_at(

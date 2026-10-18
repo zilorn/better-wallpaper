@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::SceneParseError;
 use crate::{
-    PkgReader, TexTexture, parse_material_definition, parse_model_definition, parse_scene_graph,
+    PkgReader, TexAtlas, parse_material_definition, parse_model_definition, parse_scene_graph,
     resolve_texture_path,
 };
 
@@ -69,6 +69,7 @@ pub struct SceneMetadata {
     pub has_effects: bool,
     pub has_timeline_animation: bool,
     pub has_sprite_animation: bool,
+    pub unsupported_textures: Vec<String>,
     pub has_video_texture: bool,
     pub has_basic_parallax: bool,
     pub has_audio_response: bool,
@@ -449,41 +450,22 @@ pub fn analyse_scene_with_package(
             meta.has_video_texture = true;
             continue;
         }
-        let Some(texture) = package
-            .find(&path)
-            .and_then(|entry| TexTexture::parse(package.read_entry(entry)).ok())
-        else {
+        let Some(entry) = package.find(&path) else {
             continue;
         };
-        meta.has_video_texture |= texture.is_video && !texture.mipmaps.is_empty();
-        let Some(mip) = texture.mipmaps.first() else {
-            continue;
+        let texture = match TexAtlas::parse(package.read_entry(entry)) {
+            Ok(texture) => texture,
+            Err(error) => {
+                meta.unsupported_textures.push(format!("{path}: {error}"));
+                continue;
+            }
         };
-        // Match the renderer's requirement of at least two valid sprite frames.
-        let valid_frames = texture
-            .frames
-            .iter()
-            .filter(|frame| {
-                frame.frametime.is_finite()
-                    && frame.frametime > 0.0
-                    && frame.x.is_finite()
-                    && frame.y.is_finite()
-                    && frame.width.is_finite()
-                    && frame.height.is_finite()
-                    && frame.x >= 0.0
-                    && frame.y >= 0.0
-                    && frame.width > 0.0
-                    && frame.height > 0.0
-                    && frame.x + frame.width <= mip.width as f32
-                    && frame.y + frame.height <= mip.height as f32
-            })
-            .collect::<Vec<_>>();
-        let duration = valid_frames
-            .iter()
-            .map(|frame| frame.frametime)
-            .sum::<f32>();
-        meta.has_sprite_animation |=
-            !texture.is_video && valid_frames.len() >= 2 && duration.is_finite() && duration > 0.0;
+        meta.has_video_texture |= texture.is_video;
+        match texture.sprite_animation() {
+            Ok(Some(animation)) => meta.has_sprite_animation |= animation.frames.len() >= 2,
+            Ok(None) => {}
+            Err(error) => meta.unsupported_textures.push(format!("{path}: {error}")),
+        }
     }
     Ok(meta)
 }
@@ -516,7 +498,11 @@ fn contains_script(value: &serde_json::Value, depth: usize) -> bool {
 
 /// Compute compatibility based on scene metadata
 pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
-    let mut unsupported = Vec::new();
+    let mut unsupported = meta
+        .unsupported_textures
+        .iter()
+        .map(|error| format!("Texture: {error}"))
+        .collect::<Vec<_>>();
     let mut warnings = Vec::new();
     let mut supported = Vec::new();
     let mut level = CompatibilityLevel::L0;
@@ -847,7 +833,7 @@ mod tests {
                 texture.extend(value.to_le_bytes());
             }
         }
-        assert_eq!(TexTexture::parse(&texture).unwrap().frames.len(), 2);
+        assert_eq!(crate::TexTexture::parse(&texture).unwrap().frames.len(), 2);
         let scene = r#"{"objects":[{"image":"models/bg.json"}]}"#;
         let model = br#"{"material":"materials/bg.json"}"#;
         let material = br#"{"passes":[{"shader":"image","textures":["bg"]}]}"#;

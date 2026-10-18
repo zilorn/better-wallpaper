@@ -8,7 +8,7 @@ uniform float u_opacity;
 uniform float u_time;
 // Maps a displacement in logical layer UV space into the potentially padded
 // storage UV space of the main texture.
-uniform vec2 u_texture_uv_scale;
+uniform vec4 u_texture_uv_basis;
 
 // Water wave: direction, scale, speed, strength.
 uniform vec4 u_water_wave0;
@@ -389,7 +389,9 @@ void main() {
     effectUv = applyWaterWaves(effectUv);
     effectUv = applyShakes(effectUv);
     effectUv = applyWaterFlow(effectUv);
-    vec2 uv = v_tex_coord + (effectUv - v_effect_coord) * u_texture_uv_scale;
+    vec2 displacement = effectUv - v_effect_coord;
+    vec2 uv = v_tex_coord + displacement.x * u_texture_uv_basis.xy
+                           + displacement.y * u_texture_uv_basis.zw;
 
     vec4 color = texture2D(u_texture, uv);
     color = applyPulses(color);

@@ -22,7 +22,7 @@ struct Args {
     #[arg(long, conflicts_with_all = ["json", "entry"])]
     textures: bool,
     /// Inspect independent atlas images and affine frames in an unpacked TEX.
-    /// This does not enable advanced layouts in the playback renderer.
+    /// Reports structural and sprite-layout checks without running the GPU.
     #[arg(long, conflicts_with_all = ["entry", "textures"])]
     atlas: bool,
 }
@@ -52,6 +52,10 @@ fn main() -> Result<()> {
     };
     if args.atlas {
         let atlas = TexAtlas::parse(&data).context("atlas validation failed")?;
+        let sprite_error = atlas
+            .sprite_animation()
+            .err()
+            .map(|error| error.to_string());
         let mut report = serde_json::json!({
             "path": args.input,
             "format": format!("{:?}", atlas.format),
@@ -68,6 +72,10 @@ fn main() -> Result<()> {
             "frames": atlas.frames,
             "payload_status": if atlas.is_video { "video_unverified" } else { "validated_2d_images" },
             "native_visual_validation": "pending",
+            "sprite_layout": {
+                "accepted": !atlas.is_video && sprite_error.is_none(),
+                "error": sprite_error,
+            },
         });
         let layout_error = atlas
             .try_into_single_texture()

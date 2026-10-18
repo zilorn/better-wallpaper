@@ -310,6 +310,7 @@ struct Sample {
     properties: BTreeMap<String, serde_json::Value>,
     random_seed: Option<u64>,
     native_reference: String,
+    legacy_rejection: Option<String>,
     steps: Vec<Step>,
     outcome: Outcome,
 }
@@ -450,7 +451,7 @@ fn matrix() -> Matrix {
     assert_eq!(matrix.samples.len(), 13);
     assert_eq!(
         matrix.samples.iter().map(|s| s.steps.len()).sum::<usize>(),
-        20
+        50
     );
     matrix
 }
@@ -483,6 +484,15 @@ fn sample_assets(
 #[test]
 fn committed_behavior_samples_match_declared_outcomes_and_hashes() {
     for sample in matrix().samples {
+        if let Some(error) = &sample.legacy_rejection {
+            let pkg = PkgReader::parse(checked_artifact(&sample.artifacts["scene.pkg"])).unwrap();
+            let actual = TexTexture::parse(pkg.read_entry(pkg.find_by_ext("tex")[0])).unwrap_err();
+            assert!(
+                actual.to_string().contains(error),
+                "{}: {actual}",
+                sample.id
+            );
+        }
         match &sample.outcome {
             Outcome::Render {
                 draws,
@@ -607,4 +617,61 @@ fn gpu_scene_goldens() {
         // The owning EGL context is still current during resource deletion.
         drop(renderer);
     }
+}
+
+#[test]
+#[ignore = "requires surfaceless EGL/GLES; run explicitly with software rendering"]
+fn atlas_upload_failure_and_image_limit_preserve_complete_resident_atlases() {
+    let context = Offscreen::new();
+    let matrix = matrix();
+    let sample = matrix
+        .samples
+        .iter()
+        .find(|sample| sample.id == "multi-image")
+        .unwrap();
+    let assets = sample_assets(sample).unwrap();
+    let mut renderer = SceneGpuRenderer::new(context.gl(), 32, 32).unwrap();
+    let mut broken = assets.clone();
+    broken.draws[0].additional_textures[0].levels.clear();
+    // Image zero can upload, but image one's failure must roll back the group.
+    renderer.upload_scene_textures(&broken).unwrap();
+    renderer.upload_scene_textures(&assets).unwrap();
+    renderer.draw_scene(&assets, 0.5).unwrap();
+    compare("atlas-image1", &context.pixels(32, 32), 32, 32);
+
+    let mut oversized = assets.clone();
+    oversized.draws[0].texture_path = "over-limit".into();
+    oversized.draws[0].additional_textures = vec![assets.draws[0].texture.clone(); 254];
+    assert!(
+        renderer
+            .upload_scene_textures(&oversized)
+            .unwrap_err()
+            .contains("image count exceeds 256")
+    );
+    // A limit error must not evict one image from a still-active atlas.
+    for (time, reference) in [(0.0, "atlas-image0"), (0.5, "atlas-image1")] {
+        renderer.draw_scene(&assets, time).unwrap();
+        compare(reference, &context.pixels(32, 32), 32, 32);
+    }
+    renderer.clear_textures();
+    renderer.upload_scene_textures(&assets).unwrap();
+    renderer.draw_scene(&assets, 0.5).unwrap();
+    compare("atlas-image1", &context.pixels(32, 32), 32, 32);
+
+    let rotated = matrix
+        .samples
+        .iter()
+        .find(|sample| sample.id == "rotated")
+        .unwrap();
+    let mut rotated = sample_assets(rotated).unwrap();
+    rotated.draws[0].quad.spin = Some(better_wallpaper_scene_format::SpinEffect {
+        speed: -std::f32::consts::TAU,
+        center: better_wallpaper_scene_format::Vec2 { x: 0.5, y: 0.5 },
+    });
+    renderer.clear_textures();
+    renderer.upload_scene_textures(&rotated).unwrap();
+    // A reverse quarter-turn in logical UV space cancels the atlas rotation.
+    // This checks the shader's full displacement basis, not only vertex UVs.
+    renderer.draw_scene(&rotated, 0.25).unwrap();
+    compare("atlas-identity", &context.pixels(32, 32), 32, 32);
 }

@@ -77,10 +77,15 @@ basic pointer parallax and all TEXS1/2/3 rectangular sprite versions. The harnes
 compositing bug. The ordinary suite tests the comparison gate; GPU cases require
 an explicit command documented in the rendering interfaces.
 
-The A0 behavior matrix now commits 13 standalone synthetic projects, their
-SHA-256 identities and fixed inputs. The same eight renderable packages drive
-all 20 comparisons, while five complete A1 candidate layouts exercise explicit
-texture rejection/skipped draws. Regeneration is checked separately from
+The behavior matrix commits 13 standalone synthetic projects, their SHA-256
+identities and fixed inputs. A1 now renders all thirteen packages in 50 ordered
+steps, with seven new analytical references for independent images, rotation,
+flips and skew. The original 20 comparisons remain exact; a separate GPU case
+adds five comparisons for upload rollback, image limits, reload and effect
+composition. All 55 passed on llvmpipe (maximum byte error 1); see the
+[A1 rendering record](../../../../docs/validation/a1-atlas-rendering.md).
+The five advanced layouts still exercise explicit legacy-adapter rejection.
+Regeneration is checked separately from
 analytical PNG generation. See `tests/fixtures/scene-behavior/README.md` for
 per-sample timing, properties, unused random seeds, pointer inputs, native-capture
 protocol and uncovered work packages. Native acceptance of these synthetic
@@ -93,7 +98,7 @@ matches do not complete the reference-screenshot fidelity or eight-hour soak exi
 criteria in `plan.md`. Fonts, broader effects and authoring-format variation still
 need reference sample coverage.
 
-## Native TEX Reader Compatibility — Implemented / Advanced Layouts Pending
+## Native TEX Reader and 2D Atlases — Implemented / Native Parity Pending
 
 Evidence: `docs/reverse-engineering/wallpaper-engine-textures.md` records the
 Wallpaper Engine 2.8.42 binary identity, REA Evidence IDs, assembly corroboration,
@@ -104,20 +109,26 @@ local loose textures, validated 2D payloads increased from 370 to 412; the remai
 cover every TEXB1–4/TEXS1–3 combination and malformed records. GPU goldens cover
 all three sprite versions without changing reference pixels.
 
-The A1 `TexAtlas` inspection model now represents independent image/mip chains,
+The A1 `TexAtlas` model represents independent image/mip chains,
 frame image indices and full signed affine bases with count/byte/finite-value
-bounds. Its unit and CLI tests cover the five A0 candidate layouts and retain
-legacy playback rejection. The [atlas report](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
+bounds. Its unit and CLI tests cover the five A0 layouts and retain legacy-adapter
+rejection. Main scene material textures now use shared sprite admission and
+complete per-path GPU image groups. Rotation, flips and finite in-bounds skew
+reach affine vertex/effect UV submission, with whole-sequence failure reporting,
+512 MiB retained main-TEX budget and a 256 resident GPU-image cap. Golden tests
+cover selection, loop/pause, clear/reload and context replacement. The
+[atlas report](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
 records native frame-update/image-binding assembly and shipped shader evidence;
 the full uniform-upload mapping and native sample acceptance remain pending.
 
-Completion for remaining layouts: consume these images/bases in bounded resource
-resolution and GPU submission, add bounded 3D LUT parsing/upload, and verify
-reference output before advertising support. The playback adapter still rejects these layouts;
-negative-direction horizontal/vertical bases also fail explicitly. A0 sample
+Completion: establish native project acceptance and filtering/packed-edge parity;
+verify real niri output and broader effect combinations. Effect masks and authored
+system-texture fallbacks retain the legacy single-image adapter. Add bounded 3D
+LUT parsing/upload separately. A0 sample
 construction exposed that flipped frames previously parsed successfully, then
 were discarded by `sprite_animation`, silently leaving a static full atlas.
-Regression coverage rejects both axes in TEXS1/2/3; flip rendering remains pending.
+Legacy regression coverage still rejects both axes in TEXS1/2/3; the new main
+material path renders the validated affine sequence instead.
 TEXB4 video/editor metadata still needs separate native/sample corroboration.
 Particle atlases do not establish particle simulation support. Local pixel-size
 validation and synthetic goldens do not establish Wallpaper Engine visual parity.

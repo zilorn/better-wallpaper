@@ -85,9 +85,9 @@ def generate():
         samples.append({"id": name, "purpose": purpose, "artifacts": artifacts,
                         "canvas": [32, 32], "properties": {}, "random_seed": None,
                         "native_reference": "pending", "steps": steps,
-                        "outcome": ({"kind": "reject_texture", "error": error} if error else
-                                    {"kind": "render", "draws": len(textures),
-                                     "skipped_nodes": len(scene["objects"]) - len(textures)})})
+                        "legacy_rejection": error,
+                        "outcome": {"kind": "render", "draws": len(textures),
+                                    "skipped_nodes": len(scene["objects"]) - len(textures)}})
 
     layers = {"general": {"orthogonalprojection": {"width": 32, "height": 32},
                           "cameraparallax": True, "cameraparallaxamount": 0.25,
@@ -145,6 +145,10 @@ def generate():
          step(1, "video-green", recreate=True)],
         "Synthetic current-parser TEXB4 layout (native structure unverified); decode, storage resize, context replacement.")
 
+    def atlas_steps(first, second):
+        return [step(0, first), step(0.499999, first), step(0.5, second),
+                step(0.5, second), step(1, first), step(0.5, second, recreate=True)]
+
     # Complete independent image chains, not a header-only count mutation.
     multi = bytearray(texture(2, 2, 2, bytes([200, 40, 10, 255]) * 4))
     multi[55:59] = words(2)  # image count
@@ -152,7 +156,7 @@ def generate():
     multi += words(1, 1, 0, 4, 4) + bytes([200, 40, 10, 255])
     multi += words(1, 1, 2, 0, 8, 8) + bytes([20, 180, 60, 255]) * 2
     multi = animation(multi, 2, [(0, [0, 0, 2, 0, 0, 2]), (1, [0, 0, 1, 0, 0, 2])])
-    add("multi-image", scene_for("atlas"), [("atlas", multi, "opaque")], [],
+    add("multi-image", scene_for("atlas"), [("atlas", multi, "opaque")], atlas_steps("atlas-image0", "atlas-image1"),
         "A1: image 0 has 2x2 and 1x1 mips; image 1 has one 1x2 mip; frames select image 0 then 1.",
         "multiple atlas images are not supported")
     asymmetric = bytes([240, 10, 20, 255, 20, 220, 30, 255, 30, 40, 200, 255, 180, 130, 10, 255])
@@ -163,8 +167,8 @@ def generate():
         ("flipped-y", [0, 2, 2, 0, 0, -2], "Flipped texture animation"),
     ]:
         tex = animation(texture(2, 2, 2, asymmetric), 2, [(0, basis), (0, [0, 0, 2, 0, 0, 2])])
-        add(name, scene_for("atlas"), [("atlas", tex, "opaque")], [],
-            f"A1 candidate {name} basis, then identity; native UV consumption/visual result still unverified.", error)
+        add(name, scene_for("atlas"), [("atlas", tex, "opaque")], atlas_steps(f"atlas-{name}", "atlas-identity"),
+            f"A1 {name} basis, then identity; synthetic rendering regression, native visual result still unverified.", error)
 
     manifest = {"schema_version": 1, "provenance": "independently_authored_synthetic",
                 "pointer_coordinates": "normalized_y_up_minus_one_to_one",

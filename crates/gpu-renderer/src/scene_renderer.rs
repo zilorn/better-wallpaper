@@ -1,6 +1,6 @@
 use better_wallpaper_renderer::{Scene2dAssets, font_text_texture};
 use better_wallpaper_scene_format::{
-    BlendMode, DynamicScaleKind, DynamicTextKind, TexFormat, TextureImage,
+    BlendMode, DynamicScaleKind, DynamicTextKind, TexFormat, TextureImage, TextureUv,
 };
 use glow::HasContext;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ pub struct SceneGpuRenderer {
     program: glow::Program,
     vbo: glow::Buffer,
     index_buffer: glow::Buffer,
-    textures: HashMap<String, GpuTextureState>,
+    textures: HashMap<String, Vec<GpuTextureState>>,
     output_size: (u32, u32),
     supports_npot_mipmaps: bool,
     max_texture_size: u32,
@@ -63,63 +63,68 @@ impl SceneGpuRenderer {
     pub fn upload_scene_textures(&mut self, assets: &Scene2dAssets) -> Result<(), String> {
         unsafe {
             for draw in &assets.draws {
-                let mut pending = vec![(&draw.texture_path, &draw.texture)];
+                let mut pending = vec![(
+                    &draw.texture_path,
+                    std::iter::once(&draw.texture)
+                        .chain(&draw.additional_textures)
+                        .collect::<Vec<_>>(),
+                )];
                 for mask in draw.water_wave_masks.iter().flatten() {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
                 if let Some(mask) = &draw.water_flow_mask {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
                 for normal in draw.water_wave_normals.iter().flatten() {
-                    pending.push((&normal.path, &normal.texture));
+                    pending.push((&normal.path, vec![&normal.texture]));
                 }
                 if let Some(phase) = &draw.water_flow_phase {
-                    pending.push((&phase.path, &phase.texture));
+                    pending.push((&phase.path, vec![&phase.texture]));
                 }
                 if let Some(mask) = &draw.iris_mask {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
                 for mask in draw.foliage_masks.iter().flatten() {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
                 if let Some(mask) = &draw.shine_mask {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
                 for map in draw.shake_maps.iter().flatten() {
-                    pending.push((&map.path, &map.texture));
+                    pending.push((&map.path, vec![&map.texture]));
                 }
                 for mask in draw.pulse_masks.iter().flatten() {
-                    pending.push((&mask.path, &mask.texture));
+                    pending.push((&mask.path, vec![&mask.texture]));
                 }
-                for (path, texture) in pending {
+                for (path, images) in pending {
                     if self.textures.contains_key(path) {
                         continue;
                     }
-                    let state = match self.upload_texture(texture) {
-                        Ok(state) => state,
-                        Err(error) => {
-                            let base = texture.levels.first();
-                            warn!(
-                                texture = %path,
-                                format = ?texture.format,
-                                width = base.map_or(0, |level| level.width),
-                                height = base.map_or(0, |level| level.height),
-                                bytes = base.map_or(0, |level| level.data.len()),
-                                %error,
-                                "Skipping unsupported scene texture format"
-                            );
-                            continue;
-                        }
-                    };
-                    #[allow(clippy::collapsible_if)]
-                    if self.textures.len() >= MAX_GPU_TEXTURES {
-                        if let Some(key) = self.textures.keys().next().cloned() {
-                            if let Some(state) = self.textures.remove(&key) {
-                                self.gl.delete_texture(state.texture);
+                    let resident = self.textures.values().map(Vec::len).sum::<usize>();
+                    if resident + images.len() > MAX_GPU_TEXTURES {
+                        return Err(format!(
+                            "Scene texture image count exceeds {MAX_GPU_TEXTURES}"
+                        ));
+                    }
+                    // Admit all images together: an upload failure must never
+                    // leave a partial atlas that disappears only on later frames.
+                    let mut states = Vec::with_capacity(images.len());
+                    for (index, image) in images.iter().enumerate() {
+                        match self.upload_texture(image) {
+                            Ok(state) => states.push(state),
+                            Err(error) => {
+                                for state in states.drain(..) {
+                                    self.gl.delete_texture(state.texture);
+                                }
+                                warn!(texture = %path, image_index = index, %error,
+                                    "Skipping scene texture after image upload failure");
+                                break;
                             }
                         }
                     }
-                    self.textures.insert(path.clone(), state);
+                    if states.len() == images.len() {
+                        self.textures.insert(path.clone(), states);
+                    }
                 }
             }
         }
@@ -194,7 +199,10 @@ impl SceneGpuRenderer {
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, None);
         }
-        result?;
+        if let Err(error) = result {
+            unsafe { self.gl.delete_texture(gl_tex) };
+            return Err(error);
+        }
 
         let error = unsafe { self.gl.get_error() };
         if error != glow::NO_ERROR {
@@ -365,9 +373,9 @@ impl SceneGpuRenderer {
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
             let time_loc = self.gl.get_uniform_location(self.program, "u_time");
-            let texture_uv_scale_loc = self
+            let texture_uv_basis_loc = self
                 .gl
-                .get_uniform_location(self.program, "u_texture_uv_scale");
+                .get_uniform_location(self.program, "u_texture_uv_basis");
             let layout_scale_loc = self.gl.get_uniform_location(self.program, "u_layout_scale");
             let water_wave_locs = (0..3)
                 .map(|index| {
@@ -581,6 +589,7 @@ impl SceneGpuRenderer {
                     let state = self
                         .textures
                         .get_mut(&draw.texture_path)
+                        .and_then(|images| images.first_mut())
                         .ok_or("dynamic text GPU texture is missing")?;
                     if state.dynamic_label.as_deref() != Some(&label) {
                         self.gl.active_texture(glow::TEXTURE0);
@@ -639,6 +648,7 @@ impl SceneGpuRenderer {
                     let state = self
                         .textures
                         .get_mut(&draw.texture_path)
+                        .and_then(|images| images.first_mut())
                         .ok_or("scene video GPU texture missing")?;
                     if state.video_generation != frame.generation {
                         self.gl.active_texture(glow::TEXTURE0);
@@ -679,9 +689,17 @@ impl SceneGpuRenderer {
                         state.video_generation = frame.generation;
                     }
                 }
-                let Some(state) = self.textures.get(&draw.texture_path) else {
+                let sprite_frame = draw
+                    .animation
+                    .as_ref()
+                    .and_then(|animation| animation.frame_at(elapsed_seconds));
+                let image_index = sprite_frame.map_or(0, |frame| frame.image_index);
+                let Some(images) = self.textures.get(&draw.texture_path) else {
                     continue;
                 };
+                let state = images
+                    .get(image_index)
+                    .ok_or("selected atlas GPU image is missing")?;
                 match draw.blend_mode {
                     BlendMode::Opaque => {
                         self.gl.disable(glow::BLEND);
@@ -1032,20 +1050,22 @@ impl SceneGpuRenderer {
                     );
                 }
                 self.gl.active_texture(glow::TEXTURE0);
-                let mut uv = draw
-                    .animation
-                    .as_ref()
-                    .map_or(draw.uv, |animation| animation.uv_at(elapsed_seconds));
-                let texture_uv_scale = [uv[2] - uv[0], uv[3] - uv[1]];
-                self.gl.uniform_2_f32(
-                    texture_uv_scale_loc.as_ref(),
-                    texture_uv_scale[0],
-                    texture_uv_scale[1],
+                let mut uv =
+                    sprite_frame.map_or_else(|| TextureUv::from(draw.uv), |frame| frame.uv);
+                self.gl.uniform_4_f32(
+                    texture_uv_basis_loc.as_ref(),
+                    uv.horizontal[0],
+                    uv.horizontal[1],
+                    uv.vertical[0],
+                    uv.vertical[1],
                 );
+                let horizontal_pixels = (uv.horizontal[0] * state.width as f32)
+                    .hypot(uv.horizontal[1] * state.height as f32);
+                let vertical_pixels = (uv.vertical[0] * state.width as f32)
+                    .hypot(uv.vertical[1] * state.height as f32);
                 self.gl.uniform_1_f32(
                     spin_aspect_loc.as_ref(),
-                    state.width as f32 * texture_uv_scale[0].abs()
-                        / (state.height.max(1) as f32 * texture_uv_scale[1].abs().max(0.0001)),
+                    horizontal_pixels / vertical_pixels.max(0.0001),
                 );
                 if let Some(scroll) = draw.quad.scroll {
                     uv = scroll_uv(uv, scroll, elapsed_seconds);
@@ -1125,8 +1145,10 @@ impl SceneGpuRenderer {
 
     pub fn clear_textures(&mut self) {
         unsafe {
-            for (_, state) in self.textures.drain() {
-                self.gl.delete_texture(state.texture);
+            for (_, images) in self.textures.drain() {
+                for state in images {
+                    self.gl.delete_texture(state.texture);
+                }
             }
         }
     }
@@ -1246,7 +1268,7 @@ unsafe fn set_foliage_uniforms(
 
 unsafe fn bind_optional_texture(
     gl: &glow::Context,
-    textures: &HashMap<String, GpuTextureState>,
+    textures: &HashMap<String, Vec<GpuTextureState>>,
     unit: u32,
     path: Option<&str>,
     present_location: Option<&glow::UniformLocation>,
@@ -1254,7 +1276,9 @@ unsafe fn bind_optional_texture(
 ) {
     unsafe {
         gl.active_texture(unit);
-        let texture = path.and_then(|path| textures.get(path));
+        let texture = path
+            .and_then(|path| textures.get(path))
+            .and_then(|images| images.first());
         gl.bind_texture(glow::TEXTURE_2D, texture.map(|state| state.texture));
         if texture.is_some() {
             let wrap = if repeat {
@@ -1270,36 +1294,27 @@ unsafe fn bind_optional_texture(
 }
 
 fn scroll_uv(
-    uv: [f32; 4],
+    uv: TextureUv,
     scroll: better_wallpaper_scene_format::ScrollEffect,
     elapsed_seconds: f64,
-) -> [f32; 4] {
-    let width = uv[2] - uv[0];
-    let height = uv[3] - uv[1];
+) -> TextureUv {
     let phase_x = (elapsed_seconds * f64::from(scroll.speed_x)).rem_euclid(1.0) as f32;
     let phase_y = (elapsed_seconds * f64::from(scroll.speed_y)).rem_euclid(1.0) as f32;
-    [
-        uv[0] + phase_x * scroll.repeat_x * width,
-        uv[1] + phase_y * scroll.repeat_y * height,
-        uv[0] + (phase_x + 1.0) * scroll.repeat_x * width,
-        uv[1] + (phase_y + 1.0) * scroll.repeat_y * height,
-    ]
+    TextureUv {
+        origin: uv.at([phase_x * scroll.repeat_x, phase_y * scroll.repeat_y]),
+        horizontal: uv.horizontal.map(|v| v * scroll.repeat_x),
+        vertical: uv.vertical.map(|v| v * scroll.repeat_y),
+    }
 }
 
-fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 24] {
-    let [left, top, right, bottom] = uv;
-    let tex_coords = [[left, top], [right, top], [right, bottom], [left, bottom]];
+fn scene_vertices(positions: &[[f32; 2]; 4], uv: impl Into<TextureUv>) -> [f32; 24] {
+    let uv = uv.into();
     let effect_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
     let mut vertices = [0.0; 24];
-    for (index, ((position, tex_coord), effect_coord)) in positions
-        .iter()
-        .zip(tex_coords)
-        .zip(effect_coords)
-        .enumerate()
-    {
+    for (index, (position, effect_coord)) in positions.iter().zip(effect_coords).enumerate() {
         let offset = index * 6;
         vertices[offset..offset + 2].copy_from_slice(position);
-        vertices[offset + 2..offset + 4].copy_from_slice(&tex_coord);
+        vertices[offset + 2..offset + 4].copy_from_slice(&uv.at(effect_coord));
         vertices[offset + 4..offset + 6].copy_from_slice(&effect_coord);
     }
     vertices
@@ -1308,15 +1323,13 @@ fn scene_vertices(positions: &[[f32; 2]; 4], uv: [f32; 4]) -> [f32; 24] {
 fn puppet_vertices(
     positions: &[[f32; 2]],
     logical_uv: &[[f32; 2]],
-    storage_uv: [f32; 4],
+    storage_uv: impl Into<TextureUv>,
 ) -> Vec<f32> {
-    let width = storage_uv[2] - storage_uv[0];
-    let height = storage_uv[3] - storage_uv[1];
+    let uv = storage_uv.into();
     let mut vertices = Vec::with_capacity(positions.len().min(logical_uv.len()) * 6);
     for (position, effect_coord) in positions.iter().zip(logical_uv) {
         vertices.extend_from_slice(position);
-        vertices.push(storage_uv[0] + effect_coord[0] * width);
-        vertices.push(storage_uv[1] + effect_coord[1] * height);
+        vertices.extend_from_slice(&uv.at(*effect_coord));
         vertices.extend_from_slice(effect_coord);
     }
     vertices
@@ -1699,8 +1712,8 @@ mod tests {
             repeat_y: 1.0,
         };
         assert_eq!(
-            scroll_uv([0.0, 0.0, 1.0, 1.0], effect, 2.0),
-            [1.0, 0.0, 3.0, 1.0]
+            scroll_uv([0.0, 0.0, 1.0, 1.0].into(), effect, 2.0),
+            [1.0, 0.0, 3.0, 1.0].into()
         );
     }
 

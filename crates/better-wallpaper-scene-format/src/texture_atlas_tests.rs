@@ -89,7 +89,7 @@ fn keeps_independent_mip_chains_and_frame_image_indices() {
 }
 
 #[test]
-fn preserves_candidate_bases_without_granting_playback_support() {
+fn preserves_candidate_bases_and_legacy_adapter_rejection() {
     for (name, horizontal, vertical) in [
         ("rotated", [0.0, 2.0], [-2.0, 0.0]),
         ("skewed", [1.0, 0.0], [1.0, 2.0]),
@@ -112,6 +112,103 @@ fn preserves_candidate_bases_without_granting_playback_support() {
             .try_into_single_texture()
             .is_err()
     );
+}
+
+#[test]
+fn sprite_admission_preserves_image_selection_orientation_and_paused_time() {
+    let animation = TexAtlas::parse(&fixture("multi-image"))
+        .unwrap()
+        .sprite_animation()
+        .unwrap()
+        .unwrap();
+    for (time, index) in [(0.0, 0), (0.499999, 0), (0.5, 1), (0.5, 1), (1.0, 0)] {
+        assert_eq!(animation.frame_at(time).unwrap().image_index, index);
+    }
+    assert_eq!(animation.uv_at(0.5).at([0.0, 0.0]), [0.5, 0.25]);
+    assert_eq!(animation.uv_at(0.5).at([1.0, 1.0]), [0.5, 0.75]);
+    assert_eq!(animation.frame_at(f64::NAN).unwrap().image_index, 0);
+    for (name, top_left, bottom_right) in [
+        ("rotated", [0.75, 0.25], [0.25, 0.75]),
+        ("flipped-x", [0.75, 0.25], [0.25, 0.75]),
+        ("flipped-y", [0.25, 0.75], [0.75, 0.25]),
+    ] {
+        let animation = TexAtlas::parse(&fixture(name))
+            .unwrap()
+            .sprite_animation()
+            .unwrap()
+            .unwrap();
+        assert_eq!(animation.uv_at(0.0).at([0.0, 0.0]), top_left);
+        assert_eq!(animation.uv_at(0.0).at([1.0, 1.0]), bottom_right);
+        assert_eq!(animation.uv_at(0.5).at([0.0, 0.0]), [0.25, 0.25]);
+    }
+    // Preserve the old rectangular half-texel inset exactly for each TEXS version.
+    for version in 1..=3 {
+        let animation = TexAtlas::parse(&fixture(&format!("sprite-v{version}")))
+            .unwrap()
+            .sprite_animation()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            animation.uv_at(0.0).at([0.0, 0.0]),
+            [0.5 / 64.0, 0.5 / 32.0]
+        );
+        assert_eq!(
+            animation.uv_at(0.5).at([1.0, 1.0]),
+            [63.5 / 64.0, 31.5 / 32.0]
+        );
+    }
+}
+
+#[test]
+fn sprite_admission_rejects_entire_invalid_sequences_without_static_fallback() {
+    let atlas = TexAtlas::parse(&fixture("rotated")).unwrap();
+    for frame in [
+        TexAtlasFrame {
+            duration_seconds: 0.0,
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            duration_seconds: -1.0,
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            origin: [-1.0, 0.0],
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            horizontal: [1.0, 1.0],
+            vertical: [1.0, 1.0],
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            horizontal: [0.1, 0.0],
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            origin: [f32::NAN, 0.0],
+            ..atlas.frames[1].clone()
+        },
+        TexAtlasFrame {
+            image_index: 1,
+            ..atlas.frames[1].clone()
+        },
+    ] {
+        let mut invalid = atlas.clone();
+        invalid.frames[1] = frame;
+        assert!(invalid.sprite_animation().is_err());
+    }
+    let mut missing = atlas.clone();
+    missing.frames.clear();
+    assert!(missing.sprite_animation().is_err());
+    let mut single = atlas.clone();
+    single.frames.truncate(1);
+    assert_eq!(single.sprite_animation().unwrap().unwrap().frames.len(), 1);
+    let mut overflow = atlas;
+    overflow
+        .frames
+        .iter_mut()
+        .for_each(|frame| frame.duration_seconds = f32::MAX);
+    assert!(overflow.sprite_animation().is_err());
 }
 
 #[test]

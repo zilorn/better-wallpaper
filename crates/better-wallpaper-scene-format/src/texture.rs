@@ -149,9 +149,10 @@ pub struct TexAtlasFrame {
     pub vertical: [f32; 2],
 }
 
-/// Bounded container model for inspection and future atlas consumers.
-/// Parsing this type does not grant current scene playback support. Use
-/// `try_into_single_texture` to enforce the existing renderer's layout limits.
+/// Bounded container model for inspection and scene atlas consumers.
+/// Parsing alone does not grant playback support; `sprite_animation` validates
+/// scene frame geometry/timing. `try_into_single_texture` retains the legacy
+/// single-image adapter limits for tools and effect textures.
 #[derive(Debug, Clone)]
 pub struct TexAtlas {
     pub format: TexFormat,

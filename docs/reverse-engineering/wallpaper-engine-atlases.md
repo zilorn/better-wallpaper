@@ -6,6 +6,12 @@ inspection, not advanced atlas playback. It extends the
 evidence. No original-program screenshots or sample-acceptance results were
 obtained; native visual validation remains pending.
 
+This records the first implementation batch (`d012f50`). Subsequent shared
+scene/GPU atlas support and its limits are documented in the
+[rendering validation](../validation/a1-atlas-rendering.md). The static native
+evidence and its unresolved uniform-upload/sample-acceptance boundaries below
+remain unchanged; descriptions of the old playback path are historical.
+
 ## Target and retained evidence
 
 The local installation is Wallpaper Engine 2.8.42, Steam build 23967692.

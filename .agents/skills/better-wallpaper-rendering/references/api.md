@@ -61,28 +61,59 @@ native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md
 TEXB1–4 store image count first; TEXB3/4 then store the FreeImage codec.
 TEXS1 reads signed integer coordinates, TEXS2/3 read floats, and TEXS3 adds logical
 frame dimensions. Frame records contain image index, duration, origin and two
-basis vectors. The playback `TexTexture` adapter represents one image with
-positive axis-aligned rectangles. Multiple images, volume flag 0x40, off-axis or negative-direction bases and missing frame images return
+basis vectors. The legacy `TexTexture` adapter (tools, fallback/effect textures)
+represents one image with positive axis-aligned rectangles. Multiple images,
+volume flag 0x40, off-axis or negative-direction bases and missing frame images return
 explicit errors. Unknown TEXS versions and over-limit/truncated frame records
 are rejected. Zero-duration particle atlases do not imply timed sprite playback.
 `cargo run -p better-wallpaper-scene-format --example texture-audit -- /local/path`
 inspects loose TEX files without following symlinks; pixel validation is not GPU
 or scene-playback validation.
 
-`TexAtlas::parse` is a separate inspection model: independent image/mip lists,
+`TexAtlas::parse` is the model for inspection and main scene material textures: independent image/mip lists,
 full signed affine frame bases and TEXS3 logical frame dimensions. It caps 64
 images, 32 mips per image, 10,000 frames and 128 MiB retained bytes across images;
 `parse_with_budget` can lower the byte cap. The existing per-mip/ratio limits
 apply, with one temporary mip during decoding. It requires finite frame fields,
 nonnegative durations, valid indices, complete animation blocks and validated
 2D payload sizes. Zero-duration, degenerate and out-of-range bases remain data,
-not proof of draw support. Single video payloads remain unverified; volume and
+not proof of draw support until sprite admission. Single video metadata remains unverified; volume and
 multi-video layouts fail. `to_texture_images` validates independent pixel chains;
-`try_into_single_texture` enforces the existing playback layout gate.
+`try_into_single_texture` enforces the legacy single-image layout gate.
 `scene-inspect /path/atlas.tex --atlas --json` adds bounded (128 MiB file input)
 structural inspection with explicit payload/layout/native-validation fields.
-Legacy playback and compatibility classifications are unchanged. See the
+`single_image_layout` reports the legacy adapter; `sprite_layout` reports shared
+sprite admission without a GPU or native-parity claim. See the
 [atlas evidence and contracts](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md).
+
+`TexAtlas::sprite_animation` is shared by resource resolution and package-aware
+compatibility analysis. It requires a complete nonempty sequence for animated or
+multi-image data, positive finite durations, nondegenerate bases at least one
+texel long, and all four corners inside the selected image. Any failed frame
+rejects the whole draw; frames are never filtered into a partial animation.
+One valid frame is a fixed transformed crop; two or more identify sprite animation
+for L2 metadata. `SceneMetadata.unsupported_textures` preserves concrete errors
+in `CompatibilityReport.unsupported_features`. Tier remains metadata, not proof
+of successful GPU upload or backend playback.
+
+Shared `SpriteFrame`/`SpriteAnimation` types now live in the format crate and are
+re-exported by the renderer. A frame has an image index and affine `TextureUv`
+(origin and two basis vectors); `frame_at` uses elapsed scene time only.
+`Scene2dDraw.texture` is image zero, `additional_textures` are indices 1 and above.
+Main material TEX payloads share decoded bytes by path within a scene and have a
+512 MiB aggregate retained-byte cap, in addition to each atlas's 128 MiB cap.
+This aggregate does not include direct media, effect/fallback textures or fonts.
+GPU cache entries contain complete image groups; failed uploads roll back the
+group. The 256 resident-image cap counts each image/mask separately and returns
+an error instead of evicting part of an active atlas. Clear/drop releases every
+image with the owning context current.
+
+Quads, puppet UVs and effect displacements use the full affine basis. Sprite UVs
+use a half-texel inset along each authored basis, preserving old rectangular
+results; a one-texel axis samples its center. This is our sampling convention,
+not demonstrated native filtering/edge parity. Atlas-backed effect masks and
+authored system-texture fallbacks still use the legacy adapter. Native acceptance,
+minification/packed-edge parity and advanced effect combinations remain unverified.
 
 `cargo run -p better-wallpaper-scene-format --bin asset-audit -- --help` describes
 the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots
@@ -139,17 +170,21 @@ and [IScene parameters](https://docs.wallpaperengine.io/en/scene/scenescript/ref
 GPU regression command:
 `LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture`.
 The explicit surfaceless EGL/GLES test builds real shared plans/assets, invokes
-production shaders and compares readback against ten independent synthetic PNG
+production shaders and compares readback against seventeen independent synthetic PNG
 references. Gates: local 8×8 SSIM ≥0.995, RGBA MSE ≤1, maximum byte error ≤2.
 Inputs now come from 13 committed projects and `tests/fixtures/scene-behavior/matrix.json`:
-eight renderable samples with 20 ordered steps and five explicit A1 rejection
-probes. The ordinary suite checks package/project/PNG hashes and asset outcomes.
+all thirteen renderable samples with 50 ordered steps. Five A1 samples also retain
+explicit rejection checks for the legacy adapter. A separate GPU case adds five
+comparisons for upload rollback, capacity preservation, reload and rotation/effect
+composition. The ordinary suite checks package/project/PNG hashes and asset outcomes.
 `python3 tests/fixtures/scene-behavior/generate.py` checks deterministic regeneration;
-`--write` deliberately refreshes inputs without changing PNGs. Native acceptance
+`--write` deliberately refreshes inputs without changing PNGs.
+`python3 crates/gpu-renderer/tests/golden/generate_atlas_references.py` checks seven
+analytical A1 PNGs independently of renderer output. Native acceptance
 and reference captures are pending; video frame replacement is a consumer probe.
 Failure emits actual/difference images under `target/scene-golden-failures`.
 The ordinary workspace suite runs comparator checks but explicitly ignores the
-GPU case; missing EGL fails an explicit GPU run. See
+GPU cases; missing EGL fails an explicit GPU run. See
 `crates/gpu-renderer/tests/golden/README.md` for regeneration and scope.
 Straight-alpha translucent draws now use separate color and alpha factors:
 source-over preserves alpha=1 on opaque backgrounds. Additive draws saturate
