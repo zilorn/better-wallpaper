@@ -14,6 +14,15 @@ changing or describing these capabilities.
 - Qt 6/QML, Qt Multimedia, and Qt WebEngine: Plasma wallpaper plugin.
 - systemd user service: installed daemon lifecycle.
 
+## Wallpaper Engine Adaptation Plan
+
+The current staged adaptation plan is
+[`docs/wallpaper-engine-adaptation-plan.md`](docs/wallpaper-engine-adaptation-plan.md).
+Read it before Wallpaper Engine compatibility work for priorities, dependencies,
+evidence, backend boundaries, and acceptance criteria. Update completed items with
+their commits and validation results. Implementation and category skills remain
+authoritative; `plan.md` retains the historical scene design and progress.
+
 ## Common Commands
 
 Run commands from the repository root unless indicated otherwise.
