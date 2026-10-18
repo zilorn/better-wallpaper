@@ -55,6 +55,10 @@ Evidence: `main.rs` now dispatches web projects to `web_wallpaper::run_niri`;
 canonical asset boundaries on a private loopback origin and stdin-owned helper
 lifecycle. Regression tests cover mixed-case types, nested entries, properties,
 URL encoding, byte ranges, traversal/symlink denial and asset-server teardown.
+The teardown check allows up to two seconds for tiny_http's detached listener
+thread to close after the joined asset worker exits; a permanent listener leak
+still fails. An immediate connection-refused assertion raced this asynchronous
+library cleanup during the A0 workspace run.
 
 The explicit synthetic smoke check passed in niri on DP-1: HTTP page load,
 WebGL context creation, property callbacks, frozen timers, resume and stdin-close

@@ -313,9 +313,28 @@ mod tests {
         }
         assert!(request(&server, "GET", "/%ZZ", "").starts_with("HTTP/1.1 400"));
         assert!(request(&server, "PUT", "/api/v1/config", "").starts_with("HTTP/1.1 405"));
-        let address = server.origin.strip_prefix("http://").unwrap().to_owned();
+        let address = server
+            .origin
+            .strip_prefix("http://")
+            .unwrap()
+            .parse()
+            .unwrap();
         drop(server);
-        assert!(TcpStream::connect(address).is_err());
+        // tiny_http signals its detached accept thread in Drop but does not join it.
+        // Require eventual closure with a deadline; an immediate connect races shutdown.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match TcpStream::connect_timeout(&address, Duration::from_millis(50)) {
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => break,
+                Err(error) => panic!("unexpected asset listener shutdown error: {error}"),
+                Ok(stream) => drop(stream),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "asset listener did not close within two seconds"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]
