@@ -156,7 +156,9 @@ impl FfmpegDecoder {
                 );
             }
         }
-        if hardware_frame {
+        // Preserve device planes at native size; resizing uses the CPU converter below.
+        let needs_downscale = self.max_height > 0 && self.max_height < source.height();
+        if hardware_frame && !needs_downscale {
             let frames = unsafe {
                 (*(*source.as_ptr()).hw_frames_ctx)
                     .data
@@ -241,6 +243,11 @@ impl FfmpegDecoder {
             self.scaler_source = Some(source_format);
             debug!(
                 ?source_format,
+                source_width = source.width(),
+                source_height = source.height(),
+                target_width,
+                target_height,
+                hardware_frame,
                 "Created RGBA converter for decoded frame format"
             );
         }
@@ -261,7 +268,7 @@ impl FfmpegDecoder {
                 (*source.as_ptr()).data.as_ptr() as *const *const u8,
                 (*source.as_ptr()).linesize.as_ptr(),
                 0,
-                height as i32,
+                source.height() as i32,
                 destination_data.as_mut_ptr(),
                 destination_stride.as_mut_ptr(),
             )

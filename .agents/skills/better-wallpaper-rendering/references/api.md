@@ -10,6 +10,16 @@
 | `GpuRenderer::draw(output_width, output_height, FillMode)` | Same source; supports cover, contain, stretch. Preserve shared GL state when embedding in another renderer. |
 | `GpuResourceCache<T>` | `better-wallpaper-renderer/src/cache.rs`; owns resources with normalized path/content-hash keys, budget accounting, and deterministic LRU eviction. Removal/drop must release the actual GPU objects. |
 
+Decoded video storage is selected by `DecodedFrame.cuda`. CPU frames have compact
+RGBA pixels and `stride == width * 4`; CUDA frames have two device-resident NV12
+planes with byte pitches, empty `pixels` and zero CPU stride. The `format` field
+describes CPU storage only. Retained frames own their memory/context across decoder
+seek and teardown. Consumers must select the CUDA upload path before inspecting CPU
+pixels. `DecodeOptions.hardware` requests acceleration but permits software fallback.
+`max_height` caps either path without upscaling: native-size NV12 stays on the GPU;
+downscaled or non-NV12 hardware frames transfer to CPU RGBA. This transfer has a
+performance cost and is not a zero-copy path.
+
 All paths above are beneath `crates/`. Scene format types and parsing live in
 `crates/better-wallpaper-scene-format/src/`; public rendering exports are listed
 in `crates/better-wallpaper-renderer/src/lib.rs`.

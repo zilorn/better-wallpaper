@@ -1,5 +1,18 @@
 # niri Improvements
 
+## Decoder Storage and Height Limit — Baseline Verified
+
+`better-wallpaper-ffmpeg/tests/fixture_decode.rs` distinguishes CPU RGBA from CUDA
+NV12 storage, validates complete decode/seek and retained frame ownership after
+decoder teardown, and forces software fallback in an isolated no-device process.
+The old unconditional CPU byte-length assertion failed on valid CUDA frames.
+Height-limit regressions also exposed and corrected bypassed CUDA scaling and
+an incorrect source slice height in the CPU scaler. Native-size CUDA, downscaled
+hardware-to-CPU output and software output passed on the local CUDA host.
+
+These are decoder tests; real EGL interop, multi-output presentation and desktop
+lifecycle verification remain separate requirements below.
+
 ## Output Hotplug — Implemented / Desktop Verification Needed
 
 Evidence: `OutputHandler` marks output changes for `NiriBackend::reconcile_output`,

@@ -35,6 +35,13 @@ same fallback. Startup probes NVIDIA Vulkan/DMA-BUF capability; `--require-nvidi
 turns probe failure into startup failure. That probe alone does not prove end-to-end
 zero-copy frame presentation.
 
+The decoder's hardware request can produce either CUDA NV12 planes or CPU RGBA;
+`EglRenderer::render` dispatches using `DecodedFrame.cuda`. CUDA frames intentionally
+have no CPU pixel buffer. `decode.max_height` is honored by both decode paths;
+when it reduces a CUDA frame, FFmpeg transfers it to CPU memory for RGBA scaling.
+No resize keeps the native NV12 device path. CPU fallback from an unavailable CUDA
+decoder is distinct from EGL/CUDA interop failure during presentation.
+
 Scene surfaces collect standard Wayland seat/pointer events for enabled authored
 basic parallax. Events must target the current wallpaper surface; leave, seat
 removal and output removal clear the position. Positions normalize to the output

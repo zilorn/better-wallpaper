@@ -48,6 +48,8 @@ pub struct ColorInfo {
     pub range: Option<i32>,
 }
 
+/// An owned, device-resident NV12 frame: Y and interleaved UV planes.
+/// Plane addresses are CUDA device pointers, not CPU-readable memory; strides are bytes.
 pub struct CudaFrame {
     pub planes: [usize; 2],
     pub strides: [usize; 2],
@@ -111,6 +113,12 @@ impl Drop for CudaFrameOwner {
     }
 }
 
+/// Decoded storage is selected by `cuda`, not by `format`.
+///
+/// With `cuda == None`, `pixels` contains CPU pixels described by `format` and
+/// `stride`. With `cuda == Some`, the NV12 device planes own the image; `pixels`
+/// is empty, `stride` is zero, and `format` does not describe those planes.
+/// Either storage variant remains valid after the decoder is dropped or seeks.
 #[derive(Debug)]
 pub struct DecodedFrame {
     pub pixels: Vec<u8>,
@@ -132,8 +140,12 @@ impl DecodedFrame {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DecodeOptions {
+    /// Request CUDA decoding, falling back to software if it is unavailable.
+    /// This does not guarantee CUDA output: non-NV12 frames and frames requiring
+    /// downscaling are transferred to CPU memory and converted to RGBA.
     pub hardware: bool,
-    /// 解码输出最大高度（px），0 表示不限制
+    /// Maximum output height in pixels for either decode path; zero means no limit.
+    /// Smaller outputs preserve aspect ratio with integer width rounding; no upscaling.
     pub max_height: u32,
 }
 
