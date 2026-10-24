@@ -14,6 +14,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::{io::Write, path::Path, sync::Arc};
 
+#[path = "support/atlas_sampling.rs"]
+mod atlas_sampling;
+
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,
     display: egl::Display,

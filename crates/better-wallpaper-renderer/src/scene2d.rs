@@ -1552,11 +1552,13 @@ mod tests {
                     image_index: 0,
                     uv: [0.0, 0.0, 0.5, 1.0].into(),
                     duration_seconds: 0.1,
+                    full_image: false,
                 },
                 SpriteFrame {
                     image_index: 1,
                     uv: [0.5, 0.0, 1.0, 1.0].into(),
                     duration_seconds: 0.2,
+                    full_image: false,
                 },
             ],
             duration_seconds: 0.3,

@@ -115,6 +115,16 @@ not demonstrated native filtering/edge parity. Atlas-backed effect masks and
 authored system-texture fallbacks still use the legacy adapter. Native acceptance,
 minification/packed-edge parity and advanced effect combinations remain unverified.
 
+`SpriteFrame.full_image` records whether the authored corners cover the complete
+image, including quarter turns and reflections. Cropped frames use base-level
+linear filtering to avoid mixing neighboring packed frames through whole-image
+mips. Full-image frames restore mip filtering when a complete supported chain is
+available; optional effect textures restore their own filter as well. This trades
+minification antialiasing for crop isolation and does not establish native parity
+or isolation for arbitrary skewed frame boundaries. GPU sampling probes cover
+rectangular crops, rotations/flips, independent authored mip chains, crop/full
+transitions, looping, clear/reload and context replacement.
+
 `cargo run -p better-wallpaper-scene-format --bin asset-audit -- --help` describes
 the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots
 and selected PKGs. It records SHA-256, package member offsets, format/payload

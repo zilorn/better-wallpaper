@@ -100,6 +100,14 @@ need reference sample coverage.
 
 ## Native TEX Reader and 2D Atlases — Implemented / Native Parity Pending
 
+Packed rectangular sprite frames now avoid whole-image mip sampling, which can
+mix neighboring frames during minification. Coverage classification preserves
+mips for full-image frames and restores filtering across frame/effect bindings.
+`tests/support/atlas_sampling.rs` in the GPU crate checks solid-color crops at
+32/8/4/1 pixels, rotations/flips, independent authored mips, reload and context
+replacement. Native filtering parity, skewed-edge isolation and antialiasing of
+minified crops remain open.
+
 Generated odd-sized mip filtering now weights fractional texel coverage instead
 of partitioning the source into unequal whole-texel bins. A 5×1 center impulse
 previously produced asymmetric 0/83 red values instead of 50/50; regressions cover

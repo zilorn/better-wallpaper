@@ -6,7 +6,7 @@ Run from the repository root:
 LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture
 ```
 
-The three GPU tests are explicitly ignored in the ordinary workspace suite because each
+The five GPU tests are explicitly ignored in the ordinary workspace suite because each
 requires EGL 1.5, `EGL_MESA_platform_surfaceless`, GLES 2 and an installed software
 renderer. Explicit runs fail on missing GPU support; they never silently skip.
 No desktop display or visible surface is used. The comparison gate itself runs
@@ -50,6 +50,14 @@ center is RGB (250, 150, 100). Reduction to 1×1 must yield (10, 6, 4, 255), fro
 the center's 1/25 coverage. Adding an authored solid 2×2 mip must instead yield
 its color (80, 40, 20, 255), proving that only missing levels are synthesized.
 This covers our area-weighted mip convention, not native-engine filtering parity.
+
+Two additional GPU cases in `support/atlas_sampling.rs` use analytical solid-color
+expectations. They check packed-frame isolation at 32/8/4/1 pixels, rotated and
+flipped crops, independent authored mip chains, full-image/crop transitions,
+looping, clear/reload and context replacement. An ordinary test checks mip-chain
+preservation and full-image classification, including rejection of a skewed crop.
+These probes cover the conservative base-level crop filter; arbitrary skewed
+edges and native minification parity remain outside their claims.
 
 The gate requires all of:
 

@@ -31,6 +31,9 @@ pub struct SpriteFrame {
     pub image_index: usize,
     pub uv: TextureUv,
     pub duration_seconds: f32,
+    /// The authored corners cover the entire image (including quarter turns
+    /// and reflections). Crops cannot safely sample whole-image mip levels.
+    pub full_image: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -125,9 +128,14 @@ impl TexAtlas {
             // A one-texel axis intentionally samples its center throughout.
             let inset = [0.5 / horizontal_length, 0.5 / vertical_length];
             let origin = raw.at(inset);
+            let image_corners = [[0.0, 0.0], [size[0], 0.0], [0.0, size[1]], size];
+            let full_image = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+                .into_iter()
+                .all(|corner| image_corners.contains(&raw.at(corner)));
             frames.push(SpriteFrame {
                 image_index: frame.image_index as usize,
                 duration_seconds: frame.duration_seconds,
+                full_image,
                 uv: TextureUv {
                     origin: std::array::from_fn(|axis| origin[axis] / size[axis]),
                     horizontal: std::array::from_fn(|axis| {

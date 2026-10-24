@@ -25,6 +25,7 @@ struct GpuTextureState {
     height: u32,
     dynamic_label: Option<String>,
     video_generation: u64,
+    mipmapped: bool,
 }
 
 const VERTEX_SHADER: &str = include_str!("shaders/scene.vert");
@@ -199,10 +200,13 @@ impl SceneGpuRenderer {
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, None);
         }
-        if let Err(error) = result {
-            unsafe { self.gl.delete_texture(gl_tex) };
-            return Err(error);
-        }
+        let mipmapped = match result {
+            Ok(mipmapped) => mipmapped,
+            Err(error) => {
+                unsafe { self.gl.delete_texture(gl_tex) };
+                return Err(error);
+            }
+        };
 
         let error = unsafe { self.gl.get_error() };
         if error != glow::NO_ERROR {
@@ -218,6 +222,7 @@ impl SceneGpuRenderer {
             height: base.height,
             dynamic_label: None,
             video_generation: 0,
+            mipmapped,
         })
     }
 
@@ -225,7 +230,7 @@ impl SceneGpuRenderer {
         &self,
         _tex: glow::Texture,
         image: &TextureImage,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let internal_format = match image.format {
             TexFormat::DXT1 => glow::COMPRESSED_RGBA_S3TC_DXT1_EXT,
             TexFormat::DXT3 => glow::COMPRESSED_RGBA_S3TC_DXT3_EXT,
@@ -247,7 +252,8 @@ impl SceneGpuRenderer {
                 );
             }
         }
-        if self.can_use_mipmaps(image) && mip_chain_is_complete(image) {
+        let mipmapped = self.can_use_mipmaps(image) && mip_chain_is_complete(image);
+        if mipmapped {
             unsafe {
                 self.gl.tex_parameter_i32(
                     glow::TEXTURE_2D,
@@ -256,14 +262,14 @@ impl SceneGpuRenderer {
                 );
             }
         }
-        Ok(())
+        Ok(mipmapped)
     }
 
     unsafe fn upload_rgba8_mipmaps(
         &self,
         _tex: glow::Texture,
         image: &TextureImage,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let mut last_rgba = None;
         for (level, mip) in image.levels.iter().enumerate() {
             let rgba = convert_to_rgba8(image.format, &mip.data, mip.width, mip.height);
@@ -284,7 +290,8 @@ impl SceneGpuRenderer {
                 last_rgba = Some(rgba.into_owned());
             }
         }
-        if self.can_use_mipmaps(image) && mip_chain_is_contiguous(image) {
+        let mipmapped = self.can_use_mipmaps(image) && mip_chain_is_contiguous(image);
+        if mipmapped {
             let last = image.levels.last().ok_or("texture has no mipmap levels")?;
             let mut width = last.width;
             let mut height = last.height;
@@ -318,7 +325,7 @@ impl SceneGpuRenderer {
                 );
             }
         }
-        Ok(())
+        Ok(mipmapped)
     }
 
     fn can_use_mipmaps(&self, image: &TextureImage) -> bool {
@@ -627,6 +634,7 @@ impl SceneGpuRenderer {
                             state.height = level.height;
                         }
                         state.dynamic_label = Some(label);
+                        state.mipmapped = false;
                     }
                 }
                 if let Some(video) = &draw.video {
@@ -687,6 +695,7 @@ impl SceneGpuRenderer {
                             state.height = frame.height;
                         }
                         state.video_generation = frame.generation;
+                        state.mipmapped = false;
                     }
                 }
                 let sprite_frame = draw
@@ -1050,6 +1059,18 @@ impl SceneGpuRenderer {
                     );
                 }
                 self.gl.active_texture(glow::TEXTURE0);
+                // Whole-image mip levels mix adjacent packed frames. The base
+                // image plus the shared half-texel inset isolates rectangular
+                // crops. Restore mip filtering when a later frame is full-size.
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MIN_FILTER,
+                    if state.mipmapped && sprite_frame.is_none_or(|frame| frame.full_image) {
+                        glow::LINEAR_MIPMAP_LINEAR
+                    } else {
+                        glow::LINEAR
+                    } as i32,
+                );
                 let mut uv =
                     sprite_frame.map_or_else(|| TextureUv::from(draw.uv), |frame| frame.uv);
                 self.gl.uniform_4_f32(
@@ -1280,7 +1301,16 @@ unsafe fn bind_optional_texture(
             .and_then(|path| textures.get(path))
             .and_then(|images| images.first());
         gl.bind_texture(glow::TEXTURE_2D, texture.map(|state| state.texture));
-        if texture.is_some() {
+        if let Some(state) = texture {
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                if state.mipmapped {
+                    glow::LINEAR_MIPMAP_LINEAR
+                } else {
+                    glow::LINEAR
+                } as i32,
+            );
             let wrap = if repeat {
                 glow::REPEAT
             } else {
