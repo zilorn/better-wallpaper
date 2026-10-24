@@ -69,7 +69,11 @@ if grep -q 'libbetterwallpaperplugin' "$UNIT"; then
 fi
 
 log "验证 systemd 单元、动态依赖和 Plasma QML"
-if ! SYSTEMD_OUTPUT=$(systemd-analyze verify "$UNIT" 2>&1); then
+# Verify the staged executable even when no system-wide copy is installed.
+# The original unit's deployment paths are checked above; never rewrite it.
+VERIFY_UNIT="$STAGE/better-wallpaper.service"
+sed "s|^ExecStart=/usr/bin/better-wallpaper-daemon$|ExecStart=$DAEMON|" "$UNIT" > "$VERIFY_UNIT"
+if ! SYSTEMD_OUTPUT=$(systemd-analyze verify "$VERIFY_UNIT" 2>&1); then
     SYSTEMD_ERRORS=$(printf '%s\n' "$SYSTEMD_OUTPUT" | grep -v \
         -e 'Failed to turn off SO_PASSRIGHTS on user lookup socket' \
         -e 'Failed to enable SO_PASSCRED on handoff timestamp socket' || true)
