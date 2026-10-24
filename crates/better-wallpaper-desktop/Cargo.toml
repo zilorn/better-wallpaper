@@ -20,3 +20,8 @@ tracing-subscriber.workspace = true
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+# Retained webview client; the GTK client owns the installed desktop command.
+[[bin]]
+name = "better-wallpaper-desktop-legacy"
+path = "src/main.rs"
