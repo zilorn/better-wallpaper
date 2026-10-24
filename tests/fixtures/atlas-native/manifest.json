@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "capture_date": "2026-10-24",
+  "program": {
+    "version": "Wallpaper Engine 2.8.42",
+    "steam_build": 23967692,
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0"
+  },
+  "capture": {
+    "wine": "11.20",
+    "display": "isolated Xvfb 640x480x24",
+    "direct3d": "Wine built-in d3d11/dxgi, LIBGL_ALWAYS_SOFTWARE=1",
+    "window_client_size": [
+      128,
+      128
+    ],
+    "no_resize_or_postprocessing": true,
+    "fixed_inputs": "single-frame TEXS2 variants, camera zoom 1, no pointer/parallax/random/property/audio inputs",
+    "alpha": "native opaque RGB, expected alpha 255"
+  },
+  "gates": {
+    "ssim_min": 0.995,
+    "rgb_mse_max": 1,
+    "rgba_mse_max": 0.75,
+    "max_channel_error": 2
+  },
+  "animation_clock": {
+    "gpu_times": [
+      0,
+      0.499999,
+      0.5,
+      0.5,
+      1,
+      0.5
+    ],
+    "expected_frames": [
+      0,
+      0,
+      1,
+      1,
+      0,
+      1
+    ],
+    "native_pause": "not established: CLI pause did not freeze this Wine window"
+  },
+  "sha256": {
+    "captures/clamped.png": "c07734802eaea847a1e023bea4005859f4cfbeb5c726d16cb9f7fd60a0a69aa1",
+    "captures/flipped-x0.png": "1db2ea0a2132001127e87c0f648b184488035c7cada6b791a940fbe2e5f0e001",
+    "captures/flipped-x1.png": "9c914430430b8050638bdcc778255da294da53b68786b4e476df98d1ca469fd2",
+    "captures/flipped-y0.png": "df0ba49cdf30fd59acf992b8ce6aaf51c38cd5ac272f3844bd3074bbd11878ad",
+    "captures/flipped-y1.png": "9c914430430b8050638bdcc778255da294da53b68786b4e476df98d1ca469fd2",
+    "captures/multi-image0.png": "da1ca85d4160dc26acadb0c5f421bf55d2f0e2f33a48d21cc60ec50517025eb7",
+    "captures/multi-image1.png": "e7186b417291e66ba43b6cb01f4d17eb41e9932cd0a248ff45587b88784038aa",
+    "captures/nearest.png": "a21d513a886369e7ede1edc61cf7a6e67293b1e3d4049e2b14cb6a61289f2e4c",
+    "captures/packed-mips.png": "dfaaa7a5623c8395c5125d2daaee087785589bc3b2e486dc90814b3a5e9923e1",
+    "captures/packed-point.png": "dfaaa7a5623c8395c5125d2daaee087785589bc3b2e486dc90814b3a5e9923e1",
+    "captures/rotated0.png": "cf9daab0a7873476836df125b3de59f2445162c0d6f77d392cd2acc339369ea4",
+    "captures/rotated1.png": "9c914430430b8050638bdcc778255da294da53b68786b4e476df98d1ca469fd2",
+    "captures/skewed0.png": "5516315b1b446f5d90189210e9969ed8a6cab4fcbc8e235e447257e5443c50eb",
+    "captures/skewed1.png": "9c914430430b8050638bdcc778255da294da53b68786b4e476df98d1ca469fd2",
+    "clamped/project.json": "fce82f563ea8ab8992414785dab516dddb2d4a0123df0c9514784b4a3b9762b0",
+    "clamped/scene.pkg": "e2044226bfa7886337be9b73a8ec8c86d590dde205322bf2ca324fd55efc11df",
+    "flipped-x-animated/project.json": "d62a605409252b04d1744f9ae80b9143a70144e27989849f27efe5818224b659",
+    "flipped-x-animated/scene.pkg": "4ad18cfe12e78c7a817bd6b44146835718ab3de0f79882328d5ab3e365dd2cef",
+    "flipped-x0/project.json": "9d8e6b370197e3873942a9ea5120ce1eeb21d0041a4131b95b95cd78c99c909f",
+    "flipped-x0/scene.pkg": "25e8fbd641f75f4156cb5a00d8c682c41de3b5f7dbeaef062d8b0769e09039f1",
+    "flipped-x1/project.json": "b17f7c415e3aaf39bac859f578fede9fc8d6f0f76a79989d583806ccb848d4de",
+    "flipped-x1/scene.pkg": "cf7349636a957bbc37133bd5e38976f30429b4b33886171889feff79576ebcf1",
+    "flipped-y-animated/project.json": "b6e98ff6c537e70d3ab2c6956a08a0473986095faad595763c9a4095305d9fdb",
+    "flipped-y-animated/scene.pkg": "bb45d368e368dfc0d2ae3c44b91b5a8cf55329ed4bc687fa3a41ccfab5195574",
+    "flipped-y0/project.json": "f215af30e8d2c539bd2c7256b8ab3c9a9abcf09d770b1ecfab56103a06cfd88a",
+    "flipped-y0/scene.pkg": "be3d76e18e0a9e577a33c1edcd0d0c8add2716213e0a35fe68d3bafad8829953",
+    "flipped-y1/project.json": "692157d2f888c52798c4788529241bb8f6692268b99f675b4159b91fcb51dd15",
+    "flipped-y1/scene.pkg": "cf7349636a957bbc37133bd5e38976f30429b4b33886171889feff79576ebcf1",
+    "multi-image-animated/project.json": "9ab85f3482f264dfd43fd21de9f473d80a72c2f5c3d6e8e7f083cfea172a7026",
+    "multi-image-animated/scene.pkg": "60a3dd5cc1377627283ef408752196a58f103a4a16c00bd62f66e04d193a4e4d",
+    "multi-image0/project.json": "7947c5cd9535613134c7847d30d5dc1926f25fd7bd4001af441581cf67c0a704",
+    "multi-image0/scene.pkg": "110abe6bb6dea1eb9cfaccebd134ad285793117376dff732a4b482fca99c726c",
+    "multi-image1/project.json": "642096e4fbc04fadce73bdab64f992d869fb1c03d2c5f45f4ceb8b9973902341",
+    "multi-image1/scene.pkg": "969866918adc8e22b7744e83e8909dd67394d28e046d4d12ae8b4f6d581f2cca",
+    "nearest/project.json": "cb3a17c37d5a5269263424f1d491fc310e216dcbaf0b1d9ad7c7a4bc89a1689c",
+    "nearest/scene.pkg": "84bbf5a1a70c1bf26b70524a50bb5418d638cbc8363193f4b6333aefd4805562",
+    "packed-mips/project.json": "48959cccc279707c358a77dd92ffac279c4116bd56eb62dc19f5521c192470a6",
+    "packed-mips/scene.pkg": "00f89e01cbba00baddcf71417554f7a45456ec29b3158ba4fe96a3200ff85d13",
+    "packed-point/project.json": "50dcd55817407c6262af3f2da60755713fa9d1dd295cedd299f39ee5f9de1bf6",
+    "packed-point/scene.pkg": "dbf364039d50325a02a7027dcd61dea3fd55cec32127f5edfc04aa49b68dd5d9",
+    "rotated-animated/project.json": "d5467e7f6042a89b58c36e12eb567cb8341c2bf0e26e1d2f89e6cbcec422d878",
+    "rotated-animated/scene.pkg": "1c41eacb67fb09fa5c4e39425a8115bf2a05ddffff6d824770a8f2064a38ce6d",
+    "rotated0/project.json": "ed3348ec618da6522eba9bf3fc2c22e2fef6c43f7457f4401f03a9772799b89d",
+    "rotated0/scene.pkg": "372bbcf3c5be9395d09c30a1974a8bcb0236d00b66d956998a2117df6e0721dc",
+    "rotated1/project.json": "cf28a19239cfc8df2b75ffc2efa923985e1a1bff74e5bd4fbd902308dc70568e",
+    "rotated1/scene.pkg": "cf7349636a957bbc37133bd5e38976f30429b4b33886171889feff79576ebcf1",
+    "skewed-animated/project.json": "a21d55922a1dfd35d9ad47de374e9213c27275b1296a44aec6b980739da30c04",
+    "skewed-animated/scene.pkg": "3568de046aa08ed85ae7ce956d1e0323bfd69d793617b6f4e339604b5292b708",
+    "skewed0/project.json": "e5a46c90276f7f80c723afc17291c5e792eb4a689a128335d53d2e88fd6928c8",
+    "skewed0/scene.pkg": "6ada019eb29b974a0ddd70e21aa6519c5f4138a49f6206a954b93b31f4ff310b",
+    "skewed1/project.json": "4c201fd353e38299a0a07cff309c362ee69705a9f3a6ac95d6647f261c274844",
+    "skewed1/scene.pkg": "cf7349636a957bbc37133bd5e38976f30429b4b33886171889feff79576ebcf1"
+  }
+}

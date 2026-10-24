@@ -10,7 +10,10 @@ This records the first implementation batch (`d012f50`). Subsequent shared
 scene/GPU atlas support and its limits are documented in the
 [rendering validation](../validation/a1-atlas-rendering.md). The static native
 evidence and its unresolved uniform-upload/sample-acceptance boundaries below
-remain unchanged; descriptions of the old playback path are historical.
+are historical. The 2026-10-24 [uniform/sampler closure](wallpaper-engine-atlas-uniforms.md)
+and [native validation](../validation/a1-native-atlases.md) resolve those A1 questions
+for the bounded main-material 2D subset; the earlier observations below remain
+as the first-batch record.
 
 ## Target and retained evidence
 

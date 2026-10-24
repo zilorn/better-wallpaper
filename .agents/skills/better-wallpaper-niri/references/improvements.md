@@ -70,3 +70,19 @@ Completion: verify real multi-output resize/hotplug, compositor restart and vari
 Wallpaper Engine projects. Browser-native HTML/CSS/JS/WebGL and default property
 callbacks are supported; audio-spectrum/media callbacks are registration stubs.
 User-property editing and full proprietary engine integration remain gaps.
+
+## A1 Atlas Presentation — Single-Output Desktop Verified
+
+`crates/better-wallpaper-daemon/tests/atlas_niri.rs` is an explicit ignored live
+probe requiring `BETTER_WALLPAPER_NIRI_TEST_OUTPUT`. On 2026-10-24 it presented
+five owned native-sprite layouts on DP-1 at 1920×1080: 90 accepted submissions,
+repeated frozen scene times, asset reload and five backend/EGL-context recreations.
+It briefly creates a background layer, leaves user settings/service unchanged,
+and drops all test resources. Native capture pixel parity is validated separately
+in the GPU harness on NVIDIA and llvmpipe; see the
+[A1 record](../../../../docs/validation/a1-native-atlases.md).
+
+This confirms real configure/presentation/context lifecycle on one output, not
+compositor pixel readback, physical display colors, visibility through other
+layers, multi-output hotplug, resize, compositor restart or an eight-hour soak.
+The broader desktop verification requirements above remain open.

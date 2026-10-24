@@ -86,8 +86,11 @@ structural inspection with explicit payload/layout/native-validation fields.
 sprite admission without a GPU or native-parity claim. See the
 [atlas evidence and contracts](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md).
 
-`TexAtlas::sprite_animation` is shared by resource resolution and package-aware
-compatibility analysis. It requires a complete nonempty sequence for animated or
+`TexAtlas::sprite_animation_with_sampling` is shared by resource resolution and
+package-aware compatibility analysis; `sprite_animation` retains the inferred
+legacy sampling contract. Material passes carry `spritesheet: Option<bool>`: an
+explicit case-insensitive `SPRITESHEET` combo must be integer 0 or 1. Zero disables
+animation; one selects native sampling; absence preserves inferred animation. It requires a complete nonempty sequence for animated or
 multi-image data, positive finite durations, nondegenerate bases at least one
 texel long, and all four corners inside the selected image. Any failed frame
 rejects the whole draw; frames are never filtered into a partial animation.
@@ -112,22 +115,33 @@ group. The 256 resident-image cap counts each image/mask separately and returns
 an error instead of evicting part of an active atlas. Clear/drop releases every
 image with the owning context current.
 
-Quads, puppet UVs and effect displacements use the full affine basis. Sprite UVs
-use a half-texel inset along each authored basis, preserving old rectangular
-results; a one-texel axis samples its center. This is our sampling convention,
-not demonstrated native filtering/edge parity. Atlas-backed effect masks and
-authored system-texture fallbacks still use the legacy adapter. Native acceptance,
-minification/packed-edge parity and advanced effect combinations remain unverified.
+Quads, puppet UVs and effect displacements use the full affine basis. Explicit
+native sprite materials use authored normalized UV edges without an inset.
+`SpriteAnimation.native_sampling: Option<SpriteSampling>` carries TEX flag bit 0
+(point rather than linear) and bit 1 (clamp rather than repeat). Native sampling
+uses authored complete contiguous mip chains, including packed frames, and does
+not use generated mips for base-only inputs. Partial/noncontiguous multi-level
+chains fail shared admission with a concrete error; GLES2 cannot bound their
+accessible mip range without inventing data. Reset main sampler state after
+optional texture bindings, since bindings may share a texture object.
 
-`SpriteFrame.full_image` records whether the authored corners cover the complete
-image, including quarter turns and reflections. Cropped frames use base-level
-linear filtering to avoid mixing neighboring packed frames through whole-image
-mips. Full-image frames restore mip filtering when a complete supported chain is
-available; optional effect textures restore their own filter as well. This trades
-minification antialiasing for crop isolation and does not establish native parity
-or isolation for arbitrary skewed frame boundaries. GPU sampling probes cover
-rectangular crops, rotations/flips, independent authored mip chains, crop/full
-transitions, looping, clear/reload and context replacement.
+For missing-combo inferred animation, UVs retain the half-texel inset along each
+basis; one-texel axes sample their center. `SpriteFrame.full_image` distinguishes
+whole-image rotations/reflections from crops. This legacy path uses base-level
+linear filtering for crops and restores available mip filtering for full frames;
+optional effect textures restore linear magnification and their own mip filter.
+This is the established compatibility policy, not native missing-combo behavior.
+
+Fourteen owned original-program captures and 134 controlled comparisons per
+renderer validate this bounded subset on NVIDIA RTX 3060 Ti and Mesa llvmpipe,
+including image switching, flips/skew, edges, authored mips, loop/frozen time,
+reload and context replacement. The native uniform chain and sample acceptance
+are documented in [native evidence](../../../../docs/reverse-engineering/wallpaper-engine-atlas-uniforms.md)
+and [validation](../../../../docs/validation/a1-native-atlases.md).
+Atlas-backed effect masks and system-texture fallbacks retain the legacy adapter;
+advanced effects, broader alpha/color fidelity and Plasma scene playback are not
+established. Real niri submissions are tested separately; native CLI pause did not
+freeze the Wine probe, and no precise native clock equivalence is claimed.
 
 `cargo run -p better-wallpaper-scene-format --bin asset-audit -- --help` describes
 the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots

@@ -86,6 +86,24 @@ fn invalid_later_frame_reports_the_limit_and_skips_the_whole_draw() {
         .1;
     let block = tex.windows(9).position(|b| b == b"TEXS0002\0").unwrap();
     tex[block + 49..block + 53].copy_from_slice(&0.0_f32.to_le_bytes());
+    let pkg = package(entries);
+    let scene = scene(&pkg);
+    let resolved = assets(&pkg, &scene);
+    assert!(resolved.draws.is_empty());
+    assert_eq!(resolved.skipped_nodes, 1);
+    let meta = analyse_scene_with_package(&scene, &pkg).unwrap();
+    assert!(!meta.has_sprite_animation);
+    let report = compute_compatibility(&meta);
+    assert!(
+        report
+            .unsupported_features
+            .iter()
+            .any(|error| error.contains("materials/atlas.tex")
+                && error.contains("positive finite frame durations"))
+    );
+}
+
+fn package(entries: Vec<(String, Vec<u8>)>) -> PkgReader {
     let mut bytes = Vec::new();
     fn string(bytes: &mut Vec<u8>, value: &str) {
         bytes.extend((value.len() as u32).to_le_bytes());
@@ -103,19 +121,45 @@ fn invalid_later_frame_reports_the_limit_and_skips_the_whole_draw() {
     for (_, data) in entries {
         bytes.extend(data);
     }
-    let pkg = PkgReader::parse(bytes).unwrap();
-    let scene = scene(&pkg);
-    let resolved = assets(&pkg, &scene);
-    assert!(resolved.draws.is_empty());
-    assert_eq!(resolved.skipped_nodes, 1);
-    let meta = analyse_scene_with_package(&scene, &pkg).unwrap();
-    assert!(!meta.has_sprite_animation);
-    let report = compute_compatibility(&meta);
-    assert!(
-        report
-            .unsupported_features
+    PkgReader::parse(bytes).unwrap()
+}
+
+#[test]
+fn explicit_sprite_disable_agrees_with_metadata_and_ignores_frame_timing() {
+    let original = fixture("rotated");
+    for enabled in [0, 1] {
+        let entries = original
+            .entries()
             .iter()
-            .any(|error| error.contains("materials/atlas.tex")
-                && error.contains("positive finite frame durations"))
-    );
+            .map(|entry| {
+                let mut bytes = original.read_entry(entry).to_vec();
+                if entry.filename == "materials/atlas.json" {
+                    bytes = format!(
+                        r#"{{"passes":[{{"shader":"genericimage4","textures":["atlas"],"combos":{{"SPRITESHEET":{enabled}}}}}]}}"#
+                    ).into_bytes();
+                } else if entry.filename.ends_with(".tex") {
+                    let block = bytes.windows(9).position(|b| b == b"TEXS0002\0").unwrap();
+                    bytes[block + 49..block + 53].copy_from_slice(&0.0_f32.to_le_bytes());
+                }
+                (entry.filename.clone(), bytes)
+            })
+            .collect();
+        let pkg = package(entries);
+        let scene = scene(&pkg);
+        let assets = assets(&pkg, &scene);
+        let meta = analyse_scene_with_package(&scene, &pkg).unwrap();
+        assert!(!meta.has_sprite_animation);
+        if enabled == 0 {
+            assert_eq!(assets.draws.len(), 1);
+            assert!(assets.draws[0].animation.is_none());
+            assert!(meta.unsupported_textures.is_empty());
+        } else {
+            assert!(assets.draws.is_empty());
+            assert!(
+                meta.unsupported_textures
+                    .iter()
+                    .any(|s| s.contains("positive finite frame durations"))
+            );
+        }
+    }
 }

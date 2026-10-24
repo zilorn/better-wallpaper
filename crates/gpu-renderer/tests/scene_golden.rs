@@ -17,6 +17,9 @@ use std::{io::Write, path::Path, sync::Arc};
 #[path = "support/atlas_sampling.rs"]
 mod atlas_sampling;
 
+#[path = "support/atlas_native.rs"]
+mod atlas_native;
+
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,
     display: egl::Display,
@@ -26,6 +29,10 @@ struct Offscreen {
 
 impl Offscreen {
     fn new() -> Self {
+        Self::with_size(64)
+    }
+
+    fn with_size(size: i32) -> Self {
         // EGL_MESA_platform_surfaceless accepts a null native display and does
         // not connect to the user's desktop or create a visible surface.
         let egl = unsafe { egl::DynamicInstance::<egl::EGL1_5>::load_required() }
@@ -68,7 +75,7 @@ impl Offscreen {
             .create_pbuffer_surface(
                 display,
                 config,
-                &[egl::WIDTH, 64, egl::HEIGHT, 64, egl::NONE],
+                &[egl::WIDTH, size, egl::HEIGHT, size, egl::NONE],
             )
             .unwrap();
         egl.make_current(display, Some(surface), Some(surface), Some(context))

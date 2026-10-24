@@ -10,6 +10,47 @@ fn fixture(name: &str) -> Vec<u8> {
     pkg.read_entry(pkg.find_by_ext("tex")[0]).to_vec()
 }
 
+#[test]
+fn native_sprite_uvs_keep_authored_edges_and_shared_admission() {
+    let mut atlas = TexAtlas::parse(&fixture("rotated")).unwrap();
+    let native = atlas.sprite_animation_with_sampling(true).unwrap().unwrap();
+    assert_eq!(native.frames[0].uv.at([0., 0.]), [1., 0.]);
+    assert_eq!(native.frames[0].uv.at([1., 1.]), [0., 1.]);
+    assert_ne!(
+        native.frames[0].uv,
+        atlas.sprite_animation().unwrap().unwrap().frames[0].uv
+    );
+    atlas.flags |= 3;
+    let sampler = atlas
+        .sprite_animation_with_sampling(true)
+        .unwrap()
+        .unwrap()
+        .native_sampling
+        .unwrap();
+    assert!(sampler.clamp && sampler.nearest);
+    atlas.frames[1].origin = [100., 0.];
+    assert!(atlas.sprite_animation_with_sampling(true).is_err());
+    assert!(atlas.sprite_animation().is_err());
+}
+
+#[test]
+fn native_sprite_rejects_partial_authored_mips_instead_of_changing_filtering() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/atlas-native/packed-mips/scene.pkg");
+    let pkg = PkgReader::parse(std::fs::read(path).unwrap()).unwrap();
+    let mut atlas = TexAtlas::parse(pkg.read_entry(pkg.find_by_ext("tex")[0])).unwrap();
+    assert!(atlas.sprite_animation_with_sampling(true).is_ok());
+    atlas.images[0].mipmaps.pop();
+    assert!(
+        atlas
+            .sprite_animation_with_sampling(true)
+            .unwrap_err()
+            .to_string()
+            .contains("complete contiguous mip chains")
+    );
+    assert!(atlas.sprite_animation().is_ok());
+}
+
 fn word(bytes: &mut Vec<u8>, value: u32) {
     bytes.extend(value.to_le_bytes());
 }

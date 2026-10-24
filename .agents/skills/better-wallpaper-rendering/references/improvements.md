@@ -93,17 +93,18 @@ The five advanced layouts still exercise explicit legacy-adapter rejection.
 Regeneration is checked separately from
 analytical PNG generation. See `tests/fixtures/scene-behavior/README.md` for
 per-sample timing, properties, unused random seeds, pointer inputs, native-capture
-protocol and uncovered work packages. Native acceptance of these synthetic
-projects remains unverified; Wine/Proton availability alone does not establish it.
+protocol and uncovered work packages. These older missing-combo projects are analytical regressions. Explicit-sprite
+variants now have native acceptance and fourteen original-program captures in
+`tests/fixtures/atlas-native`; camera and material inputs are fixed separately.
 
-Completion: add legal authored L1/L2 samples with independently captured Wallpaper
-Engine reference screenshots, fixed time/property/pointer inputs and recorded
-thresholds; run on supported vendor GPUs and real niri sessions. Synthetic exact
-matches do not complete the reference-screenshot fidelity or eight-hour soak exit
-criteria in `plan.md`. Fonts, broader effects and authoring-format variation still
-need reference sample coverage.
+A1 now supplies owned atlas references, preselected gates, 134 comparisons on
+each of NVIDIA and llvmpipe, and real niri submissions; see the
+[native acceptance record](../../../../docs/validation/a1-native-atlases.md).
+Completion of broader fidelity: add native fonts/effects/authoring-format samples
+and other vendor GPUs. Neither these atlas comparisons nor the desktop submission
+probe complete the eight-hour soak exit criterion in `plan.md`.
 
-## Native TEX Reader and 2D Atlases — Implemented / Native Parity Pending
+## Native TEX Reader and 2D Atlases — A1 Bounded Subset Validated
 
 Fractional frame timing now accumulates the loop period in `f64`, matching the
 scene clock. Previously 10,000 stored 0.1-second durations produced a period
@@ -118,8 +119,10 @@ mix neighboring frames during minification. Coverage classification preserves
 mips for full-image frames and restores filtering across frame/effect bindings.
 `tests/support/atlas_sampling.rs` in the GPU crate checks solid-color crops at
 32/8/4/1 pixels, rotations/flips, independent authored mips, reload and context
-replacement. Native filtering parity, skewed-edge isolation and antialiasing of
-minified crops remain open.
+replacement. This remains the inferred legacy path. Explicit sprite materials now use
+native authored UVs and sampler/mip data, verified against original-program
+captures including packed-frame minification; arbitrary skewed-edge isolation is
+not promised by native affine sampling.
 
 Generated odd-sized mip filtering now weights fractional texel coverage instead
 of partitioning the source into unequal whole-texel bins. A 5×1 center impulse
@@ -147,12 +150,22 @@ reach affine vertex/effect UV submission, with whole-sequence failure reporting,
 cover selection, loop/pause, clear/reload and context replacement. The
 [atlas report](../../../../docs/reverse-engineering/wallpaper-engine-atlases.md)
 records native frame-update/image-binding assembly and shipped shader evidence;
-the full uniform-upload mapping and native sample acceptance remain pending.
+the follow-up [uniform/sampler report](../../../../docs/reverse-engineering/wallpaper-engine-atlas-uniforms.md)
+closes the mapped-buffer/stage-binding chain and native sample acceptance.
 
-Completion: establish native project acceptance and filtering/packed-edge parity;
-verify real niri output and broader effect combinations. Effect masks and authored
-system-texture fallbacks retain the legacy single-image adapter. Add bounded 3D
-LUT parsing/upload separately. A0 sample
+A1 completion: fourteen original-program captures cover independent images/mips,
+rotation, both flips, skew, repeat/clamp, point/linear and packed authored-mip
+minification. Both NVIDIA and Mesa pass 134 comparisons plus prior regressions;
+real niri completes 90 submissions with reload and five context replacements.
+Explicit `SPRITESHEET` 0/1 is respected by rendering and compatibility analysis;
+missing-combo inference retains old results. Native partial/noncontiguous mip
+chains have a concrete admission error. See the [acceptance audit](../../../../docs/validation/a1-native-atlases.md).
+
+Remaining extensions: broaden effect/alpha/color-space and vendor coverage,
+implement partial native mip sampling without inventing levels, and test desktop
+hotplug/compositor restart separately. Effect masks and authored system-texture
+fallbacks retain the legacy single-image adapter. Add bounded 3D LUT parsing/upload
+separately. A0 sample
 construction exposed that flipped frames previously parsed successfully, then
 were discarded by `sprite_animation`, silently leaving a static full atlas.
 Legacy regression coverage still rejects both axes in TEXS1/2/3; the new main

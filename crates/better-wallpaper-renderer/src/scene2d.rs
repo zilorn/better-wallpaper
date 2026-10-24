@@ -571,64 +571,68 @@ pub fn resolve_scene_2d_assets(
                     })
                     .clone()
             });
-            let (texture, additional_textures, uv, animation, mesh) =
-                if let Some(parsed) = parsed.as_ref().filter(|tex| !tex.is_video) {
-                    debug!(
-                        texture = %texture_path,
-                        format = ?parsed.format,
-                        embedded_format = ?parsed.free_image_format,
-                        images = parsed.images.len(),
-                        animated_frames = parsed.frames.len(),
-                        is_video = parsed.is_video,
-                        "Decoded scene texture"
-                    );
-                    let mut images = parsed.to_texture_images().map_err(|error| {
-                        Scene2dError::InvalidTexture {
+            let (texture, additional_textures, uv, animation, mesh) = if let Some(parsed) =
+                parsed.as_ref().filter(|tex| !tex.is_video)
+            {
+                debug!(
+                    texture = %texture_path,
+                    format = ?parsed.format,
+                    embedded_format = ?parsed.free_image_format,
+                    images = parsed.images.len(),
+                    animated_frames = parsed.frames.len(),
+                    is_video = parsed.is_video,
+                    "Decoded scene texture"
+                );
+                let mut images =
+                    parsed
+                        .to_texture_images()
+                        .map_err(|error| Scene2dError::InvalidTexture {
                             path: texture_path.clone(),
                             detail: error.to_string(),
-                        }
-                    })?;
-                    let texture = images.remove(0);
-                    let base_level =
-                        texture
-                            .levels
-                            .first()
-                            .ok_or_else(|| Scene2dError::InvalidTexture {
-                                path: texture_path.clone(),
-                                detail: "texture has no uploadable base level".into(),
-                            })?;
-                    let upload_width = base_level.width as f32;
-                    let upload_height = base_level.height as f32;
-                    let uv = [
-                        0.0,
-                        0.0,
-                        parsed.width as f32 / upload_width,
-                        parsed.height as f32 / upload_height,
-                    ];
-                    let animation = parsed.sprite_animation().map_err(|error| {
-                        Scene2dError::InvalidTexture {
+                        })?;
+                let texture = images.remove(0);
+                let base_level =
+                    texture
+                        .levels
+                        .first()
+                        .ok_or_else(|| Scene2dError::InvalidTexture {
                             path: texture_path.clone(),
-                            detail: error.to_string(),
-                        }
-                    })?;
-                    let mesh = model
-                        .definition
-                        .puppet
-                        .as_deref()
-                        .map(|path| {
-                            load_puppet_mesh(package, path, &quad, parsed.width, parsed.height)
-                        })
-                        .transpose()?;
-                    (texture, images, uv, animation, mesh)
+                            detail: "texture has no uploadable base level".into(),
+                        })?;
+                let upload_width = base_level.width as f32;
+                let upload_height = base_level.height as f32;
+                let uv = [
+                    0.0,
+                    0.0,
+                    parsed.width as f32 / upload_width,
+                    parsed.height as f32 / upload_height,
+                ];
+                let animation = if pass.spritesheet == Some(false) {
+                    None
                 } else {
-                    (
-                        solid_color_texture([0, 0, 0, 0]),
-                        Vec::new(),
-                        [0.0, 0.0, 1.0, 1.0],
-                        None,
-                        None,
-                    )
+                    parsed
+                        .sprite_animation_with_sampling(pass.spritesheet == Some(true))
+                        .map_err(|error| Scene2dError::InvalidTexture {
+                            path: texture_path.clone(),
+                            detail: error.to_string(),
+                        })?
                 };
+                let mesh = model
+                    .definition
+                    .puppet
+                    .as_deref()
+                    .map(|path| load_puppet_mesh(package, path, &quad, parsed.width, parsed.height))
+                    .transpose()?;
+                (texture, images, uv, animation, mesh)
+            } else {
+                (
+                    solid_color_texture([0, 0, 0, 0]),
+                    Vec::new(),
+                    [0.0, 0.0, 1.0, 1.0],
+                    None,
+                    None,
+                )
+            };
             let water_wave_masks = quad
                 .water_waves
                 .iter()
@@ -1547,6 +1551,7 @@ mod tests {
     #[test]
     fn sprite_animation_uses_frame_durations_and_loops() {
         let animation = SpriteAnimation {
+            native_sampling: None,
             frames: vec![
                 SpriteFrame {
                     image_index: 0,

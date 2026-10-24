@@ -16,6 +16,8 @@ pub struct MaterialPass {
     pub blend_mode: BlendMode,
     pub shader: String,
     pub textures: Vec<String>,
+    /// Missing preserves legacy inferred animation; explicit zero disables it.
+    pub spritesheet: Option<bool>,
     pub unsupported_features: Vec<UnsupportedFeature>,
 }
 
@@ -122,6 +124,23 @@ fn parse_pass(index: usize, value: &Value) -> Result<MaterialPass, SceneParseErr
         blend_mode,
         shader: shader.to_owned(),
         textures,
+        spritesheet: pass
+            .get("combos")
+            .and_then(Value::as_object)
+            .and_then(|combos| {
+                combos
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case("spritesheet"))
+            })
+            .map(|(_, value)| match value.as_u64() {
+                Some(0) => Ok(false),
+                Some(1) => Ok(true),
+                _ => Err(invalid(
+                    &format!("{field}.combos.spritesheet"),
+                    "expected 0 or 1",
+                )),
+            })
+            .transpose()?,
         unsupported_features,
     })
 }
@@ -152,6 +171,27 @@ fn invalid(field: &str, detail: &str) -> SceneParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sprite_combo_distinguishes_explicit_native_and_legacy_materials() {
+        for (combos, expected) in [
+            ("{}", None),
+            (r#"{"spritesheet":1}"#, Some(true)),
+            (r#"{"SPRITESHEET":0}"#, Some(false)),
+        ] {
+            let json = format!(r#"{{"passes":[{{"shader":"genericimage4","combos":{combos}}}]}}"#);
+            assert_eq!(
+                parse_material_definition(&json).unwrap().passes[0].spritesheet,
+                expected
+            );
+        }
+        for value in ["2", "-1", "0.5", "true", "null", "\"1\""] {
+            let json = format!(
+                r#"{{"passes":[{{"shader":"genericimage4","combos":{{"spritesheet":{value}}}}}]}}"#
+            );
+            assert!(parse_material_definition(&json).is_err());
+        }
+    }
 
     #[test]
     fn parses_observed_image_material() {

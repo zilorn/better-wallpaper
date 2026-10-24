@@ -39,9 +39,18 @@ pub struct SpriteFrame {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpriteAnimation {
     pub frames: Vec<SpriteFrame>,
+    /// Explicit SPRITESHEET materials use authored UVs and TEX sampler flags.
+    /// None retains the historical inset/crop-isolation fallback.
+    pub native_sampling: Option<SpriteSampling>,
     /// Sum stored frame durations in scene-clock precision so loop boundaries
     /// agree with frame selection even for long fractional-duration sequences.
     pub duration_seconds: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpriteSampling {
+    pub clamp: bool,
+    pub nearest: bool,
 }
 
 impl SpriteAnimation {
@@ -70,6 +79,15 @@ impl TexAtlas {
     /// individual frames or interpret zero-duration particle data as animation.
     /// This uses Better Wallpaper's half-texel inset, not a native parity claim.
     pub fn sprite_animation(&self) -> Result<Option<SpriteAnimation>, TexError> {
+        self.sprite_animation_with_sampling(false)
+    }
+
+    /// Use the explicit native sprite material contract while sharing all
+    /// sequence admission, budget and timing checks with the legacy fallback.
+    pub fn sprite_animation_with_sampling(
+        &self,
+        native: bool,
+    ) -> Result<Option<SpriteAnimation>, TexError> {
         let invalid = |detail: &str| TexError::InvalidData(detail.into());
         if self.is_video {
             return Ok(None);
@@ -81,6 +99,26 @@ impl TexAtlas {
             return Ok(None);
         }
         let images = self.to_texture_images()?;
+        // GLES2 cannot clamp the accessible mip range of a partial chain.
+        // Reject it explicitly instead of generating native-unverified levels
+        // or silently discarding the author's minification data.
+        if native
+            && images.iter().any(|image| {
+                image.levels.len() > 1
+                    && (!image
+                        .levels
+                        .last()
+                        .is_some_and(|mip| mip.width == 1 && mip.height == 1)
+                        || !image.levels.windows(2).all(|pair| {
+                            pair[1].width == (pair[0].width / 2).max(1)
+                                && pair[1].height == (pair[0].height / 2).max(1)
+                        }))
+            })
+        {
+            return Err(invalid(
+                "Native sprite sampling requires base-only or complete contiguous mip chains",
+            ));
+        }
         let mut frames = Vec::with_capacity(self.frames.len());
         for frame in &self.frames {
             let base = images
@@ -128,7 +166,11 @@ impl TexAtlas {
             }
             // Inset along each authored basis, preserving rotation/reflection.
             // A one-texel axis intentionally samples its center throughout.
-            let inset = [0.5 / horizontal_length, 0.5 / vertical_length];
+            let inset = if native {
+                [0.0; 2]
+            } else {
+                [0.5 / horizontal_length, 0.5 / vertical_length]
+            };
             let origin = raw.at(inset);
             let image_corners = [[0.0, 0.0], [size[0], 0.0], [0.0, size[1]], size];
             let full_image = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
@@ -165,6 +207,10 @@ impl TexAtlas {
         }
         Ok(Some(SpriteAnimation {
             frames,
+            native_sampling: native.then_some(SpriteSampling {
+                clamp: self.flags & 2 != 0,
+                nearest: self.flags & 1 != 0,
+            }),
             duration_seconds,
         }))
     }

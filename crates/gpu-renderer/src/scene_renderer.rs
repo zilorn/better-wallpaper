@@ -26,6 +26,7 @@ struct GpuTextureState {
     dynamic_label: Option<String>,
     video_generation: u64,
     mipmapped: bool,
+    authored_mipmapped: bool,
 }
 
 const VERTEX_SHADER: &str = include_str!("shaders/scene.vert");
@@ -223,6 +224,7 @@ impl SceneGpuRenderer {
             dynamic_label: None,
             video_generation: 0,
             mipmapped,
+            authored_mipmapped: mipmapped && mip_chain_is_complete(image) && image.levels.len() > 1,
         })
     }
 
@@ -743,15 +745,17 @@ impl SceneGpuRenderer {
                 }
                 self.gl.active_texture(glow::TEXTURE0);
                 self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
-                let wrap = if draw.quad.scroll.is_some() {
+                let native_sampling = draw
+                    .animation
+                    .as_ref()
+                    .and_then(|animation| animation.native_sampling);
+                let wrap = if native_sampling.is_some_and(|sampler| !sampler.clamp)
+                    || (native_sampling.is_none() && draw.quad.scroll.is_some())
+                {
                     glow::REPEAT
                 } else {
                     glow::CLAMP_TO_EDGE
                 } as i32;
-                self.gl
-                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, wrap);
-                self.gl
-                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
                 self.gl.uniform_1_f32(opacity_loc.as_ref(), opacity);
                 for (index, location) in water_wave_locs.iter().enumerate() {
                     if let Some(wave) = draw.quad.water_waves.get(index) {
@@ -1059,13 +1063,32 @@ impl SceneGpuRenderer {
                     );
                 }
                 self.gl.active_texture(glow::TEXTURE0);
-                // Whole-image mip levels mix adjacent packed frames. The base
-                // image plus the shared half-texel inset isolates rectangular
-                // crops. Restore mip filtering when a later frame is full-size.
+                // Optional samplers can refer to the same GL texture object.
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, wrap);
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, wrap);
+                // Explicit sprite materials follow authored sampler/mip data.
+                // The legacy inferred path retains inset crop isolation.
+                let nearest = native_sampling.is_some_and(|sampler| sampler.nearest);
+                let use_mips = if native_sampling.is_some() {
+                    state.authored_mipmapped
+                } else {
+                    state.mipmapped && sprite_frame.is_none_or(|frame| frame.full_image)
+                };
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MAG_FILTER,
+                    if nearest { glow::NEAREST } else { glow::LINEAR } as i32,
+                );
                 self.gl.tex_parameter_i32(
                     glow::TEXTURE_2D,
                     glow::TEXTURE_MIN_FILTER,
-                    if state.mipmapped && sprite_frame.is_none_or(|frame| frame.full_image) {
+                    if nearest && use_mips {
+                        glow::NEAREST_MIPMAP_NEAREST
+                    } else if nearest {
+                        glow::NEAREST
+                    } else if use_mips {
                         glow::LINEAR_MIPMAP_LINEAR
                     } else {
                         glow::LINEAR
@@ -1302,6 +1325,11 @@ unsafe fn bind_optional_texture(
             .and_then(|images| images.first());
         gl.bind_texture(glow::TEXTURE_2D, texture.map(|state| state.texture));
         if let Some(state) = texture {
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::LINEAR as i32,
+            );
             gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
                 glow::TEXTURE_MIN_FILTER,

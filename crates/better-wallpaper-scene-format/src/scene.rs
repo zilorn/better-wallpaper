@@ -442,10 +442,13 @@ pub fn analyse_scene_with_package(
         if let Some(pass) = material.passes.first()
             && let [texture] = pass.textures.as_slice()
         {
-            textures.insert(resolve_texture_path(&model.material, texture));
+            textures.insert((
+                resolve_texture_path(&model.material, texture),
+                pass.spritesheet,
+            ));
         }
     }
-    for path in textures {
+    for (path, spritesheet) in textures {
         if crate::is_video_resource(&path) && package.find(&path).is_some() {
             meta.has_video_texture = true;
             continue;
@@ -461,7 +464,10 @@ pub fn analyse_scene_with_package(
             }
         };
         meta.has_video_texture |= texture.is_video;
-        match texture.sprite_animation() {
+        if spritesheet == Some(false) {
+            continue;
+        }
+        match texture.sprite_animation_with_sampling(spritesheet == Some(true)) {
             Ok(Some(animation)) => meta.has_sprite_animation |= animation.frames.len() >= 2,
             Ok(None) => {}
             Err(error) => meta.unsupported_textures.push(format!("{path}: {error}")),
@@ -845,6 +851,20 @@ mod tests {
         let meta = analyse_scene_with_package(scene, &package).unwrap();
         assert!(meta.has_sprite_animation);
         assert_eq!(compute_compatibility(&meta).level, CompatibilityLevel::L2);
+
+        let disabled = package_fixture(&[
+            ("models/bg.json", model),
+            (
+                "materials/bg.json",
+                br#"{"passes":[{"shader":"image","textures":["bg"],"combos":{"SPRITESHEET":0}}]}"#,
+            ),
+            ("materials/bg.tex", &texture),
+        ]);
+        assert!(
+            !analyse_scene_with_package(scene, &disabled)
+                .unwrap()
+                .has_sprite_animation
+        );
 
         let unused = package_fixture(&[("materials/unused.tex", &texture)]);
         assert!(
