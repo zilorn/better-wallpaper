@@ -1,7 +1,7 @@
 # A2 bounded volume parser validation
 
-Date: 2026-10-24. Implementation commit subject:
-`feat: inspect bounded volume texture payloads`.
+Date: 2026-10-24. Implementation commit: `c70a60a`
+(`feat: inspect bounded volume texture payloads`).
 This completes the bounded data-model subitem of A2; the work package remains in
 progress. See [native layout evidence](../reverse-engineering/wallpaper-engine-volumes.md)
 for binary identity, Evidence IDs, file observations and unresolved semantics.

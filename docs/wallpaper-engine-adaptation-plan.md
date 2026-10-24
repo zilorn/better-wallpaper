@@ -8,6 +8,7 @@ A1 共享资源与 GPU 图集绘制：`3152a70`。
 A1 奇数尺寸 mip 面积加权修复：`b5cedaa`。
 A1 小数帧时长循环精度修复：`2ee21a2`。
 A0 审计 JSON 注释/尾逗号引用覆盖：`17fcfc0`。
+A2 有界体积纹理模型与结构检查：`c70a60a`。
 
 目标是用可复现的格式证据和播放结果，逐步扩大 Better Wallpaper 对 Wallpaper
 Engine 项目的支持范围。每项适配分别记录“可识别、可解析、可渲染、实机验证”状态；
@@ -284,7 +285,7 @@ A1 的有界主材质二维图集范围完成。上述“进行中”陈述保�
 
 2026-10-24 第一批交付记录（体积格式模型与结构检查）：
 
-本批提交主题：`feat: inspect bounded volume texture payloads`。
+本批实现提交：`c70a60a`（`feat: inspect bounded volume texture payloads`）。
 独立 `TexVolume` 模型与 `scene-inspect --volume --json` 保留源尺寸、三维存储尺寸、
 各 mip 深度和 TEXI 末尾不透明字段。支持 TEXB1–4 原始 ARGB8888、TEXB3/4 PNG
 及可选 LZ4；PNG 按宽×(高×深) 解码。每轴/深度、图像/mip 数、单 mip 与累计
