@@ -21,24 +21,22 @@ log "构建网页壁纸渲染器"
 cmake -S "$PROJECT_ROOT/native/web-wallpaper" -B "$PROJECT_ROOT/target/web-wallpaper" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$PROJECT_ROOT/target/web-wallpaper" --parallel 2
 
-log "构建 Web 静态资源"
-(
-    cd "$PROJECT_ROOT/web"
-    bun install --frozen-lockfile
-    bun run build
-)
 log "安装到临时 staging: $STAGE"
 # Simulate an upgrade from a package containing the unused native module.
 LEGACY_PLASMA_MODULE="$STAGE/usr/share/plasma/wallpapers/org.better-wallpaper/contents/ui/BetterWallpaper"
 mkdir -p "$LEGACY_PLASMA_MODULE"
 touch "$LEGACY_PLASMA_MODULE/qmldir" "$LEGACY_PLASMA_MODULE/libbetterwallpaperplugin.so"
+# Simulate stale browser assets from the previous package as well.
+mkdir -p "$STAGE/usr/share/better-wallpaper/web/assets"
+touch "$STAGE/usr/share/better-wallpaper/web/index.html" "$STAGE/usr/share/better-wallpaper/web/assets/old.js"
+touch "$STAGE/usr/share/better-wallpaper/keep"
 DESTDIR="$STAGE" PREFIX=/usr SKIP_BUILD=1 "$SCRIPT_DIR/install.sh"
 
 DAEMON="$STAGE/usr/bin/better-wallpaper-daemon"
 DESKTOP="$STAGE/usr/bin/better-wallpaper-desktop"
 ENTRY="$STAGE/usr/share/applications/org.betterwallpaper.desktop.desktop"
 UNIT="$STAGE/usr/lib/systemd/user/better-wallpaper.service"
-WEB="$STAGE/usr/share/better-wallpaper/web/index.html"
+WEB="$STAGE/usr/share/better-wallpaper/web"
 PLASMA="$STAGE/usr/share/plasma/wallpapers/org.better-wallpaper"
 ROOT_INSTALLER="$PROJECT_ROOT/install.sh"
 
@@ -55,14 +53,18 @@ if command -v desktop-file-validate >/dev/null 2>&1; then
     desktop-file-validate "$ENTRY"
 fi
 test -f "$UNIT"
-test -f "$WEB"
+test ! -e "$WEB"
+test -f "$STAGE/usr/share/better-wallpaper/keep"
 test -f "$PLASMA/metadata.json"
 test -f "$PLASMA/contents/ui/main.qml"
 test ! -e "$PLASMA/contents/ui/BetterWallpaper"
 test -z "$(find "$STAGE" -name '*.new.*' -print -quit)"
 grep -q '^ExecStart=/usr/bin/better-wallpaper-daemon$' "$UNIT"
-grep -q '^ExecStartPre=/usr/bin/test -f /usr/share/better-wallpaper/web/index.html$' "$UNIT"
-grep -q '^Environment=BETTER_WALLPAPER_WEB_ROOT=/usr/share/better-wallpaper/web$' "$UNIT"
+grep -q '^ExecStartPre=/usr/bin/test -f /usr/share/plasma/wallpapers/org.better-wallpaper/contents/ui/main.qml$' "$UNIT"
+if grep -q -e 'BETTER_WALLPAPER_WEB_ROOT' -e '/share/better-wallpaper/web' "$UNIT"; then
+    log "systemd unit still depends on the removed management UI"
+    exit 1
+fi
 if grep -q 'libbetterwallpaperplugin' "$UNIT"; then
     log "systemd 单元仍依赖已移除的 Plasma 帧插件"
     exit 1

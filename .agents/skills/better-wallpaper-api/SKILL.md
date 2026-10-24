@@ -1,6 +1,6 @@
 ---
 name: better-wallpaper-api
-description: Maintain Better Wallpaper daemon HTTP/WebSocket APIs, configuration persistence, playback controls, library access, and SolidJS consumers. Use for management-plane changes; Plasma-specific integration belongs to better-wallpaper-plasma.
+description: Maintain Better Wallpaper daemon HTTP/WebSocket APIs, configuration persistence, playback controls, library access, and native GTK consumers. Use for management-plane changes; Plasma-specific integration belongs to better-wallpaper-plasma.
 ---
 
 # Management API and Configuration
@@ -14,7 +14,7 @@ gaps or choosing scoped improvements. Backlog items do not authorize unrelated w
 
 ## Workflow
 
-Inspect `server.rs`, `main.rs`, `core/src/config.rs`, and `web/src/index.tsx`
+Inspect `server.rs`, `main.rs`, `core/src/config.rs`, and `better-wallpaper-gtk/src/client.rs`/`ui.rs`
 before changing routes or configuration. Preserve v1 migration, v2 round-tripping,
 atomic writes, media path boundaries, and safe playback rebuild. Configuration PUT
 replaces a document; saved configuration does not prove a runtime backend switch.
@@ -28,7 +28,8 @@ for cross-category contracts. Record demonstrated gaps with source/reproduction
 evidence and observable completion criteria; revise or remove resolved items.
 Implementation is authoritative when older plans disagree.
 
-Run `cargo clippy` plus relevant checks. For web changes run `bun run check` and
-`bun run build` in `web/`; use feature-specific Rust tests for changed behavior.
+Run `cargo clippy` plus relevant feature-specific Rust tests. For GTK changes,
+run the unit tests and display regressions documented in `docs/gtk-desktop.md`.
+Management uses native GTK; web wallpaper playback still uses Qt WebEngine.
 Desktop/GPU verification requires the relevant real session. Report checks that
 could not run accurately rather than inferring success from compilation.

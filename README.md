@@ -11,11 +11,10 @@ cargo run -p better-wallpaper-daemon -- --backend headless --no-ui
 默认配置位于 `~/.better-wallpaper/config.toml`。程序会输出配置来源、桌面检测依据和最终后端等结构化日志。
 配置 `wallpaper.path` 后，headless 后端会启动软件解码线程，通过容量为 3 的有界队列按 PTS 消费帧，并记录循环、丢帧和播放统计。
 
-先构建 Web 页面，再启动默认管理服务：
+启动管理 API 服务，再使用 GTK 客户端配置壁纸：
 
 ```bash
-cd web && bun run build
-cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
+cargo run -p better-wallpaper-daemon -- --backend headless
 ```
 
 默认桌面客户端使用 Rust + GTK 4 原生控件。安装后可从应用菜单启动 Better Wallpaper，
@@ -31,15 +30,14 @@ cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
 cargo run -p better-wallpaper-gtk -- --language zh-CN
 ```
 
-桌面客户端使用 GTK，Web UI 保留在 `web/`，可通过浏览器访问。
 原生客户端的功能、测试及已知限制见
 [`docs/gtk-desktop.md`](docs/gtk-desktop.md)。
 
 管理服务固定绑定到 `127.0.0.1:43129`，并将管理地址写入
-`$XDG_RUNTIME_DIR/better-wallpaper/endpoint`；可通过托盘菜单打开管理页面。服务提供 `/api/v1/status`、
+`$XDG_RUNTIME_DIR/better-wallpaper/endpoint`；可通过托盘菜单打开 GTK 客户端。服务提供 `/api/v1/status`、
 `/api/v1/config`、`/api/v1/library`、`/api/v1/library/media` 和 `/api/v1/ws`；壁纸库会扫描
 `~/Videos` 及当前视频目录，媒体接口只允许读取扫描结果并支持范围请求。WebSocket 会推送播放
-状态变化，断线后前端指数退避重连。
+状态变化；GTK 客户端定期查询状态，并在断线后自动恢复连接。
 
 Plasma 6 用户安装后可在桌面壁纸设置中选择“Better Wallpaper 视频壁纸”。插件通过
 `/api/v1/plasma/config` 按 Plasma 屏幕名同步启用状态和播放参数，再通过
@@ -117,7 +115,7 @@ BETTER_WALLPAPER_WEB_PLAYER="$PWD/target/web-wallpaper/better-wallpaper-web" \
 
 ### 依赖
 
-完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、`pkg-config`，以及
+完整构建需要 Rust stable、Cargo、C/C++ 工具链、Clang、`pkg-config`，以及
 ALSA、FFmpeg、Wayland 和 GTK 4.8+ 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
 以及 `parec`（通过 PipeWire/PulseAudio 默认输出 monitor 提供桌面音频响应）；Plasma 6 插件要求
 Qt 6.6 或更高版本。
@@ -151,8 +149,8 @@ sudo dnf install \
   alsa-lib-devel wayland-devel gtk4-devel
 ```
 
-Rust 和 Bun 建议使用各自的官方安装方式；完成安装后确认 `cargo`、`rustc` 和 `bun` 位于
-`PATH` 中。上述命令安装 daemon、桌面客户端和 Web UI 的构建依赖；Plasma 用户还需安装发行版提供的
+Rust 建议使用官方安装方式；完成安装后确认 `cargo` 和 `rustc` 位于
+`PATH` 中。上述命令安装 daemon 和 GTK 桌面客户端的构建依赖；Plasma 用户还需安装发行版提供的
 Qt 6.6+ Qt Quick、Qt Multimedia 和 Qt WebEngine QML 运行时模块。执行 `./install.sh`
 会复制 Plasma QML 包，并构建 niri 网页渲染器；后者需要 CMake、Qt 6.6+ Quick / WebEngineQuick
 开发包和匹配 Qt 6 的 LayerShellQt 开发包及 Wayland 平台插件。Arch 可安装 `cmake qt6-declarative
@@ -167,15 +165,16 @@ qt6-webengine qt6-wayland layer-shell-qt`；其他发行版请使用对应开发
 systemctl --user enable --now better-wallpaper.service
 ```
 
-该脚本会构建并安装 daemon、网页壁纸渲染器、Web UI、systemd 用户服务以及 Plasma 壁纸插件。
+该脚本会构建并安装 daemon、GTK 桌面客户端、网页壁纸渲染器、systemd 用户服务以及 Plasma 壁纸插件。
 默认不需要 root 权限，插件安装到：
 
 ```text
 ~/.local/share/plasma/wallpapers/org.better-wallpaper
 ```
 
-安装脚本会检查 `web/dist/index.html` 和 Plasma `main.qml`，并在复制后再次验证目标文件。
-不要使用 `SKIP_BUILD=1`，除非已手动完成 Rust 发布构建和 `bun run build`。
+安装脚本会检查 GTK 客户端、网页壁纸渲染器和 Plasma `main.qml`，并在复制后再次验证目标文件。
+不要使用 `SKIP_BUILD=1`，除非已手动完成 Rust 发布构建和网页壁纸渲染器构建。
+升级会清理旧版管理网页资源；构建和运行不再需要 Bun 或管理页面。
 
 如果日志仍显示 `/usr/share/better-wallpaper`，但本次安装输出是 `~/.local`，说明旧的系统级服务仍在运行。
 可检查当前用户服务实际使用的路径：
@@ -184,10 +183,6 @@ systemctl --user enable --now better-wallpaper.service
 systemctl --user cat better-wallpaper.service
 systemctl --user restart better-wallpaper.service
 ```
-
-daemon 不依赖 systemd 才能找到 Web UI。未显式设置 `BETTER_WALLPAPER_WEB_ROOT` 时，默认路径为
-`$XDG_DATA_HOME/better-wallpaper/web`；如果 `XDG_DATA_HOME` 未设置，则使用
-`~/.local/share/better-wallpaper/web`。
 
 ### 仅安装 Plasma 插件
 
@@ -210,7 +205,7 @@ kpackagetool6 --type Plasma/Wallpaper --upgrade kde/org.better-wallpaper
 
 1. 右键单击桌面，选择“桌面和壁纸”或“配置桌面和壁纸”。
 2. 在“壁纸类型”中选择“Better Wallpaper 视频壁纸”。
-3. 单击“应用”，然后在 Better Wallpaper Web UI 中选择视频和目标显示器。
+3. 单击“应用”，然后在 Better Wallpaper GTK 客户端中选择视频和目标显示器。
 
 如果列表中没有出现插件，请先注销并重新登录 Plasma 会话。可用以下命令确认插件文件已安装：
 

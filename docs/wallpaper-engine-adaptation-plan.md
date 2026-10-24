@@ -340,7 +340,7 @@ Wayland 目前仅提供壁纸表面上的指针事件；桌面全局跟踪需先
 - [ ] 通过 niri helper 与 Plasma QML 两条消费路径验证，保持项目资产边界及独立管理权限。
 
 验收：属性修改在重启后保留且到达页面；音频/媒体回调携带实际数据；暂停、重载、输出移除后
-无遗留回调或辅助进程；两个后端分别记录结果。涉及 `web_wallpaper.rs`、配置/API、SolidJS、
+无遗留回调或辅助进程；两个后端分别记录结果。涉及 `web_wallpaper.rs`、配置/API、GTK 客户端、
 `native/web-wallpaper/` 和 `kde/org.better-wallpaper/contents/ui/main.qml`。
 
 ### A6：有限粒子系统
@@ -404,7 +404,7 @@ Wayland 目前仅提供壁纸表面上的指针事件；桌面全局跟踪需先
 - [Rendering](../.agents/skills/better-wallpaper-rendering/SKILL.md)：场景、纹理、效果、粒子与 GPU。
 - [niri](../.agents/skills/better-wallpaper-niri/SKILL.md)：Wayland 输出、输入、EGL 生命周期与网页辅助进程。
 - [Plasma](../.agents/skills/better-wallpaper-plasma/SKILL.md)：QML、Qt 播放、可见性及新增场景消费者。
-- [API](../.agents/skills/better-wallpaper-api/SKILL.md)：配置、库扫描、兼容性报告和 SolidJS。
+- [API](../.agents/skills/better-wallpaper-api/SKILL.md)：配置、库扫描、兼容性报告和 GTK 客户端。
 
 常用验证命令见 [AGENTS.md](../AGENTS.md)；具体 GPU 和本地纹理审计命令见
 [反编译报告](reverse-engineering/wallpaper-engine-textures.md#validation-and-remaining-questions)。

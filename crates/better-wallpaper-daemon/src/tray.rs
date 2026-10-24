@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use anyhow::{Context, Result};
 use better_wallpaper_core::{AppConfig, ConfigStore, PlaybackControl};
 use ksni::{
     Tray,
@@ -69,20 +70,26 @@ impl WallpaperTray {
     fn open_ui(&self) {
         let url = self.ui_url.clone();
         // Wait off the tray thread so launch failures are visible without blocking
-        // the menu. systemd-run exits after starting the service, not the browser.
+        // the menu. systemd-run exits after starting the desktop client service.
         if let Err(error) = std::thread::Builder::new()
             .name("management-ui-launch".into())
-            .spawn(move || match ui_open_command(&url).output() {
-                Ok(output) if output.status.success() => {
-                    info!(%url, "management UI opener started in independent user service");
+            .spawn(move || {
+                match ui_open_command(&url).and_then(|mut command| {
+                    command
+                        .output()
+                        .context("failed to start desktop client service")
+                }) {
+                    Ok(output) if output.status.success() => {
+                        info!(%url, "management UI opener started in independent user service");
+                    }
+                    Ok(output) => warn!(
+                        %url,
+                        status = %output.status,
+                        stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+                        "failed to start management UI opener in user service"
+                    ),
+                    Err(error) => warn!(%error, %url, "failed to launch management UI opener"),
                 }
-                Ok(output) => warn!(
-                    %url,
-                    status = %output.status,
-                    stderr = %String::from_utf8_lossy(&output.stderr).trim(),
-                    "failed to start management UI opener in user service"
-                ),
-                Err(error) => warn!(%error, %url, "failed to launch management UI opener"),
             })
         {
             warn!(%error, "failed to create management UI launch thread");
@@ -103,14 +110,16 @@ fn desktop_client_path() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-fn ui_open_command(url: &str) -> Command {
+fn ui_open_command(url: &str) -> Result<Command> {
     ui_open_command_with_client(url, desktop_client_path().as_deref())
 }
 
-fn ui_open_command_with_client(url: &str, desktop_client: Option<&Path>) -> Command {
+fn ui_open_command_with_client(url: &str, desktop_client: Option<&Path>) -> Result<Command> {
+    let desktop_client = desktop_client
+        .context("GTK desktop client not found beside daemon; install better-wallpaper-desktop")?;
     // A direct child inherits ProtectSystem, PrivateTmp and NoNewPrivileges
-    // from the wallpaper service. In particular, browsers cannot write their
-    // profiles or find existing browser sockets there. A transient *service*
+    // from the wallpaper service. The client needs its desktop session and
+    // writable user directories. A transient service
     // (not --scope) is spawned by the user manager outside that sandbox, with
     // the desktop session environment rather than the daemon's environment.
     let mut command = Command::new("systemd-run");
@@ -127,11 +136,7 @@ fn ui_open_command_with_client(url: &str, desktop_client: Option<&Path>) -> Comm
             GRAPHICS_ENV_OVERRIDES.join(" ")
         ))
         .arg("--");
-    if let Some(path) = desktop_client {
-        command.arg(path).arg("--url");
-    } else {
-        command.arg("xdg-open");
-    }
+    command.arg(desktop_client).arg("--url");
     command
         .arg(url)
         .stdin(Stdio::null())
@@ -140,7 +145,7 @@ fn ui_open_command_with_client(url: &str, desktop_client: Option<&Path>) -> Comm
     for name in GRAPHICS_ENV_OVERRIDES {
         command.env_remove(name);
     }
-    command
+    Ok(command)
 }
 
 impl Tray for WallpaperTray {
@@ -235,7 +240,8 @@ mod tests {
             Some(Path::new(
                 "/opt/better-wallpaper/bin/better-wallpaper-desktop",
             )),
-        );
+        )
+        .unwrap();
         let args = command.get_args().collect::<Vec<_>>();
         assert_eq!(
             &args[args.len() - 4..],
@@ -257,32 +263,12 @@ mod tests {
     }
 
     #[test]
-    fn browser_launch_uses_independent_service_without_graphics_overrides() {
-        let command = ui_open_command_with_client("http://127.0.0.1:1234", None);
-        assert_eq!(command.get_program(), "systemd-run");
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![
-                "--user",
-                "--collect",
-                "--quiet",
-                "--service-type=exec",
-                "--description=Better Wallpaper management UI",
-                &format!(
-                    "--property=UnsetEnvironment={}",
-                    GRAPHICS_ENV_OVERRIDES.join(" ")
-                ),
-                "--",
-                "xdg-open",
-                "http://127.0.0.1:1234",
-            ]
+    fn missing_desktop_client_reports_installation_error() {
+        let error = ui_open_command_with_client("http://127.0.0.1:1234", None).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("install better-wallpaper-desktop")
         );
-        let removed = command
-            .get_envs()
-            .filter_map(|(name, value)| value.is_none().then_some(name))
-            .collect::<Vec<_>>();
-        for name in GRAPHICS_ENV_OVERRIDES {
-            assert!(removed.contains(&std::ffi::OsStr::new(name)));
-        }
     }
 }

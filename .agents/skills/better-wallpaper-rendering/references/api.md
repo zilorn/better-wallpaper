@@ -53,7 +53,7 @@ parallax is identified only with enabled camera settings and authored layer dept
 its report includes the wallpaper-surface pointer-focus limitation.
 
 `SceneConfig::mouse` and `parallax` gate basic niri camera parallax together.
-`particle_limit` remains reserved, reported as ignored and disabled in the Web UI.
+`particle_limit` remains reserved, reported as ignored and not offered in the GTK UI.
 No arbitrary mouse scripts, depth-map effect or particle budgeting is implied.
 The native GTK client also exposes mouse/parallax/audio settings and preserves
 library compatibility details; it omits the reserved particle/script controls.

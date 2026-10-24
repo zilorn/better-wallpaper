@@ -36,7 +36,7 @@ Evidence: scene IR parses bounded camera parameters and per-axis layer depth;
 translation. `SceneGpuRenderer::draw_scene_with_pointer` applies the displacement.
 The niri seat/pointer handlers forward only current wallpaper-surface events and
 clear pointer state on leave/removal. The daemon gates it with `scene.mouse` and
-`scene.parallax`; the Web UI enables these controls with a niri limitation label.
+`scene.parallax`; the GTK UI enables these controls with a niri limitation label.
 Regression tests cover frame-rate independence, pause, recentering, depth axes,
 invalid parameters, disabled input and stale surfaces after hotplug.
 
@@ -49,7 +49,7 @@ Depth-map parallax and arbitrary mouse scripts remain unsupported.
 ## Particle Settings — Unsupported by Design
 
 `scene.particle_limit` is preserved and validated, but particle nodes are skipped.
-The daemon reports it as ignored and the Web UI keeps the control disabled.
+The daemon reports it as ignored and the GTK UI does not offer this control.
 Particle rendering and runtime budget enforcement remain outside the L2 task.
 
 ## Scene Fidelity — Sample-Driven Candidate

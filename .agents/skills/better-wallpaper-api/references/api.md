@@ -1,7 +1,8 @@
 # Feature API Contracts
 
 Source of truth: `crates/better-wallpaper-daemon/src/server.rs`, configuration in
-`crates/better-wallpaper-core/src/config.rs`, and consumers in `web/src/index.tsx`.
+`crates/better-wallpaper-core/src/config.rs`, and the GTK consumer in
+`crates/better-wallpaper-gtk/src/client.rs` and `ui.rs`.
 For Plasma-specific routes, read [Plasma API](../../better-wallpaper-plasma/references/api.md).
 
 ## Service and Discovery
@@ -11,7 +12,11 @@ The endpoint URL is written to `$XDG_RUNTIME_DIR/better-wallpaper/endpoint`;
 without `XDG_RUNTIME_DIR`, the fallback is
 `~/.better-wallpaper/better-wallpaper/endpoint`.
 API version 1 and configuration version 2 are separate version numbers.
-JSON errors have the form `{"error":"message"}`.
+JSON errors have the form `{"error":"message"}`. The management service serves
+API/media routes only: `/`, old browser UI paths and unknown routes return JSON
+`404` errors. It has no static management assets or web-root setting. Web
+wallpaper asset routes remain available for Plasma; niri retains its separate
+private asset service. `--no-ui` still disables management APIs and the tray.
 
 ## Desktop Client and Tray
 
@@ -71,8 +76,9 @@ values use text, and unknown combo values remain selectable.
 
 The daemon owns the only tray, retaining pause/resume, persistent mute and
 backend reload. Its launcher starts the sibling desktop binary with the current
-endpoint, falling back to `xdg-open` if absent, in an independent transient user
-service with graphics overrides removed. Packaging installs the GTK binary,
+endpoint in an independent transient user service with graphics overrides
+removed. A missing sibling GTK binary produces an installation error; there is
+no browser fallback. Packaging installs the GTK binary,
 application-menu entry and icon.
 
 ## Configuration and Playback
@@ -98,7 +104,7 @@ flag until the preference matches the running backend or the service restarts.
 An equivalent explicit/`auto` preference does not require a restart. CLI
 `--backend` overrides must be removed or adjusted on restart for a conflicting
 saved preference to take effect. Playback reloads still use the running backend.
-The Web UI consumes this flag and prompts for a service restart; otherwise it
+The GTK UI consumes this flag and prompts for a service restart; otherwise it
 reports a reload request without claiming that playback has already restarted.
 
 Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
@@ -112,11 +118,11 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 - `scene.mouse` and `scene.parallax` gate basic authored niri camera parallax.
   Both must be true, and the scene must contain enabled camera settings and
   per-layer depth. Pointer motion is available while focused on exposed wallpaper;
-  moving over another window returns the scene toward center. The Web UI enables
+  moving over another window returns the scene toward center. The GTK UI enables
   both controls and explains the niri-only input limitation. No arbitrary mouse
   scripts or Plasma scene consumer is implied.
 - `scene.particle_limit` remains a reserved field: validation/persistence preserve
-  it, but the runtime ignores it and the Web UI keeps it disabled.
+  it, but the runtime ignores it and the GTK UI does not offer an editor for it.
 - `scene.audio_processing` enables niri desktop spectrum capture for supported
   audio-response draws; capture failures fall back to rendering without spectrum
   data. `scene.script_enabled` does not execute scripts.

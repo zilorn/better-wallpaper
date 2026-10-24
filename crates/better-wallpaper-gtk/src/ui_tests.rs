@@ -423,7 +423,10 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     let original = ui.baseline.borrow().clone();
     let mut unusual = original.clone();
     unusual["scene"]["properties"] = json!({"speed":"1.234567890123", "enabled":"future-bool", "tint":"future-color", "mode":"removed-option"});
+    ui.library.borrow_mut().entries[0].scene_properties[5]["condition"] =
+        json!("speed.value == '1.234567890123'");
     ui.load_config(unusual.clone());
+    assert!(ui.property_rows.borrow()[5].0.is_visible());
     assert!(!ui.dirty());
     assert_eq!(ui.draft().unwrap(), unusual);
     assert!(matches!(
@@ -434,6 +437,7 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
         property_input(&ui, "tint"),
         PropertyInput::Text(_)
     ));
+    ui.library.borrow_mut().entries[0].scene_properties[5]["condition"] = Value::Null;
     ui.load_config(original);
 
     let backend = ui

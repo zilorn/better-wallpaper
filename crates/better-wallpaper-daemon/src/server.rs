@@ -104,7 +104,7 @@ impl ApiState {
     }
 }
 
-pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
+pub fn serve(bind: &str, state: ApiState) -> Result<()> {
     let server = Server::http(bind).map_err(|error| anyhow::anyhow!(error.to_string()))?;
     let address = server
         .server_addr()
@@ -130,15 +130,14 @@ pub fn serve(bind: &str, web_root: PathBuf, state: ApiState) -> Result<()> {
             None
         }
     };
-    info!(bind = %address, %ui_url, web_root = %web_root.display(), "local management service started");
+    info!(bind = %address, %ui_url, "local management service started");
     loop {
         match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(request)) => {
                 let request_state = state.clone();
-                let request_web_root = web_root.clone();
                 if let Err(error) = thread::Builder::new()
                     .name("management-request".into())
-                    .spawn(move || handle_request(request, &request_web_root, &request_state))
+                    .spawn(move || handle_request(request, &request_state))
                 {
                     warn!(%error, "failed to create management request thread");
                 }
@@ -161,7 +160,7 @@ fn write_endpoint_file(home: &Path, ui_url: &str) -> Result<()> {
     Ok(())
 }
 
-fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
+fn handle_request(mut request: Request, state: &ApiState) {
     let method = request.method().clone();
     let request_url = request.url().to_owned();
     let url = request_url.split('?').next().unwrap_or("/").to_owned();
@@ -242,7 +241,6 @@ fn handle_request(mut request: Request, web_root: &Path, state: &ApiState) {
         (Method::Put, "/api/v1/config") => update_config(&mut request, state),
         (Method::Post, "/api/v1/playback/pause") => set_paused(state, true),
         (Method::Post, "/api/v1/playback/resume") => set_paused(state, false),
-        (Method::Get, _) => static_response(web_root, &url),
         _ => error_response(StatusCode(404), "endpoint not found"),
     };
     if let Err(error) = request.respond(response) {
@@ -1235,38 +1233,6 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
     )
 }
 
-fn static_response(web_root: &Path, url: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    let relative = if url == "/" {
-        "index.html"
-    } else {
-        url.trim_start_matches('/')
-    };
-    if relative.contains("..") {
-        return error_response(StatusCode(400), "invalid path");
-    }
-    let path = web_root.join(relative);
-    let path = if path.is_file() {
-        path
-    } else {
-        web_root.join("index.html")
-    };
-    match fs::read(&path) {
-        Ok(body) => {
-            let cache_control = if path.extension().is_some_and(|value| value == "html") {
-                "no-cache, no-store, must-revalidate"
-            } else {
-                "public, max-age=31536000, immutable"
-            };
-            response(StatusCode(200), content_type(&path), body)
-                .with_header(header("Cache-Control", cache_control))
-        }
-        Err(error) => {
-            warn!(path = %path.display(), %error, "failed to read Web static asset");
-            error_response(StatusCode(404), "Web UI not built, run bun run build")
-        }
-    }
-}
-
 fn json_response<T: Serialize>(
     status: StatusCode,
     value: &T,
@@ -1299,16 +1265,6 @@ fn response(
         )
 }
 
-fn content_type(path: &Path) -> &'static str {
-    match path.extension().and_then(|value| value.to_str()) {
-        Some("html") => "text/html; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("js") => "application/javascript; charset=utf-8",
-        Some("svg") => "image/svg+xml",
-        _ => "application/octet-stream",
-    }
-}
-
 fn desktop_name(kind: better_wallpaper_core::DesktopKind) -> &'static str {
     match kind {
         better_wallpaper_core::DesktopKind::Niri => "niri",
@@ -1326,6 +1282,84 @@ mod tests {
         wallpaper_engine_web_root, websocket_accept, write_websocket_text,
     };
     use better_wallpaper_core::{AppConfig, WallpaperType, config::OutputConfig};
+
+    #[test]
+    fn api_and_wallpaper_assets_work_without_management_html() {
+        use super::*;
+        use better_wallpaper_core::desktop::DesktopKind;
+        use std::net::TcpStream;
+
+        let directory = tempfile::tempdir().unwrap();
+        let project = directory.path().join("wallpaper");
+        fs::create_dir(&project).unwrap();
+        fs::write(
+            project.join("project.json"),
+            r#"{"type":"web","file":"main.html"}"#,
+        )
+        .unwrap();
+        fs::write(project.join("main.html"), "<html>wallpaper-content</html>").unwrap();
+        let mut config = AppConfig::default();
+        config.wallpaper.wallpaper_type = WallpaperType::Web;
+        config.wallpaper.path = Some(project);
+        let state = ApiState::new(
+            Arc::new(RwLock::new(config)),
+            ConfigStore::new(
+                directory.path().join("config.toml"),
+                directory.path().into(),
+            ),
+            DesktopDetection {
+                kind: DesktopKind::Niri,
+                evidence: "test".into(),
+                candidates: vec![],
+            },
+            BackendKind::Niri,
+            PlaybackControl::default(),
+            directory.path().into(),
+            LogStore::new(10),
+            LogLevelController::new("info"),
+        );
+        let cases = [
+            ("/", "404", "endpoint not found"),
+            ("/index.html", "404", "endpoint not found"),
+            ("/assets/old.js", "404", "endpoint not found"),
+            ("/api/v1/unknown", "404", "endpoint not found"),
+            ("/api/v1/status", "200", "api_version"),
+            ("/api/v1/config", "200", "wallpaper_type"),
+            ("/api/v1/plasma/config?output=DP-1", "200", "web_url"),
+            ("/api/v1/wallpaper/web/", "200", "wallpaper-content"),
+        ];
+        let server = Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap();
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                for _ in &cases {
+                    let request = server
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap()
+                        .unwrap();
+                    handle_request(request, &state);
+                }
+            });
+            for (path, status, body) in cases {
+                let mut stream = TcpStream::connect(address).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                write!(
+                    stream,
+                    "GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).unwrap();
+                assert!(
+                    response.starts_with(&format!("HTTP/1.1 {status}")),
+                    "{path}: {response}"
+                );
+                assert!(response.contains(body), "{path}: {response}");
+            }
+        });
+    }
 
     #[test]
     fn config_put_reports_pending_backend_switch_until_reverted() {

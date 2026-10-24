@@ -39,7 +39,9 @@ Installation remains in `packaging/install.sh`, which copies the QML package and
 removes the obsolete installed `BetterWallpaper/qmldir` and native plugin binary
 on upgrade. The systemd unit checks the QML entry, not a native shared library.
 Package verification is `./packaging/verify.sh`; it checks cleanup of a simulated
-legacy module as well as QML lint, installation, and uninstallation.
+legacy module and obsolete browser management assets as well as QML lint,
+installation, and uninstallation. Management uses GTK; the HTTP configuration,
+heartbeat and wallpaper asset routes remain independent of management HTML.
 
 Web config now supplies an encoded relative `web_url` preserving nested HTML entry
 paths and `web_properties` containing project defaults. QML injects no-op audio

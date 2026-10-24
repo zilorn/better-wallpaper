@@ -41,7 +41,7 @@ impl LogLevelController {
     }
 }
 
-/// 环形日志缓冲区，用于在 Web UI 中预览日志。
+/// Bounded log buffer exposed to the desktop client through the management API.
 #[derive(Clone)]
 pub struct LogStore {
     inner: Arc<Mutex<LogBuffer>>,

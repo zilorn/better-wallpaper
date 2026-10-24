@@ -1,5 +1,4 @@
 use std::{
-    ffi::OsString,
     path::PathBuf,
     sync::{Arc, RwLock},
     time::Duration,
@@ -133,10 +132,8 @@ fn main() -> Result<()> {
                 }
             })
             .context("failed to create wallpaper playback thread")?;
-        let web_root = resolve_web_root(std::env::var_os("BETTER_WALLPAPER_WEB_ROOT"));
         return server::serve(
             MANAGEMENT_BIND,
-            web_root,
             server::ApiState::new(
                 shared_config,
                 ConfigStore::new(path, home.clone()),
@@ -252,25 +249,6 @@ fn wait_for_playback_control(control: &PlaybackControl, timeout: Option<Duration
         };
         std::thread::sleep(delay);
     }
-}
-
-fn resolve_web_root(configured: Option<OsString>) -> PathBuf {
-    if let Some(path) = configured {
-        return PathBuf::from(path);
-    }
-    let development = PathBuf::from("web/dist");
-    if development.is_dir() {
-        return development;
-    }
-    user_web_root(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
-}
-
-fn user_web_root(xdg_data_home: Option<OsString>, home: Option<OsString>) -> PathBuf {
-    xdg_data_home
-        .map(PathBuf::from)
-        .or_else(|| home.map(|home| PathBuf::from(home).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from(".local/share"))
-        .join("better-wallpaper/web")
 }
 
 fn run_playback(
@@ -712,10 +690,6 @@ fn prepare_scene(
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, path::PathBuf};
-
-    use super::user_web_root;
-
     #[test]
     fn niri_failure_retries_without_reload_in_no_ui_mode() {
         let config = std::sync::Arc::new(std::sync::RwLock::new(
@@ -836,20 +810,5 @@ mod tests {
         worker.join().unwrap().unwrap();
         assert!(rx.try_recv().is_err());
         assert!(!control.is_running());
-    }
-
-    #[test]
-    fn defaults_web_root_to_user_data_directory() {
-        assert_eq!(
-            user_web_root(None, Some(OsString::from("/home/user"))),
-            PathBuf::from("/home/user/.local/share/better-wallpaper/web")
-        );
-        assert_eq!(
-            user_web_root(
-                Some(OsString::from("/home/user/.data")),
-                Some(OsString::from("/ignored"))
-            ),
-            PathBuf::from("/home/user/.data/better-wallpaper/web")
-        );
     }
 }

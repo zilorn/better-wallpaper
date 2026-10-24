@@ -3,8 +3,7 @@
 ## Native GTK Desktop and Property Editors — Implemented
 
 `better-wallpaper-gtk` provides the installed desktop command with native widgets;
-the old Tauri client has been removed, while the web UI remains available for
-browser access. The GTK client preserves full configuration documents, merges
+the old Tauri client and browser management UI have been removed. The GTK client preserves full configuration documents, merges
 edits against a fresh GET and detects same-field
 conflicts, with regression coverage for unrelated concurrent changes. The API
 still has no revision/conditional-write mechanism; completion of atomic conflict
@@ -17,6 +16,16 @@ and never drops hidden drafts. Unknown types/invalid values retain text editing;
 unknown combo values remain selectable. Display regression fixtures verify typed
 edits, fractional values, conditional hiding, refresh, save/reset, preservation of
 unusual overrides and controller cleanup. Existing backend limitations remain.
+
+## Browser Management UI Removal — Resolved
+
+The GTK client now covers the former browser property editors. `web/`, the
+Bun/TypeScript build, static HTML serving, web-root discovery and browser tray
+fallback have been removed. Configuration, media, WebSocket and Plasma API
+contracts remain. HTTP regression coverage verifies the API and web wallpaper
+assets alongside `404` responses for former UI paths. Packaging no longer needs
+management HTML; staging verification seeds stale assets and checks their removal
+on upgrade, while retaining the independent Qt web wallpaper renderer.
 
 ## Incremental Library Index — Resolved
 
@@ -46,7 +55,7 @@ updates to the moved tree, while checking unaffected caches remain reusable.
 `server.rs::update_config` compares the saved backend preference, resolving
 `auto` with startup desktop detection, against the running backend. It returns
 `restart_required: true` while they differ, including on repeated saves. Status
-continues to report the running backend. The Web UI displays a restart prompt
+continues to report the running backend. The GTK UI displays a restart prompt
 and explains that backend changes require a service restart.
 
 Regression coverage exercises actual configuration PUT handling, persistence,

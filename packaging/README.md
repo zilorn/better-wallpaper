@@ -1,6 +1,6 @@
 # 发布与安装
 
-`install.sh` 构建并安装支持 niri 与 KDE Plasma 6 的 daemon、GTK 4 原生桌面客户端、应用菜单入口、Web 静态资源、Plasma 6
+`install.sh` 构建并安装支持 niri 与 KDE Plasma 6 的 daemon、GTK 4 原生桌面客户端、应用菜单入口、Plasma 6
 壁纸插件和 systemd 用户服务。当前 niri 后端的播放性能优于 KDE 后端。默认安装到
 `~/.local`，服务文件写入 `~/.config/systemd/user`，不需要 root 权限：
 
@@ -17,12 +17,13 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 ```
 
 `SKIP_BUILD=1` 要求预先生成 `target/release/better-wallpaper-daemon`、`scene-inspect`、
-`scene-validate`、`better-wallpaper-desktop` 和 `web/dist`；Plasma QML 包直接从源码安装。
+`scene-validate`、`better-wallpaper-desktop` 和 `target/web-wallpaper/better-wallpaper-web`；
+Plasma QML 包直接从源码安装。
 卸载时运行 `./packaging/uninstall.sh`；脚本先停止并禁用用户服务，不删除
 `~/.better-wallpaper` 中的用户配置。
 
-提交发行产物前运行完整 staging 验收。脚本会构建 daemon、桌面客户端和 Web、验证 systemd/动态依赖/QML，
-检查升级时清理旧原生帧模块，并检查卸载后无包文件残留：
+提交发行产物前运行完整 staging 验收。脚本会构建 daemon、GTK 客户端和网页壁纸渲染器、验证 systemd/动态依赖/QML，
+检查升级时清理旧管理网页资源和旧原生帧模块，并检查卸载后无包文件残留：
 
 ```bash
 ./packaging/verify.sh
@@ -31,7 +32,6 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 ## 构建依赖
 
 - Rust stable、Cargo、C/C++ 工具链、Clang 和 `pkg-config`
-- Bun（只用于构建 Web UI）
 - FFmpeg 命令行程序，以及开发库：`libavdevice`、`libavfilter`、`libavformat`、
   `libavcodec`、`libavutil`、`libswscale`、`libswresample`
 - ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
@@ -46,7 +46,7 @@ Debian/Ubuntu 和 Fedora 的完整安装命令见项目根目录的
 
 daemon 动态链接构建环境中的 FFmpeg、ALSA、Wayland、Vulkan loader 和系统 C/C++ 运行库。
 发行包必须声明由 `ldd`/发行版依赖生成器得到的精确 ABI 依赖，不能只复制可执行文件。
-Web UI 已编译为静态文件，运行时不需要 Bun。NVIDIA/Vulkan 不可用时会记录降级原因并使用
+NVIDIA/Vulkan 不可用时会记录降级原因并使用
 CPU `wl_shm` 路径。
 
 桌面客户端运行时需要 GTK 4.8+ 和桌面会话 D-Bus；视频预览另需发行版的 GTK GStreamer
@@ -56,11 +56,12 @@ CPU `wl_shm` 路径。
 服务未就绪时尝试 `systemctl --user --no-block start better-wallpaper.service`，随后限时等待，
 失败可在窗口内重试。`--url` 可指定本机管理地址，指定后不自动启动用户服务。
 客户端使用 GTK Application 的会话总线单实例机制，重复启动聚焦现有窗口；关闭窗口退出客户端，daemon 和托盘继续运行。
-Web UI 继续随包安装，供浏览器访问。
+管理网页已移除，安装时会清理 `$PREFIX/share/better-wallpaper/web` 中的旧资源。
+GTK 直接使用管理 API；构建和运行不再需要 Bun。网页壁纸播放使用独立的 Qt WebEngine 渲染器。
 
 托盘“Open desktop client”需要 `systemd-run` 和正在运行的 systemd 用户管理器。
-它优先启动 daemon 同目录的 `better-wallpaper-desktop --url <endpoint>`；未安装客户端时
-回退到 `xdg-open`（xdg-utils）打开浏览器。启动器通过独立的临时用户服务使用桌面会话环境，
+它启动 daemon 同目录的 `better-wallpaper-desktop --url <endpoint>`；未安装客户端时
+会记录安装提示。启动器通过独立的临时用户服务使用桌面会话环境，
 避免继承壁纸服务的只读文件系统、私有临时目录和图形驱动覆盖变量。启动失败记录在
 壁纸服务日志中，客户端后续输出记录在临时服务的 journal 中。
 

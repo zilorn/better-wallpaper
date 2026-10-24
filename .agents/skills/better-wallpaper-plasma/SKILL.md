@@ -28,7 +28,8 @@ for cross-category contracts. Record demonstrated gaps with source/reproduction
 evidence and observable completion criteria; revise or remove resolved items.
 Implementation is authoritative when older plans disagree.
 
-Run `cargo clippy` plus relevant checks. For web changes run `bun run check` and
-`bun run build` in `web/`; use feature-specific Rust tests for changed behavior.
+Run `cargo clippy` plus relevant feature-specific Rust tests. For GTK changes,
+run the unit tests and display regressions documented in `docs/gtk-desktop.md`.
+Management uses native GTK; web wallpaper playback still uses Qt WebEngine.
 Desktop/GPU verification requires the relevant real session. Report checks that
 could not run accurately rather than inferring success from compilation.

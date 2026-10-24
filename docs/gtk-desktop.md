@@ -7,7 +7,11 @@ configuration persistence, the library index, media authorization and the sole
 system tray. No rendering or backend behavior changes are required.
 
 GTK is the desktop client for both default and `--workspace` builds.
-`web/` remains available and packaged for browser access.
+The browser management UI and its Bun/TypeScript build have been removed.
+The daemon retains HTTP configuration/media APIs for GTK and Plasma, including
+web wallpaper asset routes. Its root and unknown routes return JSON `404` errors.
+The tray launches the sibling GTK binary; if absent, it logs an installation
+error. Packaging cleans old management HTML assets during upgrades.
 
 ## Run
 
@@ -81,7 +85,7 @@ generation checks discard stale thumbnail results.
 
 The client retains the complete JSON document, including unknown fields. A save
 fetches a fresh document and merges only user-edited fields. Unrelated changes
-from the tray/browser survive. Same-field conflicts stop the save with an error;
+from the tray or other API clients survive. Same-field conflicts stop the save with an error;
 the user can keep editing or reload. Output arrays and library path arrays are
 treated as single fields. This is best-effort conflict detection: the existing
 API does not offer a revision token or atomic compare-and-swap, so another writer

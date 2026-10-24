@@ -4,13 +4,12 @@
 
 Better Wallpaper is a Linux video wallpaper application for niri and KDE Plasma 6.
 It provides playback controls, persistent configuration, a wallpaper library,
-thumbnails, a system tray, and a web management UI. Wallpaper Engine web and scene
+thumbnails, a system tray, and a native GTK management UI. Wallpaper Engine web and scene
 projects have partial, backend-specific support; consult the relevant project skill before
 changing or describing these capabilities.
 
 - Rust workspace: daemon, configuration, FFmpeg decoding/audio, scene parsing,
   GPU rendering, Wayland/niri integration, and KDE integration.
-- Bun, TypeScript, SolidJS, and Vite: web management UI.
 - Rust and GTK 4: native desktop client.
 - Qt 6/QML, Qt Multimedia, and Qt WebEngine: Plasma wallpaper plugin.
 - systemd user service: installed daemon lifecycle.
@@ -34,10 +33,6 @@ Run commands from the repository root unless indicated otherwise.
 | Check Rust formatting | `cargo fmt --all -- --check` |
 | Run Rust tests | `cargo test --workspace` |
 | Build release binaries | `cargo build --locked --release` |
-| Install web dependencies (in `web/`) | `bun install --frozen-lockfile` |
-| Check web types (in `web/`) | `bun run check` |
-| Build web UI (in `web/`) | `bun run build` |
-| Run web development server (in `web/`) | `bun run dev` |
 | Run daemon with management API | `cargo run -p better-wallpaper-daemon -- --backend headless` |
 | Run bounded playback smoke check | `cargo run -p better-wallpaper-daemon -- --backend headless --no-ui --run-for-seconds 30` |
 | Run niri playback | `cargo run --release -p better-wallpaper-daemon -- --backend niri --no-ui` |
@@ -45,9 +40,8 @@ Run commands from the repository root unless indicated otherwise.
 | Verify staged packaging | `./packaging/verify.sh` |
 | Read recent service logs | `journalctl --user -u better-wallpaper.service --since "10 minutes ago" -n 200 --no-pager` |
 
-Build the web UI before using the management page. Set
-`BETTER_WALLPAPER_WEB_ROOT="$PWD/web/dist"` when launching a development daemon
-to serve the current build. Rust builds require FFmpeg, ALSA, and Wayland
+The GTK client uses the local management API directly; no web build is needed.
+Rust builds require GTK 4.8+, FFmpeg, ALSA, and Wayland
 development libraries; Plasma playback additionally needs Qt 6.6+ QML runtime modules.
 See `packaging/README.md` for dependencies and installation options.
 
