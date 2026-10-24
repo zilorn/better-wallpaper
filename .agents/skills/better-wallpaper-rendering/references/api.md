@@ -135,7 +135,13 @@ and selected PKGs. It records SHA-256, package member offsets, format/payload
 results and JSON-field candidate references without loading unselected resources.
 `TexTexture::parse_with_budget` adds a caller-selected retained mip-byte ceiling;
 ordinary `parse` behavior is unchanged. Exit 2 still emits a report but indicates
-incomplete traversal/read/reference coverage. Candidate matches and pixel-size
+incomplete traversal/read/reference coverage. Audit JSON accepts line/block comments
+and trailing commas after strict parsing fails, reporting `json_extended_syntax_valid`
+separately from `json_syntax_valid`. Its temporary normalization preserves strings
+and diagnostic positions; record hashes and archive offsets remain based on original
+bytes. The 2 MiB input cap, UTF-8/nesting checks and candidate limits apply to both
+forms. Malformed input contributes no partial references. Runtime JSON parsers are
+unchanged. Candidate matches and pixel-size
 validation are not proof of supported scene playback. See
 [audit contracts](../../../../docs/asset-audit.md) for limits and coverage.
 

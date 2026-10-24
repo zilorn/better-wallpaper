@@ -13,16 +13,21 @@ the checked-in bytes to verify atlas indices, rectangles and timing.
 
 Local inventory found JSON with comments/trailing commas (for example builtin
 `effects/blend/preview/effects/blend/effect.json` and
-`effects/fluidsimulation/effect.json`). Strict JSON parsing records those failures
-and incomplete reference coverage. It does not imply the native engine rejects
-them. Complete broader reference discovery only after defining and testing the
-additional syntax/fields and lookup rules against samples; do not silently treat
+`effects/fluidsimulation/effect.json`). Audit-only normalization now accepts line
+comments, non-nested block comments and trailing commas, while preserving strings,
+original byte identities, error locations and resource limits. Strict/extended
+success statuses remain distinct; malformed documents emit no partial references.
+Two scans of the same 2,593 input identities resolve all 32 earlier syntax failures
+and add 302 candidate references (115 found, 187 outside inventory scope).
+See the [JSON validation delta](../../../../docs/validation/a0-json-extensions.md).
+Runtime parsers are unchanged. Complete broader reference discovery only after
+testing additional fields and lookup rules against samples; do not silently treat
 unknown dependencies as resolved or absent from the installation.
 The retained [A0 inventory report](../../../../docs/validation/a0-asset-inventory.md)
-records 2,593 assets/container entries and 3,858 candidate references from two
-identical scans. Its machine-readable manifest preserves 32 strict-JSON failures
-and incomplete reference coverage; 459 size-validated TEX payloads are not a
-wallpaper playback success count.
+records 2,593 assets/container entries and the historical 3,858 candidate references.
+Its machine-readable manifest preserves the original failures; the separate delta
+records 4,160 candidates and complete coverage of the selected field subset.
+Neither completeness nor 459 size-validated TEX payloads is a playback success count.
 
 ## Basic Mouse Parallax — Implemented / Desktop Verification Needed
 

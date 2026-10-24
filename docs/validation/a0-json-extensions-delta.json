@@ -1,0 +1,3681 @@
+{
+  "schema_version": 1,
+  "baseline": "a0-assets.json",
+  "baseline_sha256": "6fd93241c3c5d8f3f9cd949b1ccc3f2dd2b76932a55854e4c970273807439bb5",
+  "updated_audit_sha256": "803cc6c6763b648681aa94453d0cb7e0e47a1c8d08d83548282abc1a81d69a34",
+  "all_input_paths_sizes_and_hashes_unchanged": true,
+  "complete": true,
+  "record_count": 2593,
+  "reference_count": 4160,
+  "added_reference_count": 302,
+  "summary": {
+    "failure:unsupported_volume": 28,
+    "json:json_extended_syntax_valid": 32,
+    "json:json_syntax_valid": 2025,
+    "opaque:hashed": 45,
+    "pkg:indexed": 4,
+    "tex:parse_error": 28,
+    "tex:validated_2d": 459
+  },
+  "added_reference_status_counts": {
+    "candidate_found": 115,
+    "not_found_in_scope": 187
+  },
+  "changed_records": [
+    {
+      "source": "engine-assets",
+      "path": "effects/blend/preview/effects/blend/effect.json",
+      "size": 350,
+      "sha256": "2ce452979886a60a3d70070b819d11f22e80e33c419b62506cdc1cdfa8747c9f",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "size": 1675,
+      "sha256": "4f0e25fca558d9c732e7b485a36c042b3065562fabff655f1f9d93178d919c79",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "size": 915,
+      "sha256": "ea2011b1a0b075d0fb056904c8edf590b3f74787c449c23e1cd2c9f854a628eb",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/clouds/preview/effects/clouds/effect.json",
+      "size": 380,
+      "sha256": "c0e165280386de9841d9b98a326847c0f1e536be8b7667fe69d43da73c726f33",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/colorkey/preview/effects/colorkey/effect.json",
+      "size": 389,
+      "sha256": "2fe8af41765b33d4462556d6de8fade045122fc0dcc3df82e54877875502f521",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/edgedetection/preview/effects/edgedetection/effect.json",
+      "size": 405,
+      "sha256": "d0f569be94005bc376acef6208e176aac9b7589db1b2da32c66824dc48042ecc",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/filmgrain/preview/effects/filmgrain/effect.json",
+      "size": 398,
+      "sha256": "2aeff7c0d58124a4a43521a9ae9ba833a950ad71fe4c764aaff6884570181876",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fire/preview/effects/fire/effect.json",
+      "size": 368,
+      "sha256": "2f6e60b73fbc2e7163284f718b11c61a89ae0554b3ca557be19153fda3cff7f3",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fisheye/preview/effects/fisheye/effect.json",
+      "size": 346,
+      "sha256": "572b7c86c1478c7c8ad3f340d05ec3b75e673aa0295c0ed5c0fcf4ed83c2fbb2",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "size": 10999,
+      "sha256": "d00dfe6fec8c2fccefb08222453cbf278811e49a412d836e68ca98d743e5f971",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "size": 10766,
+      "sha256": "4c81875a8a4196c63fb7f538773e2b368fd9d740f557991e3b6d4229666087e6",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/foliagesway/preview/effects/foliagesway/effect.json",
+      "size": 393,
+      "sha256": "7aa4a705b68c7420cab8e1785fa1ea1f62acee1b785977cdd00de4619e211769",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "size": 2018,
+      "sha256": "17921c86fe5ef8308202a57066eece388d869ee2aa46204aab75b03c87ef5f75",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "size": 1821,
+      "sha256": "96075a8f9517f26010bfba4f0c983cd853786200a928fa10cde14b76d5d88d33",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "size": 1298,
+      "sha256": "ed920196b67bb2ca5a67b65f9be1ec8655b80840261d4b9840b86a8e9088bbdf",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/nitro/preview/effects/nitro/effect.json",
+      "size": 374,
+      "sha256": "5a4a88c543d0d1efea105cc8a07fcf9719f895a65e9e80bd96096107af3267f5",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/opacity/preview/effects/opacity/effect.json",
+      "size": 362,
+      "sha256": "6b621bff83c06f0b0e298ac1acd6d7d5332e8f50db4e435005e2fa13ef45ce07",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/perspective/preview/effects/perspective/effect.json",
+      "size": 379,
+      "sha256": "98d980cd2556bf9d05aaee622fb8a0670dc51c578f34b8a3778c833c612f2f4f",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/colorkey/effect.json",
+      "size": 389,
+      "sha256": "2fe8af41765b33d4462556d6de8fade045122fc0dcc3df82e54877875502f521",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/pulse/effect.json",
+      "size": 316,
+      "sha256": "252ca1c227b3f31a09691aa7ea904cd26a8ca83ffd3cea195ef32e5ec1d5bc82",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/reflection/preview/effects/reflection/effect.json",
+      "size": 435,
+      "sha256": "c9d7dc3a3cb9fc84e647253d39881bcffab3d63ac6f67870e582c7eb064aac79",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/skew/preview/effects/skew/effect.json",
+      "size": 335,
+      "sha256": "6aa27d83fae71e352abd1053be2346513598ba08786a4ef6d145b926933361c4",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/tint/preview/effects/tint/effect.json",
+      "size": 350,
+      "sha256": "1eea931807ece108d6756e6590750cda2fca112afdd84b59ed0c76a41e99f783",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/transform/preview/effects/transform/effect.json",
+      "size": 383,
+      "sha256": "fe04749af26014866dc043ba57e0c92e9c0d35920b0dcdf308afcefb2b943955",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "size": 531,
+      "sha256": "02c661d9959c091185aea9ea705a6900397d3b623e928ffd194d0303fba913ac",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "size": 533,
+      "sha256": "08eb32f9e9c5d8cc88232bf54e07e76d067d4bfbbd2283b438a78040336159cf",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterwaves/preview/effects/waterwaves/effect.json",
+      "size": 378,
+      "sha256": "96b2dee985172fa75e34cf9fa0fbb6628d8d93bbc7f559551cbadc65fe511913",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "size": 882,
+      "sha256": "400186115279297d1854244bbee6f19c090c8e85b9a5121cd49415762e36ddf2",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/snow/previewflat/presets/snowparticles/preset.json",
+      "size": 538,
+      "sha256": "c81dab33ffe54825ed3893d07384bfb82944d4bb8ecb3a24bacb1f03930f6159",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "size": 4262,
+      "sha256": "62ede208e7172c7084265dc2c22a62e54e9dc67f0fcf69da3b38097829fdf30c",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "size": 4262,
+      "sha256": "62ede208e7172c7084265dc2c22a62e54e9dc67f0fcf69da3b38097829fdf30c",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    },
+    {
+      "source": "engine-projects",
+      "path": "defaultprojects/fantasticcar/materials/car/glass.json",
+      "size": 246,
+      "sha256": "44a83d6a34f567aa38f2eb34c4182a22b7b08094ba8e28fffc364ddec89276e3",
+      "kind": "json",
+      "status": "json_extended_syntax_valid",
+      "format": {
+        "extension": "json"
+      }
+    }
+  ],
+  "added_references": [
+    {
+      "source": "engine-assets",
+      "path": "effects/blend/preview/effects/blend/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/blend.json",
+      "candidate": "materials/effects/blend.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blend/preview/materials/effects/blend.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blend/preview/effects/blend/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/blend.frag",
+      "candidate": "shaders/effects/blend.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blend/preview/effects/blend/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/blend.vert",
+      "candidate": "shaders/effects/blend.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blend/preview/effects/blend/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/blend.json",
+      "candidate": "materials/effects/blend.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blend/preview/materials/effects/blend.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/blur_downsample4.json",
+      "candidate": "materials/effects/blur_downsample4.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_downsample4.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/blur_gaussian_x.json",
+      "candidate": "materials/effects/blur_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/blur_gaussian_y.json",
+      "candidate": "materials/effects/blur_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "materials/effects/blur_combine.json",
+      "candidate": "materials/effects/blur_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "shaders/effects/blur_downsample4.frag",
+      "candidate": "shaders/effects/blur_downsample4.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "shaders/effects/blur_downsample4.vert",
+      "candidate": "shaders/effects/blur_downsample4.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/6",
+      "value": "shaders/effects/blur_gaussian.frag",
+      "candidate": "shaders/effects/blur_gaussian.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/7",
+      "value": "shaders/effects/blur_gaussian.vert",
+      "candidate": "shaders/effects/blur_gaussian.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/8",
+      "value": "shaders/effects/blur_combine.frag",
+      "candidate": "shaders/effects/blur_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/dependencies/9",
+      "value": "shaders/effects/blur_combine.vert",
+      "candidate": "shaders/effects/blur_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/blur_downsample4.json",
+      "candidate": "materials/effects/blur_downsample4.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_downsample4.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/blur_gaussian_x.json",
+      "candidate": "materials/effects/blur_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/blur_gaussian_y.json",
+      "candidate": "materials/effects/blur_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blur/preview/effects/blur/effect.json",
+      "pointer": "/passes/3/material",
+      "value": "materials/effects/blur_combine.json",
+      "candidate": "materials/effects/blur_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blur/preview/materials/effects/blur_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/blur_precise_gaussian_x.json",
+      "candidate": "materials/effects/blur_precise_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blurprecise/preview/materials/effects/blur_precise_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/blur_precise_gaussian_y.json",
+      "candidate": "materials/effects/blur_precise_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blurprecise/preview/materials/effects/blur_precise_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/blur_precise_gaussian.frag",
+      "candidate": "shaders/effects/blur_precise_gaussian.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "shaders/effects/blur_precise_gaussian.vert",
+      "candidate": "shaders/effects/blur_precise_gaussian.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/blur_precise_gaussian_x.json",
+      "candidate": "materials/effects/blur_precise_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blurprecise/preview/materials/effects/blur_precise_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/blurprecise/preview/effects/blurprecise/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/blur_precise_gaussian_y.json",
+      "candidate": "materials/effects/blur_precise_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/blurprecise/preview/materials/effects/blur_precise_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/clouds/preview/effects/clouds/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/clouds.json",
+      "candidate": "materials/effects/clouds.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/clouds/preview/materials/effects/clouds.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/clouds/preview/effects/clouds/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/clouds.frag",
+      "candidate": "shaders/effects/clouds.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/clouds/preview/effects/clouds/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/clouds.vert",
+      "candidate": "shaders/effects/clouds.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/clouds/preview/effects/clouds/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/clouds.json",
+      "candidate": "materials/effects/clouds.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/clouds/preview/materials/effects/clouds.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/colorkey/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/colorkey.json",
+      "candidate": "materials/effects/colorkey.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/colorkey/preview/materials/effects/colorkey.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/colorkey/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/colorkey.frag",
+      "candidate": "shaders/effects/colorkey.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/colorkey/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/colorkey.vert",
+      "candidate": "shaders/effects/colorkey.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/colorkey/preview/effects/colorkey/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/colorkey.json",
+      "candidate": "materials/effects/colorkey.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/colorkey/preview/materials/effects/colorkey.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/edgedetection/preview/effects/edgedetection/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/edgedetection.json",
+      "candidate": "materials/effects/edgedetection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/edgedetection/preview/materials/effects/edgedetection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/edgedetection/preview/effects/edgedetection/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/edgedetection.frag",
+      "candidate": "shaders/effects/edgedetection.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/edgedetection/preview/effects/edgedetection/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/edgedetection.vert",
+      "candidate": "shaders/effects/edgedetection.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/edgedetection/preview/effects/edgedetection/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/edgedetection.json",
+      "candidate": "materials/effects/edgedetection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/edgedetection/preview/materials/effects/edgedetection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/filmgrain/preview/effects/filmgrain/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/filmgrain.json",
+      "candidate": "materials/effects/filmgrain.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/filmgrain/preview/materials/effects/filmgrain.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/filmgrain/preview/effects/filmgrain/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/filmgrain.frag",
+      "candidate": "shaders/effects/filmgrain.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/filmgrain/preview/effects/filmgrain/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/filmgrain.vert",
+      "candidate": "shaders/effects/filmgrain.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/filmgrain/preview/effects/filmgrain/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/filmgrain.json",
+      "candidate": "materials/effects/filmgrain.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/filmgrain/preview/materials/effects/filmgrain.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fire/preview/effects/fire/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/fire.json",
+      "candidate": "materials/effects/fire.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fire/preview/materials/effects/fire.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fire/preview/effects/fire/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/fire.frag",
+      "candidate": "shaders/effects/fire.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fire/preview/effects/fire/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/fire.vert",
+      "candidate": "shaders/effects/fire.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fire/preview/effects/fire/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/fire.json",
+      "candidate": "materials/effects/fire.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fire/preview/materials/effects/fire.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fisheye/preview/effects/fisheye/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/fisheye.json",
+      "candidate": "materials/effects/fisheye.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fisheye/preview/materials/effects/fisheye.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fisheye/preview/effects/fisheye/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/fisheye.frag",
+      "candidate": "shaders/effects/fisheye.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fisheye/preview/effects/fisheye/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/fisheye.vert",
+      "candidate": "shaders/effects/fisheye.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fisheye/preview/effects/fisheye/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/fisheye.json",
+      "candidate": "materials/effects/fisheye.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fisheye/preview/materials/effects/fisheye.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/fluidsimulation_advection.json",
+      "candidate": "materials/effects/fluidsimulation_advection.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/fluidsimulation_advection_dye.json",
+      "candidate": "materials/effects/fluidsimulation_advection_dye.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/fluidsimulation_clear.json",
+      "candidate": "materials/effects/fluidsimulation_clear.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "materials/effects/fluidsimulation_combine.json",
+      "candidate": "materials/effects/fluidsimulation_combine.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "materials/effects/fluidsimulation_curl.json",
+      "candidate": "materials/effects/fluidsimulation_curl.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "materials/effects/fluidsimulation_divergence.json",
+      "candidate": "materials/effects/fluidsimulation_divergence.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/6",
+      "value": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "candidate": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/7",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/8",
+      "value": "materials/effects/fluidsimulation_vorticity.json",
+      "candidate": "materials/effects/fluidsimulation_vorticity.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/9",
+      "value": "materials/effects/fluidsimulation_normal.json",
+      "candidate": "materials/effects/fluidsimulation_normal.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/10",
+      "value": "shaders/effects/fluidsimulation_advection.frag",
+      "candidate": "shaders/effects/fluidsimulation_advection.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/11",
+      "value": "shaders/effects/fluidsimulation_advection.vert",
+      "candidate": "shaders/effects/fluidsimulation_advection.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/12",
+      "value": "shaders/effects/fluidsimulation_clear.frag",
+      "candidate": "shaders/effects/fluidsimulation_clear.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/13",
+      "value": "shaders/effects/fluidsimulation_clear.vert",
+      "candidate": "shaders/effects/fluidsimulation_clear.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/14",
+      "value": "shaders/effects/fluidsimulation_combine.frag",
+      "candidate": "shaders/effects/fluidsimulation_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/15",
+      "value": "shaders/effects/fluidsimulation_combine.vert",
+      "candidate": "shaders/effects/fluidsimulation_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/16",
+      "value": "shaders/effects/fluidsimulation_curl.frag",
+      "candidate": "shaders/effects/fluidsimulation_curl.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/17",
+      "value": "shaders/effects/fluidsimulation_curl.vert",
+      "candidate": "shaders/effects/fluidsimulation_curl.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/18",
+      "value": "shaders/effects/fluidsimulation_divergence.frag",
+      "candidate": "shaders/effects/fluidsimulation_divergence.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/19",
+      "value": "shaders/effects/fluidsimulation_divergence.vert",
+      "candidate": "shaders/effects/fluidsimulation_divergence.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/20",
+      "value": "shaders/effects/fluidsimulation_gradientsubtract.frag",
+      "candidate": "shaders/effects/fluidsimulation_gradientsubtract.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/21",
+      "value": "shaders/effects/fluidsimulation_gradientsubtract.vert",
+      "candidate": "shaders/effects/fluidsimulation_gradientsubtract.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/22",
+      "value": "shaders/effects/fluidsimulation_pressure.frag",
+      "candidate": "shaders/effects/fluidsimulation_pressure.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/23",
+      "value": "shaders/effects/fluidsimulation_pressure.vert",
+      "candidate": "shaders/effects/fluidsimulation_pressure.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/24",
+      "value": "shaders/effects/fluidsimulation_vorticity.frag",
+      "candidate": "shaders/effects/fluidsimulation_vorticity.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/25",
+      "value": "shaders/effects/fluidsimulation_vorticity.vert",
+      "candidate": "shaders/effects/fluidsimulation_vorticity.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/26",
+      "value": "shaders/effects/fluidsimulation_normal.frag",
+      "candidate": "shaders/effects/fluidsimulation_normal.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/27",
+      "value": "shaders/effects/fluidsimulation_normal.vert",
+      "candidate": "shaders/effects/fluidsimulation_normal.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/fluidsimulation_curl.json",
+      "candidate": "materials/effects/fluidsimulation_curl.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/fluidsimulation_vorticity.json",
+      "candidate": "materials/effects/fluidsimulation_vorticity.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/fluidsimulation_divergence.json",
+      "candidate": "materials/effects/fluidsimulation_divergence.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/3/material",
+      "value": "materials/effects/fluidsimulation_clear.json",
+      "candidate": "materials/effects/fluidsimulation_clear.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/4/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/5/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/6/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/7/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/8/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/9/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/10/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/11/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/12/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/13/material",
+      "value": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "candidate": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/14/material",
+      "value": "materials/effects/fluidsimulation_advection.json",
+      "candidate": "materials/effects/fluidsimulation_advection.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/15/material",
+      "value": "materials/effects/fluidsimulation_advection_dye.json",
+      "candidate": "materials/effects/fluidsimulation_advection_dye.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/16/material",
+      "value": "materials/effects/fluidsimulation_normal.json",
+      "candidate": "materials/effects/fluidsimulation_normal.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/effect.json",
+      "pointer": "/passes/17/material",
+      "value": "materials/effects/fluidsimulation_combine.json",
+      "candidate": "materials/effects/fluidsimulation_combine.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/fluidsimulation_advection.json",
+      "candidate": "materials/effects/fluidsimulation_advection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_advection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/fluidsimulation_advection_dye.json",
+      "candidate": "materials/effects/fluidsimulation_advection_dye.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_advection_dye.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/fluidsimulation_clear.json",
+      "candidate": "materials/effects/fluidsimulation_clear.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_clear.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "materials/effects/fluidsimulation_combine.json",
+      "candidate": "materials/effects/fluidsimulation_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "materials/effects/fluidsimulation_curl.json",
+      "candidate": "materials/effects/fluidsimulation_curl.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_curl.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "materials/effects/fluidsimulation_divergence.json",
+      "candidate": "materials/effects/fluidsimulation_divergence.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_divergence.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/6",
+      "value": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "candidate": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_gradientsubtract.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/7",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/8",
+      "value": "materials/effects/fluidsimulation_vorticity.json",
+      "candidate": "materials/effects/fluidsimulation_vorticity.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_vorticity.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/9",
+      "value": "materials/effects/fluidsimulation_normal.json",
+      "candidate": "materials/effects/fluidsimulation_normal.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_normal.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/10",
+      "value": "shaders/effects/fluidsimulation_advection.frag",
+      "candidate": "shaders/effects/fluidsimulation_advection.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/11",
+      "value": "shaders/effects/fluidsimulation_advection.vert",
+      "candidate": "shaders/effects/fluidsimulation_advection.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/12",
+      "value": "shaders/effects/fluidsimulation_clear.frag",
+      "candidate": "shaders/effects/fluidsimulation_clear.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/13",
+      "value": "shaders/effects/fluidsimulation_clear.vert",
+      "candidate": "shaders/effects/fluidsimulation_clear.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/14",
+      "value": "shaders/effects/fluidsimulation_combine.frag",
+      "candidate": "shaders/effects/fluidsimulation_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/15",
+      "value": "shaders/effects/fluidsimulation_combine.vert",
+      "candidate": "shaders/effects/fluidsimulation_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/16",
+      "value": "shaders/effects/fluidsimulation_curl.frag",
+      "candidate": "shaders/effects/fluidsimulation_curl.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/17",
+      "value": "shaders/effects/fluidsimulation_curl.vert",
+      "candidate": "shaders/effects/fluidsimulation_curl.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/18",
+      "value": "shaders/effects/fluidsimulation_divergence.frag",
+      "candidate": "shaders/effects/fluidsimulation_divergence.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/19",
+      "value": "shaders/effects/fluidsimulation_divergence.vert",
+      "candidate": "shaders/effects/fluidsimulation_divergence.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/20",
+      "value": "shaders/effects/fluidsimulation_gradientsubtract.frag",
+      "candidate": "shaders/effects/fluidsimulation_gradientsubtract.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/21",
+      "value": "shaders/effects/fluidsimulation_gradientsubtract.vert",
+      "candidate": "shaders/effects/fluidsimulation_gradientsubtract.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/22",
+      "value": "shaders/effects/fluidsimulation_pressure.frag",
+      "candidate": "shaders/effects/fluidsimulation_pressure.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/23",
+      "value": "shaders/effects/fluidsimulation_pressure.vert",
+      "candidate": "shaders/effects/fluidsimulation_pressure.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/24",
+      "value": "shaders/effects/fluidsimulation_vorticity.frag",
+      "candidate": "shaders/effects/fluidsimulation_vorticity.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/25",
+      "value": "shaders/effects/fluidsimulation_vorticity.vert",
+      "candidate": "shaders/effects/fluidsimulation_vorticity.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/26",
+      "value": "shaders/effects/fluidsimulation_normal.frag",
+      "candidate": "shaders/effects/fluidsimulation_normal.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/dependencies/27",
+      "value": "shaders/effects/fluidsimulation_normal.vert",
+      "candidate": "shaders/effects/fluidsimulation_normal.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/fluidsimulation_curl.json",
+      "candidate": "materials/effects/fluidsimulation_curl.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_curl.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/fluidsimulation_vorticity.json",
+      "candidate": "materials/effects/fluidsimulation_vorticity.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_vorticity.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/fluidsimulation_divergence.json",
+      "candidate": "materials/effects/fluidsimulation_divergence.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_divergence.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/3/material",
+      "value": "materials/effects/fluidsimulation_clear.json",
+      "candidate": "materials/effects/fluidsimulation_clear.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_clear.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/4/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/5/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/6/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/7/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/8/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/9/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/10/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/11/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/12/material",
+      "value": "materials/effects/fluidsimulation_pressure.json",
+      "candidate": "materials/effects/fluidsimulation_pressure.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_pressure.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/13/material",
+      "value": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "candidate": "materials/effects/fluidsimulation_gradientsubtract.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_gradientsubtract.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/14/material",
+      "value": "materials/effects/fluidsimulation_advection.json",
+      "candidate": "materials/effects/fluidsimulation_advection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_advection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/15/material",
+      "value": "materials/effects/fluidsimulation_advection_dye.json",
+      "candidate": "materials/effects/fluidsimulation_advection_dye.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_advection_dye.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/16/material",
+      "value": "materials/effects/fluidsimulation_normal.json",
+      "candidate": "materials/effects/fluidsimulation_normal.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_normal.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/fluidsimulation/preview/effects/fluidsimulation/effect.json",
+      "pointer": "/passes/17/material",
+      "value": "materials/effects/fluidsimulation_combine.json",
+      "candidate": "materials/effects/fluidsimulation_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/fluidsimulation/preview/materials/effects/fluidsimulation_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/foliagesway/preview/effects/foliagesway/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/foliagesway.json",
+      "candidate": "materials/effects/foliagesway.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/foliagesway/preview/materials/effects/foliagesway.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/foliagesway/preview/effects/foliagesway/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/foliagesway.frag",
+      "candidate": "shaders/effects/foliagesway.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/foliagesway/preview/effects/foliagesway/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/foliagesway.vert",
+      "candidate": "shaders/effects/foliagesway.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/foliagesway/preview/effects/foliagesway/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/foliagesway.json",
+      "candidate": "materials/effects/foliagesway.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/foliagesway/preview/materials/effects/foliagesway.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/godrays_downsample2.json",
+      "candidate": "materials/effects/godrays_downsample2.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_downsample2.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/godrays_cast.json",
+      "candidate": "materials/effects/godrays_cast.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_cast.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/godrays_gaussian_x.json",
+      "candidate": "materials/effects/godrays_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "materials/effects/godrays_gaussian_y.json",
+      "candidate": "materials/effects/godrays_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "materials/effects/godrays_combine.json",
+      "candidate": "materials/effects/godrays_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "shaders/effects/godrays_downsample2.frag",
+      "candidate": "shaders/effects/godrays_downsample2.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/6",
+      "value": "shaders/effects/godrays_downsample2.vert",
+      "candidate": "shaders/effects/godrays_downsample2.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/7",
+      "value": "shaders/effects/godrays_cast.frag",
+      "candidate": "shaders/effects/godrays_cast.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/8",
+      "value": "shaders/effects/godrays_cast.vert",
+      "candidate": "shaders/effects/godrays_cast.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/9",
+      "value": "shaders/effects/godrays_gaussian.frag",
+      "candidate": "shaders/effects/godrays_gaussian.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/10",
+      "value": "shaders/effects/godrays_gaussian.vert",
+      "candidate": "shaders/effects/godrays_gaussian.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/11",
+      "value": "shaders/effects/godrays_combine.frag",
+      "candidate": "shaders/effects/godrays_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/dependencies/12",
+      "value": "shaders/effects/godrays_combine.vert",
+      "candidate": "shaders/effects/godrays_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/godrays_downsample2.json",
+      "candidate": "materials/effects/godrays_downsample2.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_downsample2.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/godrays_cast.json",
+      "candidate": "materials/effects/godrays_cast.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_cast.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/godrays_gaussian_x.json",
+      "candidate": "materials/effects/godrays_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/passes/3/material",
+      "value": "materials/effects/godrays_gaussian_y.json",
+      "candidate": "materials/effects/godrays_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/godrays/preview/effects/godrays/effect.json",
+      "pointer": "/passes/4/material",
+      "value": "materials/effects/godrays_combine.json",
+      "candidate": "materials/effects/godrays_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/godrays/preview/materials/effects/godrays_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/localcontrast_downsample4.json",
+      "candidate": "materials/effects/localcontrast_downsample4.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_downsample4.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/localcontrast_gaussian_x.json",
+      "candidate": "materials/effects/localcontrast_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/localcontrast_gaussian_y.json",
+      "candidate": "materials/effects/localcontrast_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "materials/effects/localcontrast_combine.json",
+      "candidate": "materials/effects/localcontrast_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "shaders/effects/localcontrast_downsample4.frag",
+      "candidate": "shaders/effects/localcontrast_downsample4.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "shaders/effects/localcontrast_downsample4.vert",
+      "candidate": "shaders/effects/localcontrast_downsample4.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/6",
+      "value": "shaders/effects/localcontrast_gaussian.frag",
+      "candidate": "shaders/effects/localcontrast_gaussian.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/7",
+      "value": "shaders/effects/localcontrast_gaussian.vert",
+      "candidate": "shaders/effects/localcontrast_gaussian.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/8",
+      "value": "shaders/effects/localcontrast_combine.frag",
+      "candidate": "shaders/effects/localcontrast_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/dependencies/9",
+      "value": "shaders/effects/localcontrast_combine.vert",
+      "candidate": "shaders/effects/localcontrast_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/localcontrast_downsample4.json",
+      "candidate": "materials/effects/localcontrast_downsample4.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_downsample4.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/passes/1/material",
+      "value": "materials/effects/localcontrast_gaussian_x.json",
+      "candidate": "materials/effects/localcontrast_gaussian_x.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_gaussian_x.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/localcontrast_gaussian_y.json",
+      "candidate": "materials/effects/localcontrast_gaussian_y.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_gaussian_y.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/localcontrast/preview/effects/localcontrast/effect.json",
+      "pointer": "/passes/3/material",
+      "value": "materials/effects/localcontrast_combine.json",
+      "candidate": "materials/effects/localcontrast_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/localcontrast/preview/materials/effects/localcontrast_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/motionblur_accumulation.json",
+      "candidate": "materials/effects/motionblur_accumulation.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/motionblur/preview/materials/effects/motionblur_accumulation.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/motionblur_combine.json",
+      "candidate": "materials/effects/motionblur_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/motionblur/preview/materials/effects/motionblur_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/motionblur_accumulation.frag",
+      "candidate": "shaders/effects/motionblur_accumulation.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "shaders/effects/motionblur_accumulation.vert",
+      "candidate": "shaders/effects/motionblur_accumulation.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "shaders/effects/motionblur_combine.frag",
+      "candidate": "shaders/effects/motionblur_combine.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/dependencies/5",
+      "value": "shaders/effects/motionblur_combine.vert",
+      "candidate": "shaders/effects/motionblur_combine.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/motionblur_accumulation.json",
+      "candidate": "materials/effects/motionblur_accumulation.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/motionblur/preview/materials/effects/motionblur_accumulation.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/motionblur/preview/effects/motionblur/effect.json",
+      "pointer": "/passes/2/material",
+      "value": "materials/effects/motionblur_combine.json",
+      "candidate": "materials/effects/motionblur_combine.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/motionblur/preview/materials/effects/motionblur_combine.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/nitro/preview/effects/nitro/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/nitro.json",
+      "candidate": "materials/effects/nitro.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/nitro/preview/materials/effects/nitro.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/nitro/preview/effects/nitro/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/nitro.frag",
+      "candidate": "shaders/effects/nitro.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/nitro/preview/effects/nitro/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/nitro.vert",
+      "candidate": "shaders/effects/nitro.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/nitro/preview/effects/nitro/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/nitro.json",
+      "candidate": "materials/effects/nitro.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/nitro/preview/materials/effects/nitro.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/opacity/preview/effects/opacity/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/opacity.json",
+      "candidate": "materials/effects/opacity.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/opacity/preview/materials/effects/opacity.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/opacity/preview/effects/opacity/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/opacity.frag",
+      "candidate": "shaders/effects/opacity.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/opacity/preview/effects/opacity/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/opacity.vert",
+      "candidate": "shaders/effects/opacity.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/opacity/preview/effects/opacity/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/opacity.json",
+      "candidate": "materials/effects/opacity.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/opacity/preview/materials/effects/opacity.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/perspective/preview/effects/perspective/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/perspective.json",
+      "candidate": "materials/effects/perspective.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/perspective/preview/materials/effects/perspective.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/perspective/preview/effects/perspective/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/perspective.frag",
+      "candidate": "shaders/effects/perspective.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/perspective/preview/effects/perspective/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/perspective.vert",
+      "candidate": "shaders/effects/perspective.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/perspective/preview/effects/perspective/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/perspective.json",
+      "candidate": "materials/effects/perspective.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/perspective/preview/materials/effects/perspective.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/colorkey.json",
+      "candidate": "materials/effects/colorkey.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/pulse/preview/materials/effects/colorkey.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/colorkey.frag",
+      "candidate": "shaders/effects/colorkey.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/colorkey/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/colorkey.vert",
+      "candidate": "shaders/effects/colorkey.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/colorkey/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/colorkey.json",
+      "candidate": "materials/effects/colorkey.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/pulse/preview/materials/effects/colorkey.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/pulse/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/pulse.json",
+      "candidate": "materials/effects/pulse.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/pulse/preview/materials/effects/pulse.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/pulse/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/pulse.frag",
+      "candidate": "shaders/effects/pulse.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/pulse/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/pulse.vert",
+      "candidate": "shaders/effects/pulse.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/pulse/preview/effects/pulse/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/pulse.json",
+      "candidate": "materials/effects/pulse.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/pulse/preview/materials/effects/pulse.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/reflection/preview/effects/reflection/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/reflection.json",
+      "candidate": "materials/effects/reflection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/reflection/preview/materials/effects/reflection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/reflection/preview/effects/reflection/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/reflection.frag",
+      "candidate": "shaders/effects/reflection.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/reflection/preview/effects/reflection/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/reflection.vert",
+      "candidate": "shaders/effects/reflection.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/reflection/preview/effects/reflection/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/reflection.json",
+      "candidate": "materials/effects/reflection.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/reflection/preview/materials/effects/reflection.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/skew/preview/effects/skew/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/skew.json",
+      "candidate": "materials/effects/skew.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/skew/preview/materials/effects/skew.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/skew/preview/effects/skew/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/skew.frag",
+      "candidate": "shaders/effects/skew.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/skew/preview/effects/skew/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/skew.vert",
+      "candidate": "shaders/effects/skew.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/skew/preview/effects/skew/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/skew.json",
+      "candidate": "materials/effects/skew.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/skew/preview/materials/effects/skew.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/tint/preview/effects/tint/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/tint.json",
+      "candidate": "materials/effects/tint.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/tint/preview/materials/effects/tint.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/tint/preview/effects/tint/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/tint.frag",
+      "candidate": "shaders/effects/tint.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/tint/preview/effects/tint/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/tint.vert",
+      "candidate": "shaders/effects/tint.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/tint/preview/effects/tint/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/tint.json",
+      "candidate": "materials/effects/tint.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/tint/preview/materials/effects/tint.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/transform/preview/effects/transform/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/transform.json",
+      "candidate": "materials/effects/transform.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/transform/preview/materials/effects/transform.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/transform/preview/effects/transform/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/transform.frag",
+      "candidate": "shaders/effects/transform.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/transform/preview/effects/transform/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/transform.vert",
+      "candidate": "shaders/effects/transform.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/transform/preview/effects/transform/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/transform.json",
+      "candidate": "materials/effects/transform.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/transform/preview/materials/effects/transform.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/waterflow.json",
+      "candidate": "materials/effects/waterflow.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterflow/preview/materials/effects/waterflow.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/waterflowphase.png",
+      "candidate": "materials/effects/waterflowphase.png",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/waterflowphase.tex-json",
+      "candidate": "materials/effects/waterflowphase.tex-json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "shaders/effects/waterflow.frag",
+      "candidate": "shaders/effects/waterflow.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "shaders/effects/waterflow.vert",
+      "candidate": "shaders/effects/waterflow.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterflow/preview/effects/waterflow/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/waterflow.json",
+      "candidate": "materials/effects/waterflow.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterflow/preview/materials/effects/waterflow.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/waterripple.json",
+      "candidate": "materials/effects/waterripple.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterripple/preview/materials/effects/waterripple.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/effects/waterripplenormal.png",
+      "candidate": "materials/effects/waterripplenormal.png",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "materials/effects/waterripplenormal.tex-json",
+      "candidate": "materials/effects/waterripplenormal.tex-json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/dependencies/3",
+      "value": "shaders/effects/waterripple.frag",
+      "candidate": "shaders/effects/waterripple.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/dependencies/4",
+      "value": "shaders/effects/waterripple.vert",
+      "candidate": "shaders/effects/waterripple.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterripple/preview/effects/waterripple/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/waterripple.json",
+      "candidate": "materials/effects/waterripple.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterripple/preview/materials/effects/waterripple.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterwaves/preview/effects/waterwaves/effect.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/effects/waterwaves.json",
+      "candidate": "materials/effects/waterwaves.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterwaves/preview/materials/effects/waterwaves.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterwaves/preview/effects/waterwaves/effect.json",
+      "pointer": "/dependencies/1",
+      "value": "shaders/effects/waterwaves.frag",
+      "candidate": "shaders/effects/waterwaves.frag",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterwaves/preview/effects/waterwaves/effect.json",
+      "pointer": "/dependencies/2",
+      "value": "shaders/effects/waterwaves.vert",
+      "candidate": "shaders/effects/waterwaves.vert",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "effects/waterwaves/preview/effects/waterwaves/effect.json",
+      "pointer": "/passes/0/material",
+      "value": "materials/effects/waterwaves.json",
+      "candidate": "materials/effects/waterwaves.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "effects/waterwaves/preview/materials/effects/waterwaves.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/presets/fern1.json",
+      "candidate": "materials/presets/fern1.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/fern/preview/materials/presets/fern1.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/dependencies/1",
+      "value": "materials/presets/fern1.tga",
+      "candidate": "materials/presets/fern1.tga",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/dependencies/2",
+      "value": "models/presets/fern1.json",
+      "candidate": "models/presets/fern1.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/fern/preview/models/presets/fern1.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/dependencies/3/file",
+      "value": "effects/foliagesway/effect.json",
+      "candidate": "effects/foliagesway/effect.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/fern/preview/effects/foliagesway/effect.json",
+          "source": "engine-assets"
+        },
+        {
+          "path": "effects/foliagesway/effect.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/objects/0/effects/0/file",
+      "value": "effects/foliagesway/effect.json",
+      "candidate": "effects/foliagesway/effect.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/fern/preview/effects/foliagesway/effect.json",
+          "source": "engine-assets"
+        },
+        {
+          "path": "effects/foliagesway/effect.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/fern/preview/presets/fern/preset.json",
+      "pointer": "/objects/0/image",
+      "value": "models/presets/fern1.json",
+      "candidate": "models/presets/fern1.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/fern/preview/models/presets/fern1.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/snow/previewflat/presets/snowparticles/preset.json",
+      "pointer": "/dependencies/0",
+      "value": "materials/presets/snowparticles.json",
+      "candidate": "materials/presets/snowparticles.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/snow/previewflat/materials/presets/snowparticles.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/snow/previewflat/presets/snowparticles/preset.json",
+      "pointer": "/dependencies/1",
+      "value": "particles/presets/snowparticles.json",
+      "candidate": "particles/presets/snowparticles.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/snow/previewflat/particles/presets/snowparticles.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/snow/previewflat/presets/snowparticles/preset.json",
+      "pointer": "/objects/0/particle",
+      "value": "particles/presets/snowparticles.json",
+      "candidate": "particles/presets/snowparticles.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/snow/previewflat/particles/presets/snowparticles.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/0",
+      "value": "materials/presets/dripping_water.json",
+      "candidate": "materials/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/1",
+      "value": "particles/presets/dripping_water.json",
+      "candidate": "particles/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/2",
+      "value": "materials/presets/dripping_water_refract.json",
+      "candidate": "materials/presets/dripping_water_refract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/3",
+      "value": "particles/presets/dripping_water_refract.json",
+      "candidate": "particles/presets/dripping_water_refract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/4",
+      "value": "materials/presets/dripping_water_splash.json",
+      "candidate": "materials/presets/dripping_water_splash.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/5",
+      "value": "particles/presets/dripping_water_splash.json",
+      "candidate": "particles/presets/dripping_water_splash.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/6",
+      "value": "materials/presets/dripping_water_droplets.json",
+      "candidate": "materials/presets/dripping_water_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/7",
+      "value": "particles/presets/dripping_water_droplets.json",
+      "candidate": "particles/presets/dripping_water_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/0/objects/0/particle",
+      "value": "particles/presets/dripping_water.json",
+      "candidate": "particles/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/0",
+      "value": "materials/presets/dripping_water_single.json",
+      "candidate": "materials/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/1",
+      "value": "particles/presets/dripping_water_single.json",
+      "candidate": "particles/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/2",
+      "value": "materials/presets/dripping_water_droplets_single.json",
+      "candidate": "materials/presets/dripping_water_droplets_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/3",
+      "value": "particles/presets/dripping_water_droplets_single.json",
+      "candidate": "particles/presets/dripping_water_droplets_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/1/objects/0/particle",
+      "value": "particles/presets/dripping_water_single.json",
+      "candidate": "particles/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/2/dependencies/0",
+      "value": "materials/presets/water_droplets_periodic.json",
+      "candidate": "materials/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/2/dependencies/1",
+      "value": "particles/presets/water_droplets_periodic.json",
+      "candidate": "particles/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/2/objects/0/particle",
+      "value": "particles/presets/water_droplets_periodic.json",
+      "candidate": "particles/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/3/dependencies/0",
+      "value": "materials/presets/water_faucet.json",
+      "candidate": "materials/presets/water_faucet.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/3/dependencies/1",
+      "value": "particles/presets/water_faucet.json",
+      "candidate": "particles/presets/water_faucet.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/3/objects/0/particle",
+      "value": "particles/presets/water_faucet.json",
+      "candidate": "particles/presets/water_faucet.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/4/dependencies/0",
+      "value": "materials/presets/water_faucet.json",
+      "candidate": "materials/presets/water_faucet.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/4/dependencies/1",
+      "value": "particles/presets/water_faucet_large.json",
+      "candidate": "particles/presets/water_faucet_large.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/4/objects/0/particle",
+      "value": "particles/presets/water_faucet_large.json",
+      "candidate": "particles/presets/water_faucet_large.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/0",
+      "value": "materials/presets/water_impact.json",
+      "candidate": "materials/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/1",
+      "value": "particles/presets/water_impact.json",
+      "candidate": "particles/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/2",
+      "value": "materials/presets/water_impact_droplets.json",
+      "candidate": "materials/presets/water_impact_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/3",
+      "value": "particles/presets/water_impact_droplets.json",
+      "candidate": "particles/presets/water_impact_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/preset.json",
+      "pointer": "/variants/5/objects/0/particle",
+      "value": "particles/presets/water_impact.json",
+      "candidate": "particles/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/0",
+      "value": "materials/presets/dripping_water.json",
+      "candidate": "materials/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/1",
+      "value": "particles/presets/dripping_water.json",
+      "candidate": "particles/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/2",
+      "value": "materials/presets/dripping_water_refract.json",
+      "candidate": "materials/presets/dripping_water_refract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/3",
+      "value": "particles/presets/dripping_water_refract.json",
+      "candidate": "particles/presets/dripping_water_refract.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/4",
+      "value": "materials/presets/dripping_water_splash.json",
+      "candidate": "materials/presets/dripping_water_splash.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/5",
+      "value": "particles/presets/dripping_water_splash.json",
+      "candidate": "particles/presets/dripping_water_splash.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/6",
+      "value": "materials/presets/dripping_water_droplets.json",
+      "candidate": "materials/presets/dripping_water_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/dependencies/7",
+      "value": "particles/presets/dripping_water_droplets.json",
+      "candidate": "particles/presets/dripping_water_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/0/objects/0/particle",
+      "value": "particles/presets/dripping_water.json",
+      "candidate": "particles/presets/dripping_water.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/0",
+      "value": "materials/presets/dripping_water_single.json",
+      "candidate": "materials/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/1",
+      "value": "particles/presets/dripping_water_single.json",
+      "candidate": "particles/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/2",
+      "value": "materials/presets/dripping_water_droplets_single.json",
+      "candidate": "materials/presets/dripping_water_droplets_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/1/dependencies/3",
+      "value": "particles/presets/dripping_water_droplets_single.json",
+      "candidate": "particles/presets/dripping_water_droplets_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/1/objects/0/particle",
+      "value": "particles/presets/dripping_water_single.json",
+      "candidate": "particles/presets/dripping_water_single.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/2/dependencies/0",
+      "value": "materials/presets/water_droplets_periodic.json",
+      "candidate": "materials/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/2/dependencies/1",
+      "value": "particles/presets/water_droplets_periodic.json",
+      "candidate": "particles/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/2/objects/0/particle",
+      "value": "particles/presets/water_droplets_periodic.json",
+      "candidate": "particles/presets/water_droplets_periodic.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/3/dependencies/0",
+      "value": "materials/presets/water_faucet.json",
+      "candidate": "materials/presets/water_faucet.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/water/previewwaterfaucet/materials/presets/water_faucet.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/3/dependencies/1",
+      "value": "particles/presets/water_faucet.json",
+      "candidate": "particles/presets/water_faucet.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/water/previewwaterfaucet/particles/presets/water_faucet.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/3/objects/0/particle",
+      "value": "particles/presets/water_faucet.json",
+      "candidate": "particles/presets/water_faucet.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/water/previewwaterfaucet/particles/presets/water_faucet.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/4/dependencies/0",
+      "value": "materials/presets/water_faucet.json",
+      "candidate": "materials/presets/water_faucet.json",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "presets/water/previewwaterfaucet/materials/presets/water_faucet.json",
+          "source": "engine-assets"
+        }
+      ]
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/4/dependencies/1",
+      "value": "particles/presets/water_faucet_large.json",
+      "candidate": "particles/presets/water_faucet_large.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/4/objects/0/particle",
+      "value": "particles/presets/water_faucet_large.json",
+      "candidate": "particles/presets/water_faucet_large.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/0",
+      "value": "materials/presets/water_impact.json",
+      "candidate": "materials/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/1",
+      "value": "particles/presets/water_impact.json",
+      "candidate": "particles/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/2",
+      "value": "materials/presets/water_impact_droplets.json",
+      "candidate": "materials/presets/water_impact_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/5/dependencies/3",
+      "value": "particles/presets/water_impact_droplets.json",
+      "candidate": "particles/presets/water_impact_droplets.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-assets",
+      "path": "presets/water/previewwaterfaucet/presets/water/preset.json",
+      "pointer": "/variants/5/objects/0/particle",
+      "value": "particles/presets/water_impact.json",
+      "candidate": "particles/presets/water_impact.json",
+      "status": "not_found_in_scope",
+      "matches": []
+    },
+    {
+      "source": "engine-projects",
+      "path": "defaultprojects/fantasticcar/materials/car/glass.json",
+      "pointer": "/passes/0/textures/0",
+      "value": "car/glass",
+      "candidate": "materials/car/glass.tex",
+      "status": "candidate_found",
+      "matches": [
+        {
+          "path": "defaultprojects/fantasticcar/materials/car/glass.tex",
+          "source": "engine-projects"
+        }
+      ]
+    }
+  ]
+}

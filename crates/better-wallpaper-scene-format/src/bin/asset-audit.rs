@@ -14,6 +14,9 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+#[path = "asset_audit/json.rs"]
+mod audit_json;
+
 #[derive(Clone, Debug, Parser, Serialize)]
 struct Limits {
     /// Maximum directory entries inspected across all loose roots.
@@ -438,9 +441,13 @@ impl Audit {
                 record.failure_class = Some("json_byte_limit".into());
                 self.complete = false;
             } else {
-                match serde_json::from_slice::<Value>(bytes) {
-                    Ok(value) => {
-                        record.status = "json_syntax_valid";
+                match audit_json::parse(bytes) {
+                    Ok((value, extended)) => {
+                        record.status = if extended {
+                            "json_extended_syntax_valid"
+                        } else {
+                            "json_syntax_valid"
+                        };
                         self.json_references(source, path, "", &value, None);
                     }
                     Err(error) => {

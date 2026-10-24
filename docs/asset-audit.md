@@ -79,7 +79,7 @@ Classification covers volume layouts, multiple images, off-axis frames, unknown
 versions/formats, limits, malformed data and invalid pixel payloads. Passing a
 pixel-size check is not GPU upload, media decoding or visual validation.
 
-JSON inspection is strict syntax checking plus **candidate** reference discovery,
+JSON inspection is bounded syntax checking plus **candidate** reference discovery,
 not complete scene/material/script semantic validation. It records literal strings
 under `image`, `material`, `model`, `puppet`, `particle`, `sound`, `video`, `file`,
 `textures` and `dependencies`, including array items and their JSON pointers.
@@ -95,8 +95,22 @@ All matching paths are retained without claiming runtime lookup priority.
 missing. Loose PNG/audio/shader files, dynamic/property/script-generated paths,
 unlisted JSON fields, object-style texture maps, TEX-embedded editor JSON and
 references inside rejected JSON remain outside this reference-discovery subset.
-Comments and trailing commas are reported as strict JSON failures, without
-asserting that Wallpaper Engine rejects those files.
+Strict JSON retains `json_syntax_valid`. Documents requiring `//` line comments,
+non-nested `/* ... */` block comments or trailing commas in objects/arrays use
+`json_extended_syntax_valid`. These extensions are audit-only: runtime scene and
+material parsers are unchanged, and accepted syntax does not establish playback.
+Comments/commas become whitespace in a bounded temporary copy, preserving strings
+and error line/byte columns. Hashes, sizes and package offsets describe original
+bytes. UTF-8 validation, the 2 MiB input cap, serde's nesting limit and all existing
+reference limits still apply. Unsupported syntax (including single-quoted strings,
+unquoted keys and nonfinite numbers), unterminated comments and malformed JSON
+retain `invalid_json`, emit no partial references and make coverage incomplete.
+
+The original 32 JSON failures are resolved for the same local input identities:
+302 additional candidates are recorded in the
+[validation delta](validation/a0-json-extensions.md). `complete: true` only means
+the selected inventory and documented candidate-field subset completed; it does
+not imply discovery of every runtime dependency.
 
 The manifest contains metadata, hashes and selected path strings only. Do not
 add proprietary resource bytes or full JSON documents to the repository.
@@ -113,3 +127,5 @@ Synthetic tests cover hash/offset identity, the scene→model→material→textu
 chain, shared roots, isolation between packages, unsafe paths, deterministic
 output, malformed and unsupported TEX, cumulative mip budgets, traversal/read/
 record/reference/JSON limits, symlinks and rejected archives.
+Extended-JSON cases additionally cover loose/package references, escaped strings,
+Unicode, URLs, comment-only input, invalid tokens, nesting limits and error locations.

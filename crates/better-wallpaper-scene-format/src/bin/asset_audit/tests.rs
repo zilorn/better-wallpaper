@@ -271,9 +271,16 @@ fn symlinks_and_bad_packages_never_load_external_payloads() {
 #[test]
 fn reference_and_json_limits_remain_visible() {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("a.json"), br#"{"textures":["a","b"]}"#).unwrap();
+    fs::write(
+        dir.path().join("a.json"),
+        br#"{/*comment*/"textures":["a","b",]}"#,
+    )
+    .unwrap();
     fs::write(dir.path().join("b.json"), b"{").unwrap();
-    fs::write(dir.path().join("c.json"), vec![b' '; 2 * 1024 * 1024 + 1]).unwrap();
+    let mut oversized = b"/*".to_vec();
+    oversized.extend(vec![b' '; 2 * 1024 * 1024]);
+    oversized.extend(b"*/{}");
+    fs::write(dir.path().join("c.json"), oversized).unwrap();
     let mut input = args();
     input.root.push(source("root", dir.path()));
     input.limits.max_references = 1;
@@ -296,4 +303,135 @@ fn invalid_source_selection_is_rejected() {
     let mut input = args();
     input.root = vec!["same=/tmp".into(), "same=/tmp".into()];
     assert!(run(input).is_err());
+}
+
+#[test]
+fn extended_json_discovers_references_in_loose_files_and_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let document = br#"{
+        // A comment must not become a dependency: "image": "ignored.json"
+        "image": "models/a.json", /* preserve the real value */
+        "textures": ["a", /* trailing comment */],
+    }"#;
+    fs::write(dir.path().join("scene.json"), document).unwrap();
+    let pkg = dir.path().join("scene.pkg");
+    fs::write(&pkg, package(&[("scene.json", document)])).unwrap();
+    let mut input = args();
+    input.root.push(source("loose", dir.path()));
+    input.pkg.push(source("packed", &pkg));
+    let audit = run(input).unwrap();
+    assert!(audit.complete);
+    assert_eq!(audit.summary["json:json_extended_syntax_valid"], 2);
+    assert_eq!(audit.references.len(), 4);
+    for name in ["loose", "packed"] {
+        let record = audit
+            .records
+            .iter()
+            .find(|r| r.source == name && r.path == "scene.json")
+            .unwrap();
+        assert_eq!(record.sha256, Some(hash(document)));
+        assert_eq!(record.size, document.len() as u64);
+        assert!(
+            audit
+                .references
+                .iter()
+                .any(|r| r.source == name && r.pointer == "/image" && r.value == "models/a.json")
+        );
+        assert!(
+            audit
+                .references
+                .iter()
+                .any(|r| r.source == name && r.pointer == "/textures/0" && r.value == "a")
+        );
+    }
+}
+
+#[test]
+fn extended_json_preserves_strings_and_strict_json_classification() {
+    let value = json!({"image": "https://example.test/a//b/*c*/,]}", "escaped": "\\\"//still a string", "unicode": "壁纸"});
+    let strict = serde_json::to_vec(&value).unwrap();
+    assert_eq!(audit_json::parse(&strict).unwrap(), (value.clone(), false));
+    let mut extended = b"/* prefix */\r\n".to_vec();
+    extended.extend(&strict[..strict.len() - 1]);
+    extended.extend(b", /* suffix */ } // EOF");
+    assert_eq!(audit_json::parse(&extended).unwrap(), (value, true));
+    for document in [
+        "[1,]",
+        "[1,//line\r\n]",
+        "[1,/* block */]",
+        "[1,/* block\ncomment */]",
+        "/*empty*/ []",
+        "{\"a\":[{\"b\":true,},],}",
+    ] {
+        assert!(
+            audit_json::parse(document.as_bytes()).unwrap().1,
+            "{document}"
+        );
+    }
+}
+
+#[test]
+fn extended_json_rejects_malformed_tokens_and_unterminated_comments() {
+    for document in [
+        "{,}",
+        "[,]",
+        "[1,,]",
+        "{\"a\":,}",
+        "{\"a\":1,,}",
+        "[1/*gap*/2]",
+        "[tr/*gap*/ue]",
+        "[1,\u{000b}]",
+        "{/*prefix*/ unquoted:1}",
+        "{'single':1,}",
+        "[NaN,]",
+        "[0x10,]",
+        "{\"a\":1,]",
+        "[1,}",
+        "[\"unterminated\\\"/*comment*/]",
+        "{} /*unterminated",
+        "{} /*",
+        "{} //comment\n junk",
+        "{} /* outer /* nested */ still outer */",
+        "/* only a comment */",
+    ] {
+        assert!(
+            audit_json::parse(document.as_bytes()).is_err(),
+            "{document}"
+        );
+    }
+    assert!(audit_json::parse(b"{} // \xff").is_err());
+    let deep = format!("/*comment*/{}0{}", "[".repeat(128), "]".repeat(128));
+    assert!(
+        audit_json::parse(deep.as_bytes())
+            .unwrap_err()
+            .to_string()
+            .contains("recursion limit")
+    );
+}
+
+#[test]
+fn extended_json_errors_keep_original_line_and_column() {
+    let error = audit_json::parse(b"{\n/* x */\"a\": [1,],\n\"b\": !\n}").unwrap_err();
+    let error = error.downcast_ref::<serde_json::Error>().unwrap();
+    assert_eq!((error.line(), error.column()), (3, 6));
+    assert_eq!(
+        audit_json::parse(b"{}\n  /*open").unwrap_err().to_string(),
+        "unterminated block comment at line 2 column 3"
+    );
+}
+
+#[test]
+fn rejected_extended_json_does_not_emit_partial_references() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("broken.json"),
+        b"{\"image\": \"hidden.json\",} /*open",
+    )
+    .unwrap();
+    let mut input = args();
+    input.root.push(source("broken", dir.path()));
+    let audit = run(input).unwrap();
+    assert!(!audit.complete);
+    assert!(audit.references.is_empty());
+    assert_eq!(audit.summary["failure:invalid_json"], 1);
 }
