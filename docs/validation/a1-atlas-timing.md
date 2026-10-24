@@ -1,6 +1,6 @@
 # A1 fractional atlas animation timing
 
-Date: 2026-10-24.
+Date: 2026-10-24. Implementation commit: `2ee21a2`.
 
 ## Reproduction and correction
 
