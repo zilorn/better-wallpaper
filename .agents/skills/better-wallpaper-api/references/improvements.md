@@ -1,6 +1,6 @@
 # Management API Improvements
 
-## Native GTK Desktop — Implemented, Specialized Property Editors Pending
+## Native GTK Desktop and Property Editors — Implemented
 
 `better-wallpaper-gtk` provides the installed desktop command with native widgets;
 the old Tauri client has been removed, while the web UI remains available for
@@ -11,11 +11,12 @@ still has no revision/conditional-write mechanism; completion of atomic conflict
 protection requires a daemon-supported revision checked by PUT plus concurrent
 writer tests. A client-only GET/PUT merge cannot close that race.
 
-`ui.rs::render_properties_for` currently presents project properties as text
-entries with metadata tooltips. A follow-up should provide type-specific native
-controls and conditional visibility equivalent to the retained web consumer;
-acceptance requires bool/slider/combo/color/file fixtures and conditional updates
-without losing overrides. Existing backend support/limitations are unchanged.
+`properties.rs` supplies native bool/slider/combo/color/file/text editors while
+preserving string-valued overrides. Conditional visibility updates immediately
+and never drops hidden drafts. Unknown types/invalid values retain text editing;
+unknown combo values remain selectable. Display regression fixtures verify typed
+edits, fractional values, conditional hiding, refresh, save/reset, preservation of
+unusual overrides and controller cleanup. Existing backend limitations remain.
 
 ## Incremental Library Index — Resolved
 

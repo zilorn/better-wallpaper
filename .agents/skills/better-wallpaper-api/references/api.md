@@ -63,8 +63,11 @@ Save changes; switching scenes clears property overrides. Backend changes report
 restart-required without claiming a runtime switch.
 
 See [GTK client](../../../../docs/gtk-desktop.md) for commands, display tests and
-remaining UI limitations. Property fields currently use text entries with
-metadata tooltips; conditional visibility and specialized editors remain pending.
+remaining UI limitations. Property fields use native toggles, decimal numeric
+controls, dropdowns, color choosers, file pickers and text entries. Simple
+`key.value ==/!= literal` conditions update visibility without losing hidden
+overrides. All wire values remain strings; unknown types or invalid typed
+values use text, and unknown combo values remain selectable.
 
 The daemon owns the only tray, retaining pause/resume, persistent mute and
 backend reload. Its launcher starts the sibling desktop binary with the current

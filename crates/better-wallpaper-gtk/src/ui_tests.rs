@@ -46,6 +46,37 @@ fn screenshot(ui: &Desktop, name: &str) {
         .unwrap();
 }
 
+fn scene_properties() -> Value {
+    json!([
+        {"key":"speed","text":"Animation speed","prop_type":{"kind":"slider","min":0,"max":10,"step":0.25},"value":1,"condition":"enabled.value == true"},
+        {"key":"enabled","text":"Enable animation","prop_type":{"kind":"bool"},"value":false},
+        {"key":"mode","text":"Mode","prop_type":{"kind":"combo","options":[["Slow", "slow"],["Fast", "fast"]]},"value":"slow"},
+        {"key":"tint","text":"Tint","prop_type":{"kind":"color"},"value":"1 0 0"},
+        {"key":"texture","text":"Texture","prop_type":{"kind":"file"},"value":"textures/original.png","condition":"mode.value == 'fast'"},
+        {"key":"caption","text":"Caption","prop_type":{"kind":"text_input"},"value":"Hello"},
+        {"key":"future/key~","text":"Future property","prop_type":{"kind":"future"},"value":"keep"}
+    ])
+}
+
+fn property_input(ui: &Desktop, key: &str) -> PropertyInput {
+    let pointer = format!(
+        "/scene/properties/{}",
+        key.replace('~', "~0").replace('/', "~1")
+    );
+    ui.property_fields
+        .borrow()
+        .iter()
+        .find_map(|field| {
+            if field.pointer == pointer
+                && let Input::Property(input) = &field.input
+            {
+                return Some(input.clone());
+            }
+            None
+        })
+        .unwrap()
+}
+
 #[test]
 #[ignore = "Requires GTK display and session bus; run under dbus-run-session and xvfb-run"]
 fn native_window_connects_edits_saves_filters_and_recovers() {
@@ -110,7 +141,7 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
                     json!({})
                 }
                 ("GET", "/api/v1/library") => {
-                    json!({"entries":(0..60).map(|i| json!({"name":format!("Wallpaper {:02}", i+1),"path":format!("/wallpapers/{i}.mp4"),"wallpaper_type":if i == 0 {"scene"} else {"video"},"engine_mode":i==0,"size_bytes":3145728,"scene_compatibility":if i==0 {json!({"level":2,"supported_features":["2D layers"],"unsupported_features":["Particles"],"warnings":["Verify on the selected backend"]})} else {Value::Null},"scene_properties":if i==0 {json!([{"key":"speed","text":"Animation speed","prop_type":{"kind":"slider","min":0,"max":10},"value":1}])} else {json!([])}})).collect::<Vec<_>>(),"roots":["~/Videos/Wallpapers"],"engine_roots":[],"truncated":false})
+                    json!({"entries":(0..60).map(|i| json!({"name":format!("Wallpaper {:02}", i+1),"path":format!("/wallpapers/{i}.mp4"),"wallpaper_type":if i == 0 {"scene"} else {"video"},"engine_mode":i==0,"size_bytes":3145728,"scene_compatibility":if i==0 {json!({"level":2,"supported_features":["2D layers"],"unsupported_features":["Particles"],"warnings":["Verify on the selected backend"]})} else {Value::Null},"scene_properties":if i==0 {scene_properties()} else {json!([])}})).collect::<Vec<_>>(),"roots":["~/Videos/Wallpapers"],"engine_roots":[],"truncated":false})
                 }
                 ("GET", "/api/v1/logs") => {
                     json!({"lines":["INFO Wallpaper service started", "DEBUG Playback ready"]})
@@ -299,10 +330,55 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     assert!(ui.dirty());
     assert_eq!(ui.draft().unwrap()["wallpaper"]["engine_mode"], true);
     assert_eq!(ui.draft().unwrap()["scene"]["properties"], json!({}));
-    let Input::Text(speed) = ui.property_fields.borrow()[0].input.clone() else {
+    assert!(!ui.property_rows.borrow()[0].0.is_visible());
+    assert!(!ui.property_rows.borrow()[4].0.is_visible());
+    let PropertyInput::Bool(enabled) = property_input(&ui, "enabled") else {
         panic!()
     };
-    speed.set_text("2");
+    enabled.set_active(true);
+    assert!(ui.property_rows.borrow()[0].0.is_visible());
+    let PropertyInput::Number(speed) = property_input(&ui, "speed") else {
+        panic!()
+    };
+    speed.set_value(2.5);
+    let PropertyInput::Choice(mode, _) = property_input(&ui, "mode") else {
+        panic!()
+    };
+    mode.set_selected(1);
+    assert!(ui.property_rows.borrow()[4].0.is_visible());
+    let PropertyInput::Color(tint) = property_input(&ui, "tint") else {
+        panic!()
+    };
+    tint.set_rgba(&gdk::RGBA::new(0.25, 0.5, 1.0, 1.0));
+    tint.emit_by_name::<()>("color-set", &[]);
+    let PropertyInput::Text(texture) = property_input(&ui, "texture") else {
+        panic!()
+    };
+    texture.set_text("textures/new.png");
+    let PropertyInput::Text(caption) = property_input(&ui, "caption") else {
+        panic!()
+    };
+    caption.set_text("New caption");
+    let PropertyInput::Text(future) = property_input(&ui, "future/key~") else {
+        panic!()
+    };
+    future.set_text("preserved");
+    // Conditional hiding never removes unsaved edits or converts string values.
+    enabled.set_active(false);
+    mode.set_selected(0);
+    assert!(!ui.property_rows.borrow()[0].0.is_visible());
+    assert!(!ui.property_rows.borrow()[4].0.is_visible());
+    assert_eq!(ui.draft().unwrap()["scene"]["properties"]["speed"], "2.5");
+    ui.refresh_library();
+    pump_until("property drafts survive refresh", || {
+        !ui.library_pending.get()
+    });
+    assert_eq!(
+        ui.draft().unwrap()["scene"]["properties"]["texture"],
+        "textures/new.png"
+    );
+    enabled.set_active(true);
+    mode.set_selected(1);
     ui.outputs.add("DP-1", true);
     // A concurrent tray mute update must survive this client's wallpaper save.
     config.lock().unwrap()["wallpaper"]["muted"] = json!(false);
@@ -318,13 +394,47 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     );
     assert_eq!(
         config.lock().unwrap()["scene"]["properties"],
-        json!({"speed":"2"})
+        json!({"speed":"2.5", "enabled":"true", "mode":"fast", "tint":"0.25 0.5 1", "texture":"textures/new.png", "caption":"New caption", "future/key~":"preserved"})
     );
     assert_eq!(
         config.lock().unwrap()["outputs"],
         json!([{"name":"DP-1","enabled":true}])
     );
     screenshot(&ui, "playback");
+    let playback_scroll = ui
+        .stack
+        .child_by_name("wallpaper")
+        .unwrap()
+        .downcast::<gtk::ScrolledWindow>()
+        .unwrap();
+    let adjustment = playback_scroll.vadjustment();
+    adjustment.set_value(adjustment.upper() - adjustment.page_size());
+    screenshot(&ui, "properties");
+
+    ui.reset_property_overrides();
+    assert_eq!(ui.draft().unwrap()["scene"]["properties"], json!({}));
+    assert!(!ui.property_rows.borrow()[0].0.is_visible());
+    assert!(!ui.property_rows.borrow()[4].0.is_visible());
+    ui.save.emit_clicked();
+    pump_until("property defaults saved", || !ui.busy.get());
+    assert_eq!(config.lock().unwrap()["scene"]["properties"], json!({}));
+
+    // Loading unusual existing overrides must never normalize them on save.
+    let original = ui.baseline.borrow().clone();
+    let mut unusual = original.clone();
+    unusual["scene"]["properties"] = json!({"speed":"1.234567890123", "enabled":"future-bool", "tint":"future-color", "mode":"removed-option"});
+    ui.load_config(unusual.clone());
+    assert!(!ui.dirty());
+    assert_eq!(ui.draft().unwrap(), unusual);
+    assert!(matches!(
+        property_input(&ui, "enabled"),
+        PropertyInput::Text(_)
+    ));
+    assert!(matches!(
+        property_input(&ui, "tint"),
+        PropertyInput::Text(_)
+    ));
+    ui.load_config(original);
 
     let backend = ui
         .fields

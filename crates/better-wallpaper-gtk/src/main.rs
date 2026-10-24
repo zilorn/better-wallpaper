@@ -1,5 +1,6 @@
 mod client;
 mod i18n;
+mod properties;
 mod ui;
 
 use clap::Parser;

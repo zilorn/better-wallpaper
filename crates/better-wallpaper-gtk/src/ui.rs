@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use tracing::{info, warn};
 
 use crate::client::{Api, Entry, Library, Status, select_wallpaper};
+use crate::properties::{PropertyInput, property_value, property_visible};
 
 const LIBRARY_BATCH_SIZE: usize = 12;
 const THUMBNAIL_CONCURRENCY: usize = 4;
@@ -34,6 +35,7 @@ pub struct Desktop {
     outputs: Outputs,
     properties: gtk::Box,
     property_fields: RefCell<Vec<Field>>,
+    property_rows: RefCell<Vec<(gtk::Box, Option<String>)>>,
     stack: gtk::Stack,
     content: gtk::Box,
     notice: gtk::Label,
@@ -75,6 +77,7 @@ enum Input {
     Number(gtk::SpinButton),
     Choice(gtk::DropDown, Vec<String>),
     Paths(gtk::TextView),
+    Property(PropertyInput),
 }
 
 struct Field {
@@ -87,6 +90,7 @@ struct Field {
 impl Field {
     fn read(&self) -> Value {
         match &self.input {
+            Input::Property(input) => json!(input.read()),
             Input::Text(entry) => json!(entry.text().as_str()),
             Input::Bool(toggle) => json!(toggle.is_active()),
             Input::Number(spin) => json!(spin.value_as_int()),
@@ -112,6 +116,8 @@ impl Field {
             .filter(|value| !value.is_null())
             .unwrap_or(&self.default);
         match &self.input {
+            // Property editors are constructed with the current string value.
+            Input::Property(_) => {}
             Input::Text(entry) => entry.set_text(value.as_str().unwrap_or_default()),
             Input::Bool(toggle) => toggle.set_active(value.as_bool().unwrap_or(false)),
             Input::Number(spin) => spin.set_value(value.as_f64().unwrap_or(0.0)),
@@ -408,6 +414,7 @@ impl Desktop {
             outputs,
             properties,
             property_fields: RefCell::default(),
+            property_rows: RefCell::default(),
             stack,
             content,
             notice,
@@ -640,15 +647,7 @@ impl Desktop {
         let weak = Rc::downgrade(self);
         reset.connect_clicked(move |_| {
             if let Some(ui) = weak.upgrade() {
-                ui.reset_properties.set(true);
-                if let Ok(mut draft) = ui.draft() {
-                    draft["scene"]["properties"] = json!({});
-                    ui.render_properties_for(&draft);
-                    ui.message(
-                        tr("Property overrides cleared. Save changes to apply the defaults."),
-                        false,
-                    );
-                }
+                ui.reset_property_overrides();
             }
         });
 
@@ -819,7 +818,7 @@ impl Desktop {
             || self.outputs.value() != *self.outputs.initial.borrow()
     }
 
-    fn load_config(&self, config: Value) {
+    fn load_config(self: &Rc<Self>, config: Value) {
         self.pending_selection.borrow_mut().take();
         self.reset_properties.set(false);
         for field in self.fields.borrow().iter() {
@@ -830,16 +829,17 @@ impl Desktop {
         self.render_properties_for(&config);
     }
 
-    fn render_properties(&self) {
+    fn render_properties(self: &Rc<Self>) {
         let config = self
             .draft()
             .unwrap_or_else(|_| self.baseline.borrow().clone());
         self.render_properties_for(&config);
     }
 
-    fn render_properties_for(&self, config: &Value) {
+    fn render_properties_for(self: &Rc<Self>, config: &Value) {
         clear_box(&self.properties);
         self.property_fields.borrow_mut().clear();
+        self.property_rows.borrow_mut().clear();
         let library = self.library.borrow();
         let Some(entry) = library
             .entries
@@ -860,31 +860,71 @@ impl Desktop {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .unwrap_or(key);
-            // Values in scene.properties are strings, even for numbers/bools.
-            let default = property["value"]
+            let default = property_value(&property["value"]);
+            let current = config["scene"]["properties"][key]
                 .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    if property["value"].is_null() {
-                        String::new()
-                    } else {
-                        property["value"].to_string()
-                    }
-                });
-            let input = gtk::Entry::builder().hexpand(true).build();
-            input.set_tooltip_text(Some(&format!("{} · {}", key, property["prop_type"])));
-            row(&self.properties, label, &input);
+                .unwrap_or(&default);
+            let (input, widget) = PropertyInput::new(property, current, &self.window);
+            widget.set_tooltip_text(Some(&format!("{} · {}", key, property["prop_type"])));
+            let property_row = row(&self.properties, label, &widget);
+            self.property_rows.borrow_mut().push((
+                property_row,
+                property["condition"].as_str().map(str::to_owned),
+            ));
             let field = Field {
                 pointer: format!(
                     "/scene/properties/{}",
                     key.replace('~', "~0").replace('/', "~1")
                 ),
-                input: Input::Text(input),
+                input: Input::Property(input),
                 default: json!(default),
                 initial: RefCell::new(Value::Null),
             };
             field.load(config);
             self.property_fields.borrow_mut().push(field);
+        }
+        for field in self.property_fields.borrow().iter() {
+            if let Input::Property(input) = &field.input {
+                let weak = Rc::downgrade(self);
+                input.connect_changed(Rc::new(move || {
+                    if let Some(ui) = weak.upgrade() {
+                        ui.refresh_property_visibility();
+                    }
+                }));
+            }
+        }
+        self.refresh_property_visibility();
+    }
+
+    fn reset_property_overrides(self: &Rc<Self>) {
+        self.reset_properties.set(true);
+        if let Ok(mut draft) = self.draft() {
+            draft["scene"]["properties"] = json!({});
+            self.render_properties_for(&draft);
+            self.message(
+                tr("Property overrides cleared. Save changes to apply the defaults."),
+                false,
+            );
+        }
+    }
+
+    fn refresh_property_visibility(&self) {
+        let values = self
+            .property_fields
+            .borrow()
+            .iter()
+            .map(|field| {
+                let key = field
+                    .pointer
+                    .strip_prefix("/scene/properties/")
+                    .unwrap_or_default()
+                    .replace("~1", "/")
+                    .replace("~0", "~");
+                (key, property_value(&field.read()))
+            })
+            .collect();
+        for (row, condition) in self.property_rows.borrow().iter() {
+            row.set_visible(property_visible(condition.as_deref(), &values));
         }
     }
 
@@ -1347,7 +1387,7 @@ impl Desktop {
         }
     }
 
-    fn choose(&self, entry: &Entry) {
+    fn choose(self: &Rc<Self>, entry: &Entry) {
         let mut draft = match self.draft() {
             Ok(value) => value,
             Err(error) => {
@@ -1544,7 +1584,7 @@ fn add_page(stack: &gtk::Stack, child: &gtk::Box, name: &str, title: &str) -> gt
     stack.add_titled(&scroll, Some(name), title);
     scroll
 }
-fn row(page: &gtk::Box, title: &str, widget: &impl IsA<gtk::Widget>) {
+fn row(page: &gtk::Box, title: &str, widget: &impl IsA<gtk::Widget>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     let label = wrapped_label(title);
     label.set_hexpand(true);
@@ -1552,6 +1592,7 @@ fn row(page: &gtk::Box, title: &str, widget: &impl IsA<gtk::Widget>) {
     row.append(&label);
     row.append(widget);
     page.append(&row);
+    row
 }
 fn clear_box(container: &gtk::Box) {
     while let Some(child) = container.first_child() {

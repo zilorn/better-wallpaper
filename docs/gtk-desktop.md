@@ -107,16 +107,21 @@ The display test uses an isolated HTTP fixture, drives native controls, and
 checks connection, pause/resume, scroll loading, deferred thumbnails, filtering,
 search beyond loaded cards, hidden-page refresh, thumbnail concurrency and stale
 responses across filters, scene selection, property
-reset, configuration preservation, conflicts, backend restart notices, logs,
+reset, typed properties, conditional visibility, hidden drafts, configuration
+preservation, conflicts, backend restart notices, logs,
 offline recovery and controller cleanup. Set `BETTER_WALLPAPER_GTK_SCREENSHOTS`
 to an output directory to capture its rendered windows. The ordinary unit tests
 do not need a display. These checks do not prove actual niri/Plasma playback.
 
 Video preview requires a GTK media backend (normally GStreamer) and suitable
 codecs. Missing support is reported inside the preview window. Scene properties
-currently use text entries with metadata tooltips; conditional visibility and
-specialized color/file controls remain a UI follow-up. Existing backend limits
-still apply; compatibility tiers are metadata analysis, not playback guarantees.
+use native toggles, decimal numeric controls, dropdowns, color choosers, file
+pickers and text entries. Simple `key.value ==/!= literal` conditions update
+visibility immediately; hiding a field retains its draft and saved overrides.
+All property values remain strings. Unknown types and invalid typed values stay
+editable as text, and unknown combo values remain selectable. Reset clears
+overrides without writing defaults until edited. Existing backend limits still
+apply; compatibility tiers are metadata analysis, not playback guarantees.
 
 GTK APIs follow the [gtk-rs main-loop guidance](https://gtk-rs.org/gtk4-rs/stable/latest/book/main_event_loop.html):
 blocking I/O runs on GIO workers and only the main thread updates widgets.

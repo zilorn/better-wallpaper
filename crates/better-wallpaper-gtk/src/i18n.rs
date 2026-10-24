@@ -98,6 +98,7 @@ fn translate(source: &str, chinese: bool) -> &str {
         "Wallpaper path" => "壁纸路径",
         "Choose wallpaper" => "选择壁纸",
         "Choose" => "选择",
+        "Choose file" => "选择文件",
         "Cancel" => "取消",
         "Wallpaper type" => "壁纸类型",
         "Fill mode" => "缩放方式",
