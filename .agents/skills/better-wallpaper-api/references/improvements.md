@@ -16,6 +16,13 @@ discovered Steam libraries, aliases and nested project dependencies, depth/entry
 limits, fallback freshness, shared list/thumbnail/media requests and rejection of
 cached paths replaced with symlinks outside the library.
 
+A follow-up regression reproduces moving a watched directory and recreating its
+old pathname before the next request: inotify continued following the moved inode,
+so the replacement's later changes could be missed. The monitor now retires old
+bindings for the entire moved subtree before rebinding paths. Tests cover both
+local videos and Workshop projects, including nested additions/deletions and
+updates to the moved tree, while checking unaffected caches remain reusable.
+
 ## Backend Reload Reporting — Resolved
 
 `server.rs::update_config` compares the saved backend preference, resolving

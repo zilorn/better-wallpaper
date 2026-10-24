@@ -121,6 +121,9 @@ or Wallpaper Engine projects; unchanged projects retain their parsed metadata
 and scene reports. Saving library paths adds/removes indexed roots while retaining
 unaffected caches. Missing roots, new nested directories, Steam library-folder
 changes and Workshop additions are watched through their existing ancestors.
+When a watched directory moves, its old watch bindings and those of its
+descendants are retired before scanning. Recreating the original pathname before
+the next request therefore preserves change detection for both directory trees.
 The UI's refresh button reads this same index; changes appear on the next request,
 not through automatic page updates. Restarting the daemon rebuilds the index on
 first use. Notification overflow/read failure rebuilds it; unavailable watches

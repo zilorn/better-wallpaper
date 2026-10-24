@@ -384,7 +384,11 @@ impl Monitor {
             .filter(|path| !self.used.contains(*path))
             .cloned()
             .collect();
-        for path in obsolete {
+        self.remove_watches(obsolete);
+    }
+
+    fn remove_watches(&mut self, paths: Vec<PathBuf>) {
+        for path in paths {
             if let Some(watch) = self.paths.remove(&path) {
                 self.watches.remove(&watch);
                 if let Some(inotify) = &mut self.inotify {
@@ -397,6 +401,7 @@ impl Monitor {
     fn changes(&mut self) -> Option<HashSet<PathBuf>> {
         let inotify = self.inotify.as_mut()?;
         let mut changed = HashSet::new();
+        let mut displaced = HashSet::new();
         let mut buffer = [0; 65536];
         loop {
             match inotify.read_events(&mut buffer) {
@@ -410,6 +415,11 @@ impl Monitor {
                             return None;
                         }
                         if let Some(directory) = self.watches.get(&event.wd) {
+                            if event.mask.intersects(
+                                EventMask::MOVE_SELF | EventMask::DELETE_SELF | EventMask::IGNORED,
+                            ) {
+                                displaced.insert(directory.clone());
+                            }
                             changed.insert(
                                 event
                                     .name
@@ -434,6 +444,19 @@ impl Monitor {
                     return None;
                 }
             }
+        }
+        // inotify follows directory inodes across renames, including watches
+        // on descendants that receive no MOVE_SELF event themselves. Retire
+        // the old path bindings before scanning so a replacement at the same
+        // pathname always gets its own watch, regardless of traversal order.
+        if !displaced.is_empty() {
+            let obsolete = self
+                .paths
+                .keys()
+                .filter(|path| displaced.iter().any(|root| path.starts_with(root)))
+                .cloned()
+                .collect();
+            self.remove_watches(obsolete);
         }
         self.reliable.then_some(changed)
     }
@@ -520,6 +543,58 @@ mod tests {
         );
     }
 
+    #[test]
+    fn keeps_watching_recreated_directories_after_the_original_tree_moves() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().join("videos");
+        let original = root.join("z");
+        let moved = root.join("a");
+        fs::create_dir_all(original.join("nested")).unwrap();
+        fs::write(original.join("nested/old.mp4"), b"old").unwrap();
+        fs::create_dir(root.join("unchanged")).unwrap();
+        fs::write(root.join("unchanged/stable.mp4"), b"stable").unwrap();
+        let mut index = LibraryIndex::new();
+        assert_eq!(refresh(&mut index, home.path(), &root).entries.len(), 2);
+
+        // Recreate the old pathname before the next request. Traversal visits
+        // the replacement first, while inotify still follows the moved inode.
+        fs::rename(&original, &moved).unwrap();
+        fs::create_dir_all(original.join("nested")).unwrap();
+        fs::write(original.join("nested/new.mp4"), b"new").unwrap();
+        assert_eq!(refresh(&mut index, home.path(), &root).entries.len(), 3);
+        let reads = index.directory_reads;
+        let added = original.join("nested/later.mp4");
+        fs::write(&added, b"later").unwrap();
+        assert!(
+            refresh(&mut index, home.path(), &root)
+                .entry(&added)
+                .is_some()
+        );
+        assert_eq!(index.directory_reads, reads + 1);
+
+        fs::remove_file(&added).unwrap();
+        assert!(
+            refresh(&mut index, home.path(), &root)
+                .entry(&added)
+                .is_none()
+        );
+        assert_eq!(index.directory_reads, reads + 2);
+        fs::write(moved.join("nested/old.mp4"), b"updated").unwrap();
+        let updated = refresh(&mut index, home.path(), &root);
+        assert_eq!(
+            updated
+                .entry(&moved.join("nested/old.mp4"))
+                .unwrap()
+                .size_bytes,
+            7
+        );
+        assert_eq!(index.directory_reads, reads + 3);
+        assert!(Arc::ptr_eq(
+            &updated,
+            &refresh(&mut index, home.path(), &root)
+        ));
+    }
+
     fn project(root: &Path, id: &str, title: &str) -> PathBuf {
         let project = root.join(id);
         fs::create_dir_all(project.join("nested")).unwrap();
@@ -572,6 +647,44 @@ mod tests {
         fs::remove_dir_all(&a).unwrap();
         assert_eq!(index.refresh(vec![], home.path()).entries.len(), 2);
         assert_eq!(index.project_reads, 7);
+    }
+
+    #[test]
+    fn keeps_watching_recreated_workshop_projects_after_a_move() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home
+            .path()
+            .join(".local/share/Steam/steamapps/workshop/content/431960");
+        let original = project(&root, "a", "original");
+        project(&root, "b", "unchanged");
+        let moved = root.join("z");
+        let mut index = LibraryIndex::new();
+        assert_eq!(index.refresh(vec![], home.path()).entries.len(), 2);
+
+        fs::rename(&original, &moved).unwrap();
+        project(&root, "a", "replacement");
+        assert_eq!(index.refresh(vec![], home.path()).entries.len(), 3);
+        assert_eq!(index.project_reads, 4);
+        let preview = original.join("nested/preview.jpg");
+        fs::write(&preview, b"image").unwrap();
+        let updated = index.refresh(vec![], home.path());
+        assert_eq!(
+            updated
+                .entry(&original.join("nested/movie.mp4"))
+                .unwrap()
+                .preview_path,
+            Some(preview)
+        );
+        assert_eq!(index.project_reads, 5);
+
+        descriptor(&moved, "moved project updated");
+        let updated = index.refresh(vec![], home.path());
+        assert_eq!(
+            updated.entry(&moved.join("nested/movie.mp4")).unwrap().name,
+            "moved project updated"
+        );
+        assert_eq!(index.project_reads, 6);
+        assert!(Arc::ptr_eq(&updated, &index.refresh(vec![], home.path())));
     }
 
     #[test]
