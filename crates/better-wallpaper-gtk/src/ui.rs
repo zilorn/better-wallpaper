@@ -13,7 +13,15 @@ use tracing::{info, warn};
 
 use crate::client::{Api, Entry, Library, Status, select_wallpaper};
 
-const PAGE_SIZE: usize = 12;
+const LIBRARY_BATCH_SIZE: usize = 12;
+const THUMBNAIL_CONCURRENCY: usize = 4;
+const LIBRARY_PREFETCH: f64 = 300.0;
+
+struct Thumbnail {
+    path: String,
+    picture: glib::WeakRef<gtk::Picture>,
+    fallback: glib::WeakRef<gtk::Image>,
+}
 
 pub struct Desktop {
     window: gtk::ApplicationWindow,
@@ -45,12 +53,15 @@ pub struct Desktop {
     grid: gtk::FlowBox,
     search: gtk::SearchEntry,
     filter: gtk::DropDown,
-    page: Cell<usize>,
+    library_scroll: gtk::ScrolledWindow,
+    library_matches: RefCell<Vec<usize>>,
+    library_loaded: Cell<usize>,
+    library_update_pending: Cell<bool>,
+    thumbnails: RefCell<Vec<Thumbnail>>,
+    thumbnails_active: Cell<usize>,
     generation: Cell<u64>,
     library_info: gtk::Label,
-    pagination: gtk::Label,
-    previous: gtk::Button,
-    next: gtk::Button,
+    library_count: gtk::Label,
     logs: gtk::TextView,
     follow_logs: gtk::CheckButton,
     log_search: gtk::SearchEntry,
@@ -336,15 +347,9 @@ impl Desktop {
             .column_spacing(14)
             .build();
         library_page.append(&grid);
-        let page_bar = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        let previous = gtk::Button::with_label(tr("Previous"));
-        let next = gtk::Button::with_label(tr("Next"));
-        let pagination = gtk::Label::builder().hexpand(true).build();
-        page_bar.append(&previous);
-        page_bar.append(&pagination);
-        page_bar.append(&next);
-        library_page.append(&page_bar);
-        add_page(&stack, &library_page, "library", tr("Wallpapers"));
+        let library_count = gtk::Label::new(None);
+        library_page.append(&library_count);
+        let library_scroll = add_page(&stack, &library_page, "library", tr("Wallpapers"));
 
         let wallpaper_page = page(
             tr("Wallpaper settings"),
@@ -422,12 +427,15 @@ impl Desktop {
             grid,
             search,
             filter,
-            page: Cell::new(0),
+            library_scroll,
+            library_matches: RefCell::default(),
+            library_loaded: Cell::new(0),
+            library_update_pending: Cell::new(false),
+            thumbnails: RefCell::default(),
+            thumbnails_active: Cell::new(0),
             generation: Cell::new(0),
             library_info,
-            pagination,
-            previous,
-            next,
+            library_count,
             logs,
             follow_logs,
             log_search,
@@ -471,29 +479,33 @@ impl Desktop {
         let weak = Rc::downgrade(&ui);
         ui.search.connect_search_changed(move |_| {
             if let Some(ui) = weak.upgrade() {
-                ui.page.set(0);
                 ui.render_library();
             }
         });
         let weak = Rc::downgrade(&ui);
         ui.filter.connect_selected_notify(move |_| {
             if let Some(ui) = weak.upgrade() {
-                ui.page.set(0);
                 ui.render_library();
             }
         });
         let weak = Rc::downgrade(&ui);
-        ui.previous.connect_clicked(move |_| {
+        ui.library_scroll
+            .vadjustment()
+            .connect_value_changed(move |_| {
+                if let Some(ui) = weak.upgrade() {
+                    ui.queue_library_update();
+                }
+            });
+        let weak = Rc::downgrade(&ui);
+        ui.library_scroll.vadjustment().connect_changed(move |_| {
             if let Some(ui) = weak.upgrade() {
-                ui.page.set(ui.page.get().saturating_sub(1));
-                ui.render_library();
+                ui.queue_library_update();
             }
         });
         let weak = Rc::downgrade(&ui);
-        ui.next.connect_clicked(move |_| {
+        ui.grid.connect_map(move |_| {
             if let Some(ui) = weak.upgrade() {
-                ui.page.set(ui.page.get() + 1);
-                ui.render_library();
+                ui.queue_library_update();
             }
         });
         let weak = Rc::downgrade(&ui);
@@ -510,10 +522,12 @@ impl Desktop {
         });
         let weak = Rc::downgrade(&ui);
         ui.stack.connect_visible_child_name_notify(move |_| {
-            if let Some(ui) = weak.upgrade()
-                && ui.stack.visible_child_name().as_deref() == Some("logs")
-            {
-                ui.refresh_logs();
+            if let Some(ui) = weak.upgrade() {
+                match ui.stack.visible_child_name().as_deref() {
+                    Some("logs") => ui.refresh_logs(),
+                    Some("library") => ui.queue_library_update(),
+                    _ => {}
+                }
             }
         });
 
@@ -1089,7 +1103,6 @@ impl Desktop {
                 match result {
                     Ok(library) => {
                         *ui.library.borrow_mut() = library;
-                        ui.page.set(0);
                         ui.render_library();
                         if !ui.property_fields.borrow().iter().any(Field::changed) {
                             ui.render_properties();
@@ -1107,6 +1120,9 @@ impl Desktop {
     }
 
     fn render_library(self: &Rc<Self>) {
+        self.generation.set(self.generation.get() + 1);
+        self.thumbnails.borrow_mut().clear();
+        self.library_loaded.set(0);
         while let Some(child) = self.grid.first_child() {
             self.grid.remove(&child);
         }
@@ -1116,23 +1132,14 @@ impl Desktop {
         let matching: Vec<_> = library
             .entries
             .iter()
-            .filter(|entry| {
+            .enumerate()
+            .filter(|(_, entry)| {
                 (kind.is_empty() || entry.wallpaper_type == kind)
                     && (entry.name.to_lowercase().contains(&query)
                         || entry.path.to_lowercase().contains(&query))
             })
+            .map(|(index, _)| index)
             .collect();
-        let pages = matching.len().div_ceil(PAGE_SIZE).max(1);
-        self.page.set(self.page.get().min(pages - 1));
-        self.previous.set_sensitive(self.page.get() > 0);
-        self.next.set_sensitive(self.page.get() + 1 < pages);
-        self.pagination.set_text(&localized!(
-            "{} wallpapers · Page {} of {}",
-            "{} 个壁纸 · 第 {} 页，共 {} 页",
-            matching.len(),
-            self.page.get() + 1,
-            pages
-        ));
         self.library_info.set_text(&format!(
             "{}{}",
             library
@@ -1157,14 +1164,20 @@ impl Desktop {
             margins(&empty, 24);
             self.grid.insert(&empty, -1);
         }
-        let generation = self.generation.get() + 1;
-        self.generation.set(generation);
-        let mut pictures = Vec::new();
-        for entry in matching
-            .into_iter()
-            .skip(self.page.get() * PAGE_SIZE)
-            .take(PAGE_SIZE)
-        {
+        *self.library_matches.borrow_mut() = matching;
+        drop(library);
+        self.library_scroll.vadjustment().set_value(0.0);
+        self.append_library_batch();
+        self.queue_library_update();
+    }
+
+    fn append_library_batch(self: &Rc<Self>) {
+        let library = self.library.borrow();
+        let matching = self.library_matches.borrow();
+        let start = self.library_loaded.get();
+        let end = (start + LIBRARY_BATCH_SIZE).min(matching.len());
+        for &index in &matching[start..end] {
+            let entry = &library.entries[index];
             let card = column(10);
             margins(&card, 12);
             card.add_css_class("card");
@@ -1244,61 +1257,93 @@ impl Desktop {
                 card.append(&preview);
             }
             self.grid.insert(&card, -1);
-            pictures.push((
-                entry.path.clone(),
-                picture.downgrade(),
-                fallback.downgrade(),
-            ));
+            self.thumbnails.borrow_mut().push(Thumbnail {
+                path: entry.path.clone(),
+                picture: picture.downgrade(),
+                fallback: fallback.downgrade(),
+            });
         }
-        drop(library);
-        // Only a page of thumbnails is requested, four at a time. Results from an
-        // old filter/page cannot overwrite the visible grid.
-        self.load_thumbnails(generation, pictures);
+        self.library_loaded.set(end);
+        self.library_count.set_text(&localized!(
+            "Showing {} of {} wallpapers",
+            "已显示 {} 个壁纸，共 {} 个",
+            end,
+            matching.len()
+        ));
     }
 
-    fn load_thumbnails(
-        self: &Rc<Self>,
-        generation: u64,
-        pictures: Vec<(
-            String,
-            glib::WeakRef<gtk::Picture>,
-            glib::WeakRef<gtk::Image>,
-        )>,
-    ) {
-        for chunk in pictures.chunks(PAGE_SIZE.div_ceil(4)) {
-            let Some(api) = self.api.borrow().clone() else {
-                return;
-            };
+    fn queue_library_update(self: &Rc<Self>) {
+        if self.library_update_pending.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        // Run against allocated widgets and coalesce scroll/layout notifications.
+        // GTK pauses this callback while the Wallpapers page is unmapped.
+        self.grid.add_tick_callback(move |grid, _| {
+            // Tick callbacks run before layout. Replacing cards can leave the
+            // scroll bounds unchanged, so no adjustment notification follows.
+            // Keep the callback until the replacement cards are allocated.
+            if grid.last_child().is_some_and(|card| card.height() == 0) {
+                return glib::ControlFlow::Continue;
+            }
+            if let Some(ui) = weak.upgrade() {
+                ui.library_update_pending.set(false);
+                ui.update_library_viewport();
+            }
+            glib::ControlFlow::Break
+        });
+    }
+
+    fn update_library_viewport(self: &Rc<Self>) {
+        if self.stack.visible_child_name().as_deref() != Some("library") || !self.grid.is_mapped() {
+            return;
+        }
+        let adjustment = self.library_scroll.vadjustment();
+        if adjustment.page_size() <= 0.0 {
+            return;
+        }
+        let Some(api) = self.api.borrow().clone() else {
+            return;
+        };
+        while self.thumbnails_active.get() < THUMBNAIL_CONCURRENCY {
+            let candidate = self.thumbnails.borrow().iter().position(|thumbnail| {
+                thumbnail
+                    .picture
+                    .upgrade()
+                    .filter(|picture| picture.height() > 0)
+                    .and_then(|picture| picture.compute_bounds(&self.library_scroll))
+                    .is_some_and(|bounds| {
+                        f64::from(bounds.y() + bounds.height()) >= -LIBRARY_PREFETCH
+                            && f64::from(bounds.y()) <= adjustment.page_size() + LIBRARY_PREFETCH
+                    })
+            });
+            let Some(index) = candidate else { break };
+            let thumbnail = self.thumbnails.borrow_mut().remove(index);
+            let generation = self.generation.get();
+            self.thumbnails_active.set(self.thumbnails_active.get() + 1);
+            let api = api.clone();
             let weak = Rc::downgrade(self);
-            let chunk = chunk.to_vec();
             glib::spawn_future_local(async move {
-                for (path, picture, fallback) in chunk {
-                    if !weak
-                        .upgrade()
-                        .is_some_and(|ui| ui.generation.get() == generation)
-                    {
-                        break;
-                    }
-                    let api = api.clone();
-                    let result = gio::spawn_blocking(move || api.thumbnail(&path)).await;
-                    if !weak
-                        .upgrade()
-                        .is_some_and(|ui| ui.generation.get() == generation)
-                    {
-                        break;
-                    }
-                    if let Ok(Ok(bytes)) = result
-                        && let Some(picture) = picture.upgrade()
-                        && let Ok(texture) =
-                            gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))
-                    {
-                        picture.set_paintable(Some(&texture));
-                        if let Some(fallback) = fallback.upgrade() {
-                            fallback.set_visible(false);
-                        }
+                let result = gio::spawn_blocking(move || api.thumbnail(&thumbnail.path)).await;
+                let Some(ui) = weak.upgrade() else { return };
+                ui.thumbnails_active.set(ui.thumbnails_active.get() - 1);
+                if ui.generation.get() == generation
+                    && let Ok(Ok(bytes)) = result
+                    && let Some(picture) = thumbnail.picture.upgrade()
+                    && let Ok(texture) = gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes))
+                {
+                    picture.set_paintable(Some(&texture));
+                    if let Some(fallback) = thumbnail.fallback.upgrade() {
+                        fallback.set_visible(false);
                     }
                 }
+                ui.queue_library_update();
             });
+        }
+        if self.library_loaded.get() < self.library_matches.borrow().len()
+            && adjustment.value() + adjustment.page_size() + LIBRARY_PREFETCH >= adjustment.upper()
+        {
+            self.append_library_batch();
         }
     }
 
@@ -1491,12 +1536,13 @@ fn page(title: &str, subtitle: &str) -> gtk::Box {
     page.append(&subtitle);
     page
 }
-fn add_page(stack: &gtk::Stack, child: &gtk::Box, name: &str, title: &str) {
+fn add_page(stack: &gtk::Stack, child: &gtk::Box, name: &str, title: &str) -> gtk::ScrolledWindow {
     let scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .child(child)
         .build();
     stack.add_titled(&scroll, Some(name), title);
+    scroll
 }
 fn row(page: &gtk::Box, title: &str, widget: &impl IsA<gtk::Widget>) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);

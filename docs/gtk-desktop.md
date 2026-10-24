@@ -54,8 +54,8 @@ installed CJK font, such as Noto Sans CJK.
 
 ## Native views
 
-- **Wallpapers:** search by name/path, filter by type, browse twelve items per
-  page, load bounded thumbnails, inspect scene compatibility details, and preview
+- **Wallpapers:** search by name/path, filter by type, load cards in batches of
+  twelve as you scroll, inspect scene compatibility details, and preview
   videos in a muted GTK media window. Choosing an entry prepares a draft;
   **Save changes** applies it. Scene changes reset property overrides.
 - **Playback:** file picker, wallpaper type, fill mode, frame limit, mute/loop,
@@ -74,8 +74,13 @@ Network requests and service startup run outside GTK's main thread. Status polls
 every two seconds with no overlapping status requests. A failed status disables
 saving/playback controls while keeping drafts; recovery at the same endpoint is
 automatic. Reloading settings while edits are pending asks before discarding them.
-Library requests are bounded to one scan at a time. Thumbnail loading is paged
-and generation-checked, so stale searches cannot replace current results.
+Library requests are bounded to one scan at a time. The complete library metadata
+is fetched once per refresh; cards are created twelve at a time near the bottom
+of the list. Thumbnails load only within 300 pixels of the visible area, with at
+most four requests in flight, including requests from a previous search/refresh.
+Scrolling back reuses loaded cards and textures. Leaving Wallpapers pauses new
+thumbnail requests. Search, type filters and refresh reset the list to the top;
+generation checks discard stale thumbnail results.
 
 ## Configuration writes
 
@@ -104,7 +109,9 @@ dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
 ```
 
 The display test uses an isolated HTTP fixture, drives native controls, and
-checks connection, pause/resume, filtering/pagination, scene selection, property
+checks connection, pause/resume, scroll loading, deferred thumbnails, filtering,
+search beyond loaded cards, hidden-page refresh, thumbnail concurrency and stale
+responses across filters, scene selection, property
 reset, configuration preservation, conflicts, backend restart notices, logs,
 offline recovery and controller cleanup. Set `BETTER_WALLPAPER_GTK_SCREENSHOTS`
 to an output directory to capture its rendered windows. The ordinary unit tests

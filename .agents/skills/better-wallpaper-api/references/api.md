@@ -21,14 +21,20 @@ installed `better-wallpaper-desktop` command; run with
 Tauri package, so ordinary builds do not require GTK 3 or WebKitGTK. Packaging and
 the tray continue to use the existing desktop binary name and menu entry.
 
-The GTK app provides paged/searchable library thumbnails, video preview, scene
-reports/properties, wallpaper/playback controls, named outputs, folder pickers,
-settings, diagnostics and logs. It uses API v1 directly without loading HTML.
+The GTK app provides searchable library thumbnails loaded as you scroll, video
+preview, scene reports/properties, wallpaper/playback controls, named outputs,
+folder pickers, settings, diagnostics and logs. It uses API v1 directly without loading HTML.
 HTTP work and service startup run on GIO workers; only GTK's main thread updates
 widgets. Status is polled every two seconds without overlapping requests, and
-logs refresh only while visible. Thumbnail requests are paged and stale page
-results are discarded. Preview uses the authorized media endpoint and requires
-a GTK media backend/codecs; errors appear in the preview window.
+logs refresh only while visible. The Wallpapers page initially creates twelve
+cards and appends twelve more near the bottom. Thumbnails load only near the
+viewport, with at most four requests in flight across searches and refreshes;
+loaded cards/textures are reused while scrolling. Leaving the page pauses new
+thumbnail requests. Search, type filters and refresh reset the scroll position
+and discard stale thumbnail results. Library metadata still comes from the
+complete bounded library response; this is client-side lazy loading. Preview
+uses the authorized media endpoint and requires a GTK media backend/codecs;
+errors appear in the preview window.
 
 Both clients share endpoint discovery, loopback-only origin restrictions and
 optional service startup semantics described below. GTK disables HTTP redirects

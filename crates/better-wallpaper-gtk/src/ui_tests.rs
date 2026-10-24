@@ -68,11 +68,16 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     let paused = Arc::new(AtomicBool::new(false));
     let offline = Arc::new(AtomicBool::new(false));
     let shutdown = Arc::new(AtomicBool::new(false));
+    let thumbnail_requests = Arc::new(Mutex::new(Vec::new()));
+    let hold_thumbnails = Arc::new(AtomicBool::new(false));
     let config_server = config.clone();
     let paused_server = paused.clone();
     let offline_server = offline.clone();
     let shutdown_server = shutdown.clone();
+    let thumbnails_server = thumbnail_requests.clone();
+    let hold_server = hold_thumbnails.clone();
     let worker = thread::spawn(move || {
+        let mut delayed_thumbnails = Vec::new();
         while !shutdown_server.load(Ordering::Relaxed) {
             let Some(mut request) = server.recv_timeout(Duration::from_millis(50)).unwrap() else {
                 continue;
@@ -105,12 +110,30 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
                     json!({})
                 }
                 ("GET", "/api/v1/library") => {
-                    json!({"entries":(0..15).map(|i| json!({"name":format!("Wallpaper {:02}", i+1),"path":format!("/wallpapers/{i}.mp4"),"wallpaper_type":if i == 0 {"scene"} else {"video"},"engine_mode":i==0,"size_bytes":3145728,"scene_compatibility":if i==0 {json!({"level":2,"supported_features":["2D layers"],"unsupported_features":["Particles"],"warnings":["Verify on the selected backend"]})} else {Value::Null},"scene_properties":if i==0 {json!([{"key":"speed","text":"Animation speed","prop_type":{"kind":"slider","min":0,"max":10},"value":1}])} else {json!([])}})).collect::<Vec<_>>(),"roots":["~/Videos/Wallpapers"],"engine_roots":[],"truncated":false})
+                    json!({"entries":(0..60).map(|i| json!({"name":format!("Wallpaper {:02}", i+1),"path":format!("/wallpapers/{i}.mp4"),"wallpaper_type":if i == 0 {"scene"} else {"video"},"engine_mode":i==0,"size_bytes":3145728,"scene_compatibility":if i==0 {json!({"level":2,"supported_features":["2D layers"],"unsupported_features":["Particles"],"warnings":["Verify on the selected backend"]})} else {Value::Null},"scene_properties":if i==0 {json!([{"key":"speed","text":"Animation speed","prop_type":{"kind":"slider","min":0,"max":10},"value":1}])} else {json!([])}})).collect::<Vec<_>>(),"roots":["~/Videos/Wallpapers"],"engine_roots":[],"truncated":false})
                 }
                 ("GET", "/api/v1/logs") => {
                     json!({"lines":["INFO Wallpaper service started", "DEBUG Playback ready"]})
                 }
                 (_, path) if path.starts_with("/api/v1/library/thumbnail?") => {
+                    thumbnails_server.lock().unwrap().push(path.to_owned());
+                    if hold_server.load(Ordering::Relaxed) {
+                        let hold = hold_server.clone();
+                        delayed_thumbnails.push(thread::spawn(move || {
+                            while hold.load(Ordering::Relaxed) {
+                                thread::sleep(Duration::from_millis(10));
+                            }
+                            request
+                                .respond(tiny_http::Response::from_data(
+                                    include_bytes!(
+                                        "../../../assets/icons/better-wallpaper-256.png"
+                                    )
+                                    .to_vec(),
+                                ))
+                                .unwrap();
+                        }));
+                        continue;
+                    }
                     request
                         .respond(tiny_http::Response::from_data(
                             include_bytes!("../../../assets/icons/better-wallpaper-256.png")
@@ -132,6 +155,9 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
                 .respond(tiny_http::Response::from_string(body.to_string()))
                 .unwrap();
         }
+        for worker in delayed_thumbnails {
+            worker.join().unwrap();
+        }
     });
     let app = gtk::Application::builder()
         .application_id("org.betterwallpaper.GtkTest")
@@ -140,15 +166,12 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     app.register(None::<&gio::Cancellable>).unwrap();
     let ui = Desktop::open(&app, Some(endpoint));
     pump_until("connection and library", || {
-        ui.connected.get() && !ui.busy.get() && ui.library.borrow().entries.len() == 15
+        ui.connected.get() && !ui.busy.get() && ui.library.borrow().entries.len() == 60
     });
     assert!(!ui.dirty());
     assert_eq!(
-        ui.pagination.text(),
-        localized!(
-            "15 wallpapers · Page 1 of 2",
-            "15 个壁纸 · 第 1 页，共 2 页"
-        )
+        ui.library_count.text(),
+        localized!("Showing 12 of 60 wallpapers", "已显示 12 个壁纸，共 60 个")
     );
     assert_eq!(ui.save.label().as_deref(), Some(tr("Save changes")));
     assert_eq!(
@@ -159,21 +182,110 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
         Some(tr("Wallpapers"))
     );
     screenshot(&ui, "library");
-    ui.next.emit_clicked();
-    assert_eq!(ui.page.get(), 1);
+    pump_until("visible thumbnails", || {
+        !thumbnail_requests.lock().unwrap().is_empty() && ui.thumbnails_active.get() == 0
+    });
+    // Offscreen cards and later batches must not fetch thumbnails on opening.
+    assert_eq!(ui.library_loaded.get(), LIBRARY_BATCH_SIZE);
+    assert!(thumbnail_requests.lock().unwrap().len() < LIBRARY_BATCH_SIZE);
+    let adjustment = ui.library_scroll.vadjustment();
+    for expected in [24, 36, 48, 60] {
+        let old_upper = adjustment.upper();
+        adjustment.set_value(old_upper - adjustment.page_size());
+        pump_until("next scroll batch", || {
+            ui.library_loaded.get() == expected && adjustment.upper() > old_upper
+        });
+    }
+    adjustment.set_value(adjustment.upper() - adjustment.page_size());
+    pump_until("last thumbnail", || {
+        thumbnail_requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.ends_with("59.mp4"))
+            && ui.thumbnails_active.get() == 0
+    });
+    assert_eq!(ui.grid.observe_children().n_items(), 60);
+    // Scrolling back reuses the existing cards and textures.
+    let count = thumbnail_requests.lock().unwrap().len();
+    adjustment.set_value(0.0);
+    let start = Instant::now();
+    pump_until("scroll back", || {
+        start.elapsed() > Duration::from_millis(150)
+    });
+    assert_eq!(thumbnail_requests.lock().unwrap().len(), count);
+
     ui.filter.set_selected(3);
+    assert_eq!(adjustment.value(), 0.0);
     assert_eq!(
-        ui.pagination.text(),
-        localized!("1 wallpapers · Page 1 of 1", "1 个壁纸 · 第 1 页，共 1 页")
+        ui.library_count.text(),
+        localized!("Showing 1 of 1 wallpapers", "已显示 1 个壁纸，共 1 个")
     );
     ui.search.set_text("missing");
     pump_until("search filter", || {
-        ui.pagination
+        ui.library_count
             .text()
-            .starts_with(&localized!("0 wallpapers", "0 个壁纸"))
+            .starts_with(&localized!("Showing 0 of 0", "已显示 0 个壁纸，共 0 个"))
     });
     screenshot(&ui, "empty-search");
     ui.search.set_text("");
+    ui.filter.set_selected(0);
+    pump_until("search reset", || ui.library_matches.borrow().len() == 60);
+    ui.search.set_text("Wallpaper 60");
+    pump_until("search beyond loaded batch", || {
+        ui.library_matches.borrow().len() == 1
+    });
+    assert_eq!(ui.library_matches.borrow()[0], 59);
+    ui.search.set_text("");
+    pump_until("search cleared", || ui.library_matches.borrow().len() == 60);
+    assert_eq!(ui.library_loaded.get(), LIBRARY_BATCH_SIZE);
+    ui.refresh_library();
+    pump_until("library refreshed", || !ui.library_pending.get());
+    assert_eq!(ui.library_loaded.get(), LIBRARY_BATCH_SIZE);
+
+    // Refreshing off the page keeps cards available but defers all thumbnail I/O.
+    ui.stack.set_visible_child_name("settings");
+    pump_until("pending thumbnails finished", || {
+        ui.thumbnails_active.get() == 0
+    });
+    let count = thumbnail_requests.lock().unwrap().len();
+    ui.refresh_library();
+    pump_until("hidden library refreshed", || !ui.library_pending.get());
+    let start = Instant::now();
+    pump_until("hidden library idle", || {
+        start.elapsed() > Duration::from_millis(150)
+    });
+    assert_eq!(thumbnail_requests.lock().unwrap().len(), count);
+    ui.stack.set_visible_child_name("library");
+    pump_until("thumbnail loading resumed", || {
+        thumbnail_requests.lock().unwrap().len() > count && ui.thumbnails_active.get() == 0
+    });
+
+    // Slow requests from the old filter still count toward the global limit,
+    // and their late responses must never paint old or new search results.
+    hold_thumbnails.store(true, Ordering::Relaxed);
+    let count = thumbnail_requests.lock().unwrap().len();
+    ui.render_library();
+    let old_picture = ui.thumbnails.borrow()[0].picture.upgrade().unwrap();
+    pump_until("four held thumbnails", || {
+        thumbnail_requests.lock().unwrap().len() == count + THUMBNAIL_CONCURRENCY
+    });
+    ui.filter.set_selected(3);
+    let new_picture = ui.thumbnails.borrow()[0].picture.upgrade().unwrap();
+    let start = Instant::now();
+    pump_until("filter while thumbnails are pending", || {
+        start.elapsed() > Duration::from_millis(150)
+    });
+    assert_eq!(ui.thumbnails_active.get(), THUMBNAIL_CONCURRENCY);
+    assert_eq!(
+        thumbnail_requests.lock().unwrap().len(),
+        count + THUMBNAIL_CONCURRENCY
+    );
+    hold_thumbnails.store(false, Ordering::Relaxed);
+    pump_until("current filter thumbnail", || {
+        ui.thumbnails_active.get() == 0 && new_picture.paintable().is_some()
+    });
+    assert!(old_picture.paintable().is_none());
     ui.filter.set_selected(0);
 
     ui.pause.emit_clicked();
