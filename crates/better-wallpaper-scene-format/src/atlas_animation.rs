@@ -39,7 +39,9 @@ pub struct SpriteFrame {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpriteAnimation {
     pub frames: Vec<SpriteFrame>,
-    pub duration_seconds: f32,
+    /// Sum stored frame durations in scene-clock precision so loop boundaries
+    /// agree with frame selection even for long fractional-duration sequences.
+    pub duration_seconds: f64,
 }
 
 impl SpriteAnimation {
@@ -47,7 +49,7 @@ impl SpriteAnimation {
         if !elapsed_seconds.is_finite() || self.duration_seconds <= 0.0 {
             return self.frames.first();
         }
-        let mut cursor = elapsed_seconds.rem_euclid(f64::from(self.duration_seconds));
+        let mut cursor = elapsed_seconds.rem_euclid(self.duration_seconds);
         for frame in &self.frames {
             if cursor < f64::from(frame.duration_seconds) {
                 return Some(frame);
@@ -149,9 +151,14 @@ impl TexAtlas {
         }
         let duration_seconds = frames
             .iter()
-            .map(|frame| frame.duration_seconds)
-            .sum::<f32>();
-        if !duration_seconds.is_finite() || duration_seconds <= 0.0 {
+            .map(|frame| f64::from(frame.duration_seconds))
+            .sum::<f64>();
+        // Preserve the existing admission range while avoiding f32 accumulation
+        // error within it. Authored per-frame values retain their original bits.
+        if !duration_seconds.is_finite()
+            || duration_seconds <= 0.0
+            || duration_seconds > f64::from(f32::MAX)
+        {
             return Err(invalid(
                 "Atlas animation duration exceeds the supported range",
             ));

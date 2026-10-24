@@ -160,6 +160,40 @@ fn sprite_admission_preserves_image_selection_orientation_and_paused_time() {
 }
 
 #[test]
+fn sprite_loops_preserve_every_frame_in_long_fractional_sequences() {
+    let mut atlas = TexAtlas::parse(&fixture("multi-image")).unwrap();
+    let source_frames = atlas.frames.clone();
+    for durations in [&[0.1_f32][..], &[0.1_f32, 0.2, 0.3][..]] {
+        atlas.frames = (0..10_000)
+            .map(|index| TexAtlasFrame {
+                duration_seconds: durations[index % durations.len()],
+                ..source_frames[index % source_frames.len()].clone()
+            })
+            .collect();
+        // Sum the exact stored f32 durations in the playback clock's precision.
+        let mut boundaries = vec![0.0_f64];
+        for frame in &atlas.frames {
+            boundaries.push(boundaries.last().unwrap() + f64::from(frame.duration_seconds));
+        }
+        let period = *boundaries.last().unwrap();
+        let animation = atlas.sprite_animation().unwrap().unwrap();
+        for cycle in [0.0, 1.0, 28.0, 1_000.0, -1.0] {
+            for index in [0, 1, 4_999, 9_998, 9_999] {
+                for fraction in [0.0, 0.25, 0.75] {
+                    let time = cycle * period
+                        + boundaries[index]
+                        + f64::from(atlas.frames[index].duration_seconds) * fraction;
+                    assert!(
+                        std::ptr::eq(animation.frame_at(time).unwrap(), &animation.frames[index]),
+                        "wrong frame at cycle {cycle}, frame {index}, fraction {fraction}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn sprite_admission_rejects_entire_invalid_sequences_without_static_fallback() {
     let atlas = TexAtlas::parse(&fixture("rotated")).unwrap();
     for frame in [

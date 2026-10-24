@@ -6,7 +6,7 @@ Run from the repository root:
 LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture
 ```
 
-The five GPU tests are explicitly ignored in the ordinary workspace suite because each
+The six GPU tests are explicitly ignored in the ordinary workspace suite because each
 requires EGL 1.5, `EGL_MESA_platform_surfaceless`, GLES 2 and an installed software
 renderer. Explicit runs fail on missing GPU support; they never silently skip.
 No desktop display or visible surface is used. The comparison gate itself runs
@@ -58,6 +58,14 @@ looping, clear/reload and context replacement. An ordinary test checks mip-chain
 preservation and full-image classification, including rejection of a skewed crop.
 These probes cover the conservative base-level crop filter; arbitrary skewed
 edges and native minification parity remain outside their claims.
+
+A sixth GPU case in `support/atlas_sampling.rs` builds a 10,000-frame sequence
+alternating two solid images with stored `0.1_f32` durations. Its 24 analytical
+comparisons check the last frame, exact loop boundaries, repeated paused time,
+scene-clock reset, clear/reload and context replacement. Time is supplied
+directly, including a point near eight hours; this is not a real-time soak test.
+The expected period uses the exact stored durations, independent of the
+runtime's total. No PNG references are changed.
 
 The gate requires all of:
 

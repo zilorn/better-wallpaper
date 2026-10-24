@@ -65,6 +65,56 @@ fn solid(context: &Offscreen, size: u32, expected: [u8; 4]) {
 
 #[test]
 #[ignore = "requires surfaceless EGL/GLES; run explicitly with software rendering"]
+fn fractional_frame_timing_survives_loops_pause_and_reload() {
+    let red = [255, 0, 0, 255];
+    let green = [0, 255, 0, 255];
+    let mut atlas = atlas(
+        &[vec![(2, 2, red.repeat(4))], vec![(2, 2, green.repeat(4))]],
+        &[(0, [0., 0., 2., 0., 0., 2.]), (1, [0., 0., 2., 0., 0., 2.])],
+    );
+    let frames = atlas.frames.clone();
+    atlas.frames = (0..10_000)
+        .map(|index| better_wallpaper_scene_format::TexAtlasFrame {
+            duration_seconds: 0.1,
+            ..frames[index % 2].clone()
+        })
+        .collect();
+    let assets = assets(&atlas);
+    // Analytical timing from the stored duration, independent of the runtime's
+    // loop total. Alternate solid images make wrong frame selection visible.
+    let duration = f64::from(0.1_f32);
+    let period = 10_000.0 * duration;
+    let mut context = Some(Offscreen::new());
+    let mut renderer = Some(SceneGpuRenderer::new(context.as_ref().unwrap().gl(), 8, 8).unwrap());
+    for lifecycle in 0..3 {
+        if lifecycle == 1 {
+            renderer.as_mut().unwrap().clear_textures();
+        } else if lifecycle == 2 {
+            drop(renderer.take());
+            drop(context.take());
+            context = Some(Offscreen::new());
+            renderer = Some(SceneGpuRenderer::new(context.as_ref().unwrap().gl(), 8, 8).unwrap());
+        }
+        let renderer = renderer.as_mut().unwrap();
+        renderer.upload_scene_textures(&assets).unwrap();
+        for (time, color) in [
+            (0.0, red),
+            (9_999.25 * duration, green),
+            (period, red),
+            (period + duration, green),
+            (28.0 * period + 1.5 * duration, green),
+            (28.0 * period + 1.5 * duration, green), // Paused clock.
+            (28.0 * period + 2.5 * duration, red),
+            (0.0, red), // Scene-clock reset.
+        ] {
+            renderer.draw_scene(&assets, time).unwrap();
+            solid(context.as_ref().unwrap(), 8, color);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires surfaceless EGL/GLES; run explicitly with software rendering"]
 fn packed_frame_minification_excludes_neighboring_frames() {
     let context = Offscreen::new();
     let red = [255, 0, 0, 255];

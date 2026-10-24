@@ -99,6 +99,10 @@ of successful GPU upload or backend playback.
 Shared `SpriteFrame`/`SpriteAnimation` types now live in the format crate and are
 re-exported by the renderer. A frame has an image index and affine `TextureUv`
 (origin and two basis vectors); `frame_at` uses elapsed scene time only.
+Authored frame durations remain `f32`, but `SpriteAnimation.duration_seconds`
+is their `f64` sum, matching the playback clock and frame selection precision.
+This prevents early/late loop boundaries in long fractional-duration sequences;
+the existing maximum admitted total of `f32::MAX` seconds remains enforced.
 `Scene2dDraw.texture` is image zero, `additional_textures` are indices 1 and above.
 Main material TEX payloads share decoded bytes by path within a scene and have a
 512 MiB aggregate retained-byte cap, in addition to each atlas's 128 MiB cap.

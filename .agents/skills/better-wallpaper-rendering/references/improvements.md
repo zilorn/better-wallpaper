@@ -100,6 +100,14 @@ need reference sample coverage.
 
 ## Native TEX Reader and 2D Atlases — Implemented / Native Parity Pending
 
+Fractional frame timing now accumulates the loop period in `f64`, matching the
+scene clock. Previously 10,000 stored 0.1-second durations produced a period
+97.121835 ms too short and skipped most of the last frame. CPU regressions cover
+uniform/mixed durations and repeated loops; 24 analytical GPU comparisons cover
+image selection, pause, rewind, clear/reload and context replacement. This is a
+local timing correction, not native-engine parity or a wall-clock soak result.
+See [validation](../../../../docs/validation/a1-atlas-timing.md).
+
 Packed rectangular sprite frames now avoid whole-image mip sampling, which can
 mix neighboring frames during minification. Coverage classification preserves
 mips for full-image frames and restores filtering across frame/effect bindings.
