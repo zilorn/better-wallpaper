@@ -1,6 +1,7 @@
 # A0 audit JSON syntax coverage
 
-Date: 2026-10-24. Change: `fix: discover references in commented audit JSON`.
+Date: 2026-10-24. Commit: `17fcfc0`
+(`fix: discover references in commented audit JSON`).
 This closes the recorded syntax gap in the bounded asset inventory. It does not
 change runtime scene/material parsing or establish native-engine acceptance.
 
