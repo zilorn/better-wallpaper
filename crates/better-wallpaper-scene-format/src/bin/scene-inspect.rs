@@ -2,10 +2,11 @@ use std::{fs, io::Read, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use better_wallpaper_scene_format::{
-    PkgReader, PuppetModel, SceneNodeKind, TexAtlas, TexTexture, analyse_scene,
+    PkgReader, PuppetModel, SceneNodeKind, TexAtlas, TexTexture, TexVolume, analyse_scene,
     compute_compatibility, parse_scene_graph,
 };
 use clap::Parser;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Parser)]
 #[command(about = "Inspect a Wallpaper Engine scene package or unpacked scene/TEX file")]
@@ -23,19 +24,23 @@ struct Args {
     textures: bool,
     /// Inspect independent atlas images and affine frames in an unpacked TEX.
     /// Reports structural and sprite-layout checks without running the GPU.
-    #[arg(long, conflicts_with_all = ["entry", "textures"])]
+    #[arg(long, conflicts_with_all = ["entry", "textures", "volume"])]
     atlas: bool,
+    /// Inspect a bounded volume TEX without admitting it for scene playback.
+    #[arg(long, conflicts_with_all = ["entry", "textures", "atlas"])]
+    volume: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let data = if args.atlas {
+    let data = if args.atlas || args.volume {
+        let kind = if args.volume { "volume" } else { "atlas" };
         if !args
             .input
             .extension()
             .is_some_and(|value| value.eq_ignore_ascii_case("tex"))
         {
-            bail!("--atlas requires an unpacked .tex file");
+            bail!("--{kind} requires an unpacked .tex file");
         }
         const MAX_INPUT: u64 = 128 * 1024 * 1024;
         let mut data = Vec::new();
@@ -43,13 +48,48 @@ fn main() -> Result<()> {
             .take(MAX_INPUT + 1)
             .read_to_end(&mut data)?;
         if data.len() as u64 > MAX_INPUT {
-            bail!("atlas input exceeds 128 MiB");
+            bail!("{kind} input exceeds 128 MiB");
         }
         data
     } else {
         fs::read(&args.input)
             .with_context(|| format!("failed to read input {}", args.input.display()))?
     };
+    if args.volume {
+        let volume = TexVolume::parse(&data).context("volume validation failed")?;
+        let report = serde_json::json!({
+            "path": args.input,
+            "format": format!("{:?}", volume.format),
+            "flags": volume.flags,
+            "logical_size": [volume.width, volume.height],
+            "storage_size": [volume.texture_width, volume.texture_height, volume.depth],
+            "info_extra": volume.info_extra,
+            "container_version": volume.container_version,
+            "embedded_format": volume.free_image_format.map(|value| format!("{value:?}")),
+            "mips": volume.mipmaps.iter().map(|mip| serde_json::json!({
+                "width": mip.width, "height": mip.height, "depth": mip.depth,
+                "decoded_bytes": mip.data.len(),
+                "decoded_sha256": format!("{:x}", Sha256::digest(&mip.data)),
+            })).collect::<Vec<_>>(),
+            "payload_status": "validated_volume",
+            "scene_playback_available": false,
+            "native_visual_validation": "pending",
+        });
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!(
+                "{}\t{}x{}x{}\tmips={}\tformat={:?}\tplayback=unavailable",
+                args.input.display(),
+                volume.texture_width,
+                volume.texture_height,
+                volume.depth,
+                volume.mipmaps.len(),
+                volume.format,
+            );
+        }
+        return Ok(());
+    }
     if args.atlas {
         let atlas = TexAtlas::parse(&data).context("atlas validation failed")?;
         let sprite_error = atlas

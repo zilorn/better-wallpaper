@@ -50,5 +50,6 @@ pub use scene::{
 };
 pub use texture::{
     AnimationFrame, FreeImageFormat, Mipmap, TexAtlas, TexAtlasFrame, TexAtlasImage, TexFormat,
-    TexTexture, TextureAlphaMode, TextureColorSpace, TextureImage, TextureMipLevel,
+    TexTexture, TexVolume, TexVolumeMip, TextureAlphaMode, TextureColorSpace, TextureImage,
+    TextureMipLevel,
 };

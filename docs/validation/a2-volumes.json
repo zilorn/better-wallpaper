@@ -1,0 +1,875 @@
+{
+  "assets": [
+    {
+      "bytes": 32167,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4282174538,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "7fe35ca43f62f40a883a6142f8129077738884a4c817ed7275d17f316332e20c",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/80s_post-apocalyptic_action.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "8bdca65b725ec2ca10aaf54078404417ebf687a3ce01cc3a10856a4066f478f2",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 32341,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4280447778,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "d34b6a4d2aabb965a2b5587538cd899a4f920b22afdf6dfc0758938f2e989096",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/aliens_2.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "4b4403d6eaeb3d3b8106f884b54c7fca6919741e7b9f417e984a3476b4c1306d",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 32450,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4284636902,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "ff9d530d2a7c882b39dd3ac8080094f0365c8ed82684b2ff345deac8bd45fe2d",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/desert_4.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "74b1f3ef2a89cb52ddc77deb769e3f235e9f4591fbf061862e8214f45bbb440d",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 22195,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281658090,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "70273646c1c90fdaa4bd2b1eb9c78e3a0f4a25f1bf3d051a0d631210dd04f375",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/desperado.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "081139fa0724e312b3a6101322346a4417729fec53a837f7e2d4b4ee20bc501d",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 888,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4284317045,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "0200f4febfe39bb73ab91b7dc5b0eda57cc9bb4dad8202756d6f12a2b18b036c",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/gamebob_2.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "af472cf5118160e648211eb2e0dad1221b34e268c8735fb2492473434105b6d9",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 35698,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4282307057,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "74c0c83b81e0903e9281a733f818edde575c11aee0bc32b049d038835857855d",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/k23_b.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "189a405d9a3503769054de22541fe562ebd616d830a540a673f86525aa817b48",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 20455,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4279242903,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "a5dfbc360f7cae0666de93160c809bad12d2ac42c10133a6f5295a31e41cf8ba",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_adventure.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "c67b256f98c1aa800cac03512f5d3a95a79a18f35419c1b32458b59de5c07040",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 22938,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4290690601,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "d213b7a4658f3d04819256df4389312d1aedff71f152220a13b568db9f95fccf",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_adventureb.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "b22d05e6e28d8b7e15569b6e2f80115fd8c27a0df2ff783fb115ff768956001e",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 22436,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4288286479,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "ad0a9799f4a5bb42b613779272416d472f29eb2989b4eac8b1fad86abce4526e",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_adventurec.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "91673d25d5eb1bf80cd614e72f922c8268fcb062b5ce45a86e6c3b9016c79de3",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 40455,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281282513,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "79aa4bc4b33440fe27ae6d02b79369aeaa3ea064b7b57c5458f17620ae9cc21a",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_amber.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "b132756f8b2169d909187dd43afa7121ccdf399c8caffd263eec51a3d1b96618",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 35315,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4292374587,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "afb6f6a771ee9c6bf5320ac431766e6002ab51bed422c6cfe1a425dfb279dcaf",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_backsea.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "f5ea9f48c6ba095a23ed0c8e2377434d661f0ed51a900be9d1e012a5314c647a",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 27077,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4283409879,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "b4330bfb94f4e20f48c978d24dc7766578eb059236125dae1177bd8d68d1d785",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_beach.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "5358d9961cd624e58eab38ac01054841dae0bd3b166dc73dd45665980dae5a90",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 33885,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281479850,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "55517f07d6f5a978e64136eadab5524f7cd6043631556d4ab09428a8c80ae131",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_bluenavy.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "b2958d8d5ff5d85c6ad13a9cc696e20f69c03d473fea9e36bc071b39b528bf29",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 33803,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4280536302,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "34f892127cd0c725be403fc89f1004012b61374de974ad3fcf6f824f1de5e828",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_coloration.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "74918ce5b4f2aabfc12ad637ebdafee27cfba60963922727720734e3694c901f",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 28524,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281381317,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "90be148703b0e3e2fd3258d3debe4bf6df71ef1a288a06f207e372b097aac7a2",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_daisy.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "28151a832fee1ffa0cc18c2081c49639ceaf82a7b60b3063e355fb12c75ae352",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 19678,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4285784031,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "29299a67513afec11752e60c937f2efe27fef37573f36746d8dcddb0760beabd",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_dusk.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "4be297298dbd95a3a367e3a20f7cbaa1c70cb7b7d2dfc65c0ba2b4ed24281c7e",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 24770,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4288387909,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "7f913853fa8ff4041d25c5e7ab91a3f6b2ec49517f5a58a0b2bf12198e79745f",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_emeraldd.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "2ca192df86954403f2cba7329177309d0b74e76adbb8c10f93109c9b473a5732",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 27066,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4289901169,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "1f35f9a4a070af8de1d9a7058be1792c63288cbdf2eeb45dd3ad33d5680244bd",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_ferne.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "b16bbb798672efca97cd6fdad239a8c24d43f732f4cc6623b60c2483a35b6bc3",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 30401,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281494463,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "eab044a39d5305a1c1920457f471d808ebda0da7539cd4e53e2810674af1de78",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_honeyb.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "65df377fdbec40e20c20154666ece9b70cfb20f8d28d0123ea2cec87ef13e717",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 27117,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4282275499,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "8735749c6dee77b81f6b434792c7a8bf25fba546b2a7a94547649cc52dd4c6cd",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_sandyskyd.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "e2f629fa26509121b85f3dbff25ad8ff08597464cf911ead8b949ce0ae8f94cd",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 31644,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4279045455,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "da3b6715e18c020a4aa1dfdcb98d0c046cea3a97142546a39f78ca01fb2db7fd",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_slate.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "ae74bf2f3c4c617d7c10f74f3868868348b91dd55f0b34eab04e2662e0306297",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 29902,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4281216741,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "c92e387276e1d0dc8cb322f23d99b6816c8ad1278a9ef204c4bff59e5b92e2b5",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_studio.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "28383b5c325255306d5a76450efe805c62c00abffaa842c29badc3b44412bc24",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 32811,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4288388930,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "4b52d98a5755512033dd2742ceee90c4929826d1d69f5650b898ec6f71f83028",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/lutx32_westernf.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "cedc9862e1d0a6fe0f85c12913cf08067d4e7a4fea38e8a46df9941a40b32d43",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 1008,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4283782570,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "401931ed1afdc39049bbf110e0cf719c769e0b16f2dc22f45dce345a348689ca",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/neutral.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "967ea45d38c40eda283d440bd80b914587c779ec6fbe1981e761d2443a68fa3b",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 31863,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4294243420,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "44ea7789097294fdaee5f6c69b988228adc6502524765a8962710a58f7729ae3",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/setting_sun.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "41e8d8b4e7294d94b0d55df32878fcfbbd1c4b4536bbbb7df7205352ef844ddc",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 41485,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4290631197,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "78667f63302b1e38ed0aab18defe715e300e21ffe8bc1b2e6ab6be1e14aa48f1",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/sharp_wasteland.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "c6cce798f906388d51e0028c7c5b87ade6e715672659420275990c8696da4aab",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 29951,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4279281168,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "c61f32082e6f55764d892a336d1074ee8ecc0a0bfa634be27f4c2b5d84404442",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/simple_film.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "374517db7fae269201f1ad91ae38236ddf21f3aa476759a926749e5b8a3d6981",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "bytes": 27186,
+      "container_version": 4,
+      "embedded_format": "Png",
+      "flags": 66,
+      "format": "RGBA8888",
+      "info_extra": 4292277235,
+      "logical_size": [
+        1024,
+        32
+      ],
+      "mips": [
+        {
+          "decoded_bytes": 131072,
+          "decoded_sha256": "0ba34916e2fae9c28a67a92aa6911e7d4f0b5fb5c323a2e05c313279bfb2785e",
+          "depth": 32,
+          "height": 32,
+          "width": 32
+        }
+      ],
+      "native_visual_validation": "pending",
+      "path": "assets/materials/lut/tower.tex",
+      "payload_status": "validated_volume",
+      "scene_playback_available": false,
+      "sha256": "7a3f0f729ab39bd84597efc05ecc9c4e3e236a72defda51f15645e526d97c90b",
+      "storage_size": [
+        32,
+        32,
+        32
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "scope": "Direct *.tex files in assets/materials/lut of the selected installation; no PKG traversal or playback claims.",
+  "target_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0"
+}

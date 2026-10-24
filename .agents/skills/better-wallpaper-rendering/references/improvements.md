@@ -161,11 +161,11 @@ Explicit `SPRITESHEET` 0/1 is respected by rendering and compatibility analysis;
 missing-combo inference retains old results. Native partial/noncontiguous mip
 chains have a concrete admission error. See the [acceptance audit](../../../../docs/validation/a1-native-atlases.md).
 
-Remaining extensions: broaden effect/alpha/color-space and vendor coverage,
+Remaining A1 extensions: broaden effect/alpha/color-space and vendor coverage,
 implement partial native mip sampling without inventing levels, and test desktop
 hotplug/compositor restart separately. Effect masks and authored system-texture
-fallbacks retain the legacy single-image adapter. Add bounded 3D LUT parsing/upload
-separately. A0 sample
+fallbacks retain the legacy single-image adapter. Volume parsing is now separate;
+LUT upload/effect consumption remains pending. A0 sample
 construction exposed that flipped frames previously parsed successfully, then
 were discarded by `sprite_animation`, silently leaving a static full atlas.
 Legacy regression coverage still rejects both axes in TEXS1/2/3; the new main
@@ -173,3 +173,23 @@ material path renders the validated affine sequence instead.
 TEXB4 video/editor metadata still needs separate native/sample corroboration.
 Particle atlases do not establish particle simulation support. Local pixel-size
 validation and synthetic goldens do not establish Wallpaper Engine visual parity.
+
+## Volume TEX / 3D LUT — Inspection Subset Implemented, Playback Pending
+
+`TexVolume` now inspects a bounded single-image raw ARGB8888/PNG subset separately
+from 2D playback. Native-reader evidence verifies conditional TEXI/mip depth and
+the embedded decoder's width×(height*depth) layout. All 28 selected local LUT PNGs
+parse, retain their A0 input identities and match independent Pillow decoded
+hashes; all 32,768 neutral-cube voxels match the analytical x/y/z ramp. Owned
+fixtures cover a neutral PNG and odd noncubic mip chain, with regressions for
+TEXB1–4, LZ4, shape/length/count errors, cumulative budgets and every truncated
+prefix. `scene-inspect --volume --json` explicitly reports playback unavailable.
+See [evidence](../../../../docs/reverse-engineering/wallpaper-engine-volumes.md)
+and [validation](../../../../docs/validation/a2-volume-parser.md).
+
+Completion of A2: verify color-grading coordinates, interpolation/color space and
+parameter binding against native captures; choose bounded GPU storage and
+capability diagnostics; connect actual effects and test neutral/nonneutral and
+boundary colors. BCn/other codecs, multi-image/video volumes and nonconsecutive
+mips remain explicitly unsupported. No LUT playback or compatibility-tier claim
+follows from successful parsing; the legacy and main 2D parsers still reject it.

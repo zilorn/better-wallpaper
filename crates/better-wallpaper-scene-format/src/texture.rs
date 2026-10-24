@@ -2,6 +2,17 @@ use std::{io::Cursor, sync::Arc};
 
 use crate::error::TexError;
 
+#[path = "texture_volume.rs"]
+mod volume;
+pub use volume::{
+    MAX_VOLUME_DECODED_BYTES, MAX_VOLUME_DEPTH, MAX_VOLUME_DIMENSION, MAX_VOLUME_MIPS, TexVolume,
+    TexVolumeMip,
+};
+
+#[cfg(test)]
+#[path = "texture_volume_tests.rs"]
+mod volume_tests;
+
 // ── Limits ──────────────────────────────────────────────────────────────────
 
 /// Maximum texture dimension (width or height) in pixels

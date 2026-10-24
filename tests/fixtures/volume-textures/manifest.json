@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "path": "neutral-png.tex",
+      "bytes": 266,
+      "sha256": "e56a2eb5ef8725206f6ce861e0f6d680d9c297382e8a955d06194f850cb8d269"
+    },
+    {
+      "path": "noncubic-raw.tex",
+      "bytes": 247,
+      "sha256": "b88e6b00073927e031bbbcd90c577000a56fd6f61cd860dc80106f9c2b07ffd7"
+    }
+  ]
+}

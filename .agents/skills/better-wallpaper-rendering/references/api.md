@@ -73,6 +73,26 @@ are rejected. Zero-duration particle atlases do not imply timed sprite playback.
 inspects loose TEX files without following symlinks; pixel validation is not GPU
 or scene-playback validation.
 
+`TexVolume::parse` / `parse_with_budget` provide a separate inspection-only model
+for single-image volumes with raw ARGB8888 or vertically stacked PNG payloads.
+TEXB1–4 raw, TEXB3/4 PNG and optional LZ4 are supported; PNG output is RGBA8,
+raw bytes retain their format, and x varies fastest, then y, then z. Preserve
+source dimensions separately from storage width/height/depth and the opaque final
+TEXI word. Storage width/height are bounded by 8192, depth by 128, source dimensions
+by 16384, each decoded or encoded mip by 64 MiB, and retained pixels by 128 MiB
+(or a lower caller budget). Check the complete retained-byte sum before allocating
+each mip. One encoded/decompression buffer and bounded PNG scratch may coexist.
+Mip counts are bounded by 32 and the complete chain length; dimensions must be a
+consecutive floor-halved prefix. Reject other formats/codecs, multiple images,
+animation/video, malformed LZ4/PNG, trailing data and unsupported layouts.
+`scene-inspect FILE.tex --volume --json` bounds input at 128 MiB and reports
+dimensions, raw format, decoded byte hashes and `scene_playback_available: false`.
+Neither 2D parser, scene compatibility admission nor GPU input accepts volumes.
+The 28 local base-level LUT PNGs pass inspection and independent decoded-hash
+checks; that is not LUT playback or native visual parity. See
+[layout evidence](../../../../docs/reverse-engineering/wallpaper-engine-volumes.md)
+and [validation](../../../../docs/validation/a2-volume-parser.md).
+
 `TexAtlas::parse` is the model for inspection and main scene material textures: independent image/mip lists,
 full signed affine frame bases and TEXS3 logical frame dimensions. It caps 64
 images, 32 mips per image, 10,000 frames and 128 MiB retained bytes across images;
