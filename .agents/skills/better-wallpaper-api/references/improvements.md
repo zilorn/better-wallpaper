@@ -1,5 +1,21 @@
 # Management API Improvements
 
+## Native GTK Desktop — Implemented, Specialized Property Editors Pending
+
+`better-wallpaper-gtk` replaces the installed desktop command with native widgets;
+the Tauri client and web source remain available. The GTK client preserves full
+configuration documents, merges edits against a fresh GET and detects same-field
+conflicts, with regression coverage for unrelated concurrent changes. The API
+still has no revision/conditional-write mechanism; completion of atomic conflict
+protection requires a daemon-supported revision checked by PUT plus concurrent
+writer tests. A client-only GET/PUT merge cannot close that race.
+
+`ui.rs::render_properties_for` currently presents project properties as text
+entries with metadata tooltips. A follow-up should provide type-specific native
+controls and conditional visibility equivalent to the retained web consumer;
+acceptance requires bool/slider/combo/color/file fixtures and conditional updates
+without losing overrides. Existing backend support/limitations are unchanged.
+
 ## Incremental Library Index — Resolved
 
 Previously `library_response`, `library_thumbnail_response` and `media_response`

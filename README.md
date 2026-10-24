@@ -18,16 +18,22 @@ cd web && bun run build
 cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 ```
 
-桌面客户端使用 Tauri 2，复用同一管理页面。安装后可从应用菜单启动 Better Wallpaper，
+默认桌面客户端使用 Rust + GTK 4 原生控件。安装后可从应用菜单启动 Better Wallpaper，
 或使用托盘的“Open desktop client”。重复启动会聚焦已有窗口；关闭窗口只退出客户端，
 壁纸服务与托盘继续运行。客户端未找到服务时会尝试启动已安装的 systemd 用户服务，
-连接失败会显示重试页面。开发时先按上面的步骤构建网页并启动 daemon，再运行：
+连接失败会显示重试提示。GTK 客户端直接访问管理 API，无需构建 Web 页面；开发时启动 daemon，再运行：
 
 ```bash
-cargo run -p better-wallpaper-desktop
+cargo run -p better-wallpaper-gtk
 # 连接指定的本机管理地址，不自动启动用户服务
-cargo run -p better-wallpaper-desktop -- --url http://127.0.0.1:43129
+cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
 ```
+
+原 Tauri 客户端源码完整保留在 `crates/better-wallpaper-desktop`，Web UI 保留在 `web/`。
+运行旧客户端使用 `cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy`，
+仍需 GTK 3、WebKitGTK 4.1 和已构建的 Web 页面。普通构建和安装默认使用 GTK 客户端；
+`--workspace` 会同时构建两个客户端。原生客户端的功能、测试及已知限制见
+[`docs/gtk-desktop.md`](docs/gtk-desktop.md)。
 
 管理服务固定绑定到 `127.0.0.1:43129`，并将管理地址写入
 `$XDG_RUNTIME_DIR/better-wallpaper/endpoint`；可通过托盘菜单打开管理页面。服务提供 `/api/v1/status`、
@@ -112,7 +118,7 @@ BETTER_WALLPAPER_WEB_PLAYER="$PWD/target/web-wallpaper/better-wallpaper-web" \
 ### 依赖
 
 完整构建需要 Rust stable、Cargo、Bun、C/C++ 工具链、Clang、`pkg-config`，以及
-ALSA、FFmpeg、Wayland、GTK 3 和 WebKitGTK 4.1 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
+ALSA、FFmpeg、Wayland 和 GTK 4.8+ 开发库。运行时还需要 FFmpeg 命令行程序（用于生成缩略图）
 以及 `parec`（通过 PipeWire/PulseAudio 默认输出 monitor 提供桌面音频响应）；Plasma 6 插件要求
 Qt 6.6 或更高版本。
 
@@ -122,7 +128,7 @@ Debian/Ubuntu：
 sudo apt-get update
 sudo apt-get install -y \
   build-essential clang pkg-config ffmpeg pulseaudio-utils \
-  libasound2-dev libwayland-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+  libasound2-dev libwayland-dev libgtk-4-dev \
   libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
   libavutil-dev libswresample-dev libswscale-dev
 ```
@@ -132,7 +138,7 @@ Arch Linux（所有依赖均在官方仓库中）：
 ```bash
 sudo pacman -S --needed \
   base-devel clang pkgconf ffmpeg libpulse \
-  alsa-lib wayland gtk3 webkit2gtk-4.1
+  alsa-lib wayland gtk4
 ```
 
 注意：Arch 的 `ffmpeg` 包同时提供运行时命令行和开发头文件，无需单独安装 `*-devel` 包。若使用 NVIDIA 专有驱动且需要 Vulkan DMA-BUF 支持，确保已安装 `nvidia-utils` 和 `vulkan-loader`。
@@ -142,7 +148,7 @@ Fedora（FFmpeg 开发包要求系统已启用提供完整 FFmpeg 的仓库）�
 ```bash
 sudo dnf install \
   @development-tools clang pkgconf-pkg-config ffmpeg ffmpeg-devel pulseaudio-utils \
-  alsa-lib-devel wayland-devel gtk3-devel webkit2gtk4.1-devel
+  alsa-lib-devel wayland-devel gtk4-devel
 ```
 
 Rust 和 Bun 建议使用各自的官方安装方式；完成安装后确认 `cargo`、`rustc` 和 `bun` 位于

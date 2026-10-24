@@ -55,6 +55,9 @@ its report includes the wallpaper-surface pointer-focus limitation.
 `SceneConfig::mouse` and `parallax` gate basic niri camera parallax together.
 `particle_limit` remains reserved, reported as ignored and disabled in the Web UI.
 No arbitrary mouse scripts, depth-map effect or particle budgeting is implied.
+The native GTK client also exposes mouse/parallax/audio settings and preserves
+library compatibility details; it omits the reserved particle/script controls.
+Its scene property editor changes configuration overrides, not renderer support.
 
 TEX container contracts are verified against local Wallpaper Engine 2.8.42
 native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md`.

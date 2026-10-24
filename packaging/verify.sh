@@ -45,6 +45,8 @@ ROOT_INSTALLER="$PROJECT_ROOT/install.sh"
 test -x "$ROOT_INSTALLER"
 test -x "$DAEMON"
 test -x "$DESKTOP"
+"$DESKTOP" --help | grep -q 'GTK desktop client'
+test ! -e "$STAGE/usr/bin/better-wallpaper-desktop-legacy"
 test -x "$STAGE/usr/bin/better-wallpaper-web"
 test -f "$ENTRY"
 test -f "$STAGE/usr/share/icons/hicolor/64x64/apps/better-wallpaper.png"

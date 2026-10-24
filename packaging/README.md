@@ -1,6 +1,6 @@
 # 发布与安装
 
-`install.sh` 构建并安装支持 niri 与 KDE Plasma 6 的 daemon、Tauri 2 桌面客户端、应用菜单入口、Web 静态资源、Plasma 6
+`install.sh` 构建并安装支持 niri 与 KDE Plasma 6 的 daemon、GTK 4 原生桌面客户端、应用菜单入口、Web 静态资源、Plasma 6
 壁纸插件和 systemd 用户服务。当前 niri 后端的播放性能优于 KDE 后端。默认安装到
 `~/.local`，服务文件写入 `~/.config/systemd/user`，不需要 root 权限：
 
@@ -36,7 +36,8 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
   `libavcodec`、`libavutil`、`libswscale`、`libswresample`
 - ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
 - Wayland 客户端开发文件
-- GTK 3 和 WebKitGTK 4.1 开发库（Tauri 2 桌面客户端）
+- GTK 4.8+ 开发库（原生桌面客户端）
+- 仅显式构建保留的 Tauri 客户端时需要 GTK 3 和 WebKitGTK 4.1；普通构建不会构建它
 
 Debian/Ubuntu 和 Fedora 的完整安装命令见项目根目录的
 [`README.md`](../README.md#依赖)。包名随发行版和仓库变化，构建时以 Cargo 和
@@ -49,15 +50,16 @@ daemon 动态链接构建环境中的 FFmpeg、ALSA、Wayland、Vulkan loader �
 Web UI 已编译为静态文件，运行时不需要 Bun。NVIDIA/Vulkan 不可用时会记录降级原因并使用
 CPU `wl_shm` 路径。
 
-桌面客户端运行时需要 GTK 3、WebKitGTK 4.1 和桌面会话 D-Bus；应用菜单入口位于
+桌面客户端运行时需要 GTK 4.8+ 和桌面会话 D-Bus；视频预览另需发行版的 GTK GStreamer
+媒体后端及相应解码器。应用菜单入口位于
 `$PREFIX/share/applications/org.betterwallpaper.desktop.desktop`。客户端通过 endpoint
-发现文件连接 daemon，只允许 `http://127.0.0.1:<port>`，验证 API v1 和已构建的管理页面；
+发现文件连接 daemon，只允许 `http://127.0.0.1:<port>`，验证 API v1，无需管理页面；
 服务未就绪时尝试 `systemctl --user --no-block start better-wallpaper.service`，随后限时等待，
 失败可在窗口内重试。`--url` 可指定本机管理地址，指定后不自动启动用户服务。
-客户端使用单实例插件，重复启动聚焦现有窗口；关闭窗口退出客户端，daemon 和托盘继续运行。
-检测到已加载的 NVIDIA 驱动时，客户端默认设置 `WEBKIT_DISABLE_DMABUF_RENDERER=1`，
-规避 WebKitGTK 图形缓冲区分配失败；这会放弃 WebKit 的较快 DMA-BUF 呈现路径。
-用户已设置该变量时会保留其值，其他 GPU 环境不变。
+客户端使用 GTK Application 的会话总线单实例机制，重复启动聚焦现有窗口；关闭窗口退出客户端，daemon 和托盘继续运行。
+原 Tauri 客户端及其 NVIDIA WebKit 兼容逻辑仍保留在源码中，使用
+`cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy` 启动。
+它不在默认构建和安装范围内；Web UI 继续随包安装，供浏览器与旧客户端使用。
 
 托盘“Open desktop client”需要 `systemd-run` 和正在运行的 systemd 用户管理器。
 它优先启动 daemon 同目录的 `better-wallpaper-desktop --url <endpoint>`；未安装客户端时

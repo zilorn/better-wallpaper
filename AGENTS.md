@@ -11,6 +11,7 @@ changing or describing these capabilities.
 - Rust workspace: daemon, configuration, FFmpeg decoding/audio, scene parsing,
   GPU rendering, Wayland/niri integration, and KDE integration.
 - Bun, TypeScript, SolidJS, and Vite: web management UI.
+- Rust and GTK 4: default native desktop client; the original Tauri client is retained as an opt-in legacy binary.
 - Qt 6/QML, Qt Multimedia, and Qt WebEngine: Plasma wallpaper plugin.
 - systemd user service: installed daemon lifecycle.
 

@@ -15,9 +15,46 @@ JSON errors have the form `{"error":"message"}`.
 
 ## Desktop Client and Tray
 
-`crates/better-wallpaper-desktop` is a Tauri 2 desktop client that loads the existing
+`crates/better-wallpaper-gtk` is the default native GTK 4.8+ client. It builds the
+installed `better-wallpaper-desktop` command; run with
+`cargo run -p better-wallpaper-gtk`. Workspace default members exclude the retained
+Tauri package, so ordinary builds do not require GTK 3 or WebKitGTK. Packaging and
+the tray continue to use the existing desktop binary name and menu entry.
+
+The GTK app provides paged/searchable library thumbnails, video preview, scene
+reports/properties, wallpaper/playback controls, named outputs, folder pickers,
+settings, diagnostics and logs. It uses API v1 directly without loading HTML.
+HTTP work and service startup run on GIO workers; only GTK's main thread updates
+widgets. Status is polled every two seconds without overlapping requests, and
+logs refresh only while visible. Thumbnail requests are paged and stale page
+results are discarded. Preview uses the authorized media endpoint and requires
+a GTK media backend/codecs; errors appear in the preview window.
+
+Both clients share endpoint discovery, loopback-only origin restrictions and
+optional service startup semantics described below. GTK disables HTTP redirects
+and proxies and limits response sizes. GTK Application provides session-bus
+single-instance activation. Closing the client releases its controller while
+daemon playback/tray continue. A second launch focuses the first endpoint.
+
+GTK edits retain the full configuration JSON. Save fetches the latest document,
+merges only edited fields, preserves unrelated concurrent changes and rejects
+same-field conflicts. This is not atomic compare-and-swap: the API has no revision
+token and a writer can still race between GET and PUT. Saving retains validation,
+atomic persistence and reload semantics in the daemon. Connection loss retains
+drafts and disables save/playback; reconnect to the same endpoint is automatic.
+Reloading pending edits requires confirmation. Library selection is a draft until
+Save changes; switching scenes clears property overrides. Backend changes report
+restart-required without claiming a runtime switch.
+
+See [GTK client](../../../../docs/gtk-desktop.md) for commands, display tests and
+remaining UI limitations. Property fields currently use text entries with
+metadata tooltips; conditional visibility and specialized editors remain pending.
+
+### Retained Tauri client
+
+`crates/better-wallpaper-desktop` retains the Tauri 2 desktop client that loads the existing
 management page from the daemon, preserving same-origin HTTP/media/WebSocket behavior.
-Build/run with `cargo run -p better-wallpaper-desktop`; GTK 3 and WebKitGTK 4.1
+Build/run with `cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy`; GTK 3 and WebKitGTK 4.1
 are required. The bundled connection screen reads the endpoint discovery file
 (with a default of `http://127.0.0.1:43129` when absent), permits only HTTP origins
 on `127.0.0.1`, and verifies status API v1 and the HTML page before navigation.

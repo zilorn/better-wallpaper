@@ -1,0 +1,97 @@
+# GTK desktop client
+
+`crates/better-wallpaper-gtk` provides the default `better-wallpaper-desktop`
+command using Rust and GTK 4.8+. It calls the existing daemon API directly and
+does not embed a browser or require built web assets. The daemon retains playback,
+configuration persistence, the library index, media authorization and the sole
+system tray. No rendering or backend behavior changes are required.
+
+The original Tauri implementation remains in `crates/better-wallpaper-desktop`;
+its binary is now `better-wallpaper-desktop-legacy`. All of its Rust, JavaScript,
+HTML, CSS and capabilities are retained. `web/` remains available and packaged.
+Workspace default members select GTK; `--workspace` explicitly includes Tauri
+and therefore also needs GTK 3 and WebKitGTK 4.1 development libraries.
+
+## Run
+
+```sh
+cargo run -p better-wallpaper-daemon -- --backend headless
+cargo run -p better-wallpaper-gtk
+# Use a particular daemon without starting the installed systemd service:
+cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
+# Retained webview client (requires built and served web assets):
+cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy
+```
+
+Endpoint discovery uses the daemon's runtime file and falls back to
+`http://127.0.0.1:43129`. Only HTTP origins on `127.0.0.1` are accepted; credentials,
+paths, queries, fragments, redirects and proxy forwarding are rejected. Without
+`--url`, a failed connection requests a nonblocking systemd user-service start
+and polls readiness for ten seconds. Failures are visible and retryable.
+
+GTK Application uses the desktop session bus to focus the existing window on
+repeat launches. A second launch keeps the first window's endpoint. Closing the
+client leaves daemon playback and the tray running. No new tray is created.
+
+## Native views
+
+- **Wallpapers:** search by name/path, filter by type, browse twelve items per
+  page, load bounded thumbnails, inspect scene compatibility details, and preview
+  videos in a muted GTK media window. Choosing an entry prepares a draft;
+  **Save changes** applies it. Scene changes reset property overrides.
+- **Playback:** file picker, wallpaper type, fill mode, frame limit, mute/loop,
+  scene quality, mouse/parallax/audio controls, and editable project properties.
+  Scene reports retain supported features, unsupported features and warnings.
+  Reserved particle and script execution controls are not offered.
+- **Displays:** add named outputs, enable/disable them, or remove overrides.
+- **Library folders:** add folders with a native picker or edit one path per
+  line; saving updates the daemon index and refreshes the library.
+- **Settings:** backend preference, decoding and height cap, log level, startup
+  restoration and live connection diagnostics. Backend saves explicitly report
+  that a service restart is needed; reload requests do not claim playback success.
+- **Logs:** automatic refresh while visible, freeze refresh, and text filtering.
+
+Network requests and service startup run outside GTK's main thread. Status polls
+every two seconds with no overlapping status requests. A failed status disables
+saving/playback controls while keeping drafts; recovery at the same endpoint is
+automatic. Reloading settings while edits are pending asks before discarding them.
+Library requests are bounded to one scan at a time. Thumbnail loading is paged
+and generation-checked, so stale searches cannot replace current results.
+
+## Configuration writes
+
+The client retains the complete JSON document, including unknown fields. A save
+fetches a fresh document and merges only user-edited fields. Unrelated changes
+from the tray/browser survive. Same-field conflicts stop the save with an error;
+the user can keep editing or reload. Output arrays and library path arrays are
+treated as single fields. This is best-effort conflict detection: the existing
+API does not offer a revision token or atomic compare-and-swap, so another writer
+can still race between GET and PUT. Validation, atomic disk writes and playback
+reload remain the daemon's responsibility.
+
+## Validation
+
+```sh
+cargo clippy
+cargo fmt --all -- --check
+cargo test -p better-wallpaper-gtk
+dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
+  cargo test -p better-wallpaper-gtk -- --ignored --test-threads=1
+./packaging/verify.sh
+```
+
+The display test uses an isolated HTTP fixture, drives native controls, and
+checks connection, pause/resume, filtering/pagination, scene selection, property
+reset, configuration preservation, conflicts, backend restart notices, logs,
+offline recovery and controller cleanup. Set `BETTER_WALLPAPER_GTK_SCREENSHOTS`
+to an output directory to capture its rendered windows. The ordinary unit tests
+do not need a display. These checks do not prove actual niri/Plasma playback.
+
+Video preview requires a GTK media backend (normally GStreamer) and suitable
+codecs. Missing support is reported inside the preview window. Scene properties
+currently use text entries with metadata tooltips; conditional visibility and
+specialized color/file controls remain a UI follow-up. Existing backend limits
+still apply; compatibility tiers are metadata analysis, not playback guarantees.
+
+GTK APIs follow the [gtk-rs main-loop guidance](https://gtk-rs.org/gtk4-rs/stable/latest/book/main_event_loop.html):
+blocking I/O runs on GIO workers and only the main thread updates widgets.
