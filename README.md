@@ -27,6 +27,8 @@ cd .. && cargo run -p better-wallpaper-daemon -- --backend headless
 cargo run -p better-wallpaper-gtk
 # 连接指定的本机管理地址，不自动启动用户服务
 cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
+# 使用简体中文界面（默认跟随系统语言）
+cargo run -p better-wallpaper-gtk -- --language zh-CN
 ```
 
 原 Tauri 客户端源码完整保留在 `crates/better-wallpaper-desktop`，Web UI 保留在 `web/`。

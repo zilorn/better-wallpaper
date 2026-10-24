@@ -36,6 +36,13 @@ and proxies and limits response sizes. GTK Application provides session-bus
 single-instance activation. Closing the client releases its controller while
 daemon playback/tray continue. A second launch focuses the first endpoint.
 
+The GTK interface supports English and Simplified Chinese, automatically selected
+from `LC_ALL`, `LC_MESSAGES`, then `LANG` (first nonempty value). `--language en`
+or `--language zh-CN` overrides detection. The first window retains its language
+on repeated activation. Labels, option display text and client notices/errors are
+localized without changing protocol values, paths, logs or author-provided text.
+The display regression can run with `BETTER_WALLPAPER_GTK_TEST_LANGUAGE=zh-CN`.
+
 GTK edits retain the full configuration JSON. Save fetches the latest document,
 merges only edited fields, preserves unrelated concurrent changes and rejects
 same-field conflicts. This is not atomic compare-and-swap: the API has no revision

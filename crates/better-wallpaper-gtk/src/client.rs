@@ -1,3 +1,4 @@
+use crate::i18n::{localized, tr};
 use std::{
     fs::File,
     io::Read,
@@ -43,13 +44,13 @@ pub struct Playback {
 impl Playback {
     pub fn label(&self) -> &'static str {
         if self.cancelled {
-            "Stopped"
+            tr("Stopped")
         } else if !self.running {
-            "Idle"
+            tr("Idle")
         } else if self.paused {
-            "Paused"
+            tr("Paused")
         } else {
-            "Playing"
+            tr("Playing")
         }
     }
 }
@@ -86,7 +87,7 @@ pub struct Saved {
 }
 
 pub fn validate_endpoint(value: &str) -> Result<Url> {
-    let url = Url::parse(value.trim()).context("Invalid management address")?;
+    let url = Url::parse(value.trim()).context(tr("Invalid management address"))?;
     if url.scheme() != "http"
         || url.host_str() != Some("127.0.0.1")
         || !url.username().is_empty()
@@ -96,7 +97,9 @@ pub fn validate_endpoint(value: &str) -> Result<Url> {
         || url.fragment().is_some()
         || url.port_or_known_default() == Some(0)
     {
-        bail!("The management address must be an HTTP origin on 127.0.0.1");
+        bail!(tr(
+            "The management address must be an HTTP origin on 127.0.0.1"
+        ));
     }
     Ok(url)
 }
@@ -104,7 +107,7 @@ pub fn validate_endpoint(value: &str) -> Result<Url> {
 fn discover_endpoint() -> Result<Url> {
     let directory = match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(runtime) => PathBuf::from(runtime),
-        None => PathBuf::from(std::env::var_os("HOME").context("HOME is not set")?)
+        None => PathBuf::from(std::env::var_os("HOME").context(tr("HOME is not set"))?)
             .join(".better-wallpaper"),
     };
     let path = directory.join("better-wallpaper/endpoint");
@@ -113,14 +116,14 @@ fn discover_endpoint() -> Result<Url> {
             let mut value = String::new();
             file.take(2049).read_to_string(&mut value)?;
             if value.len() > 2048 {
-                bail!("Management discovery file is too large");
+                bail!(tr("Management discovery file is too large"));
             }
             validate_endpoint(&value)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             validate_endpoint(DEFAULT_ENDPOINT)
         }
-        Err(error) => Err(error).context("Cannot read management discovery file"),
+        Err(error) => Err(error).context(tr("Cannot read management discovery file")),
     }
 }
 
@@ -158,12 +161,13 @@ impl Api {
                 "better-wallpaper.service",
             ])
             .output()
-            .context("Cannot start Better Wallpaper user service")?;
+            .context(tr("Cannot start Better Wallpaper user service"))?;
         if !output.status.success() {
-            bail!(
+            bail!(localized!(
                 "Cannot start Better Wallpaper service: {}",
+                "无法启动 Better Wallpaper 服务：{}",
                 String::from_utf8_lossy(&output.stderr).trim()
-            );
+            ));
         }
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -174,7 +178,8 @@ impl Api {
                     return Ok((api, status, config));
                 }
                 Err(error) if Instant::now() >= deadline => {
-                    return Err(error).context("Service did not become ready within 10 seconds");
+                    return Err(error)
+                        .context(tr("Service did not become ready within 10 seconds"));
                 }
                 Err(_) => thread::sleep(Duration::from_millis(250)),
             }
@@ -191,16 +196,21 @@ impl Api {
         }
         let response = request
             .send()
-            .context("Cannot reach the wallpaper service")?;
+            .context(tr("Cannot reach the wallpaper service"))?;
         let status = response.status();
         let mut bytes = Vec::new();
         response.take(MAX_JSON + 1).read_to_end(&mut bytes)?;
         if bytes.len() as u64 > MAX_JSON {
-            bail!("Service response is too large");
+            bail!(tr("Service response is too large"));
         }
-        let value: Value = serde_json::from_slice(&bytes).context("Invalid service response")?;
+        let value: Value =
+            serde_json::from_slice(&bytes).context(tr("Invalid service response"))?;
         if !status.is_success() {
-            bail!("{}", value["error"].as_str().unwrap_or(status.as_str()));
+            bail!(localized!(
+                "Service rejected the request: {}",
+                "服务拒绝了请求：{}",
+                value["error"].as_str().unwrap_or(status.as_str())
+            ));
         }
         Ok(value)
     }
@@ -209,7 +219,9 @@ impl Api {
         let status: Status =
             serde_json::from_value(self.request(Method::GET, "api/v1/status", None)?)?;
         if status.api_version != 1 {
-            bail!("This service does not provide the Better Wallpaper v1 API");
+            bail!(tr(
+                "This service does not provide the Better Wallpaper v1 API"
+            ));
         }
         Ok(status)
     }
@@ -219,7 +231,7 @@ impl Api {
         // Validate the expected shape while retaining unknown fields for round trips.
         let _: better_wallpaper_core::config::AppConfig = serde_json::from_value(config.clone())?;
         if config["version"] != 2 || !config["wallpaper"].is_object() {
-            bail!("Unsupported configuration document");
+            bail!(tr("Unsupported configuration document"));
         }
         Ok(config)
     }
@@ -229,7 +241,7 @@ impl Api {
         merge_changes(baseline, draft, &mut current, "config")?;
         let result = self.request(Method::PUT, "api/v1/config", Some(&current))?;
         if result["saved"] != true || !result["config"].is_object() {
-            bail!("Service did not confirm the save");
+            bail!(tr("Service did not confirm the save"));
         }
         info!("desktop configuration saved; playback reload requested");
         Ok(Saved {
@@ -279,7 +291,7 @@ impl Api {
         let mut bytes = Vec::new();
         response.take(4 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
         if bytes.len() > 4 * 1024 * 1024 {
-            bail!("Thumbnail is too large");
+            bail!(tr("Thumbnail is too large"));
         }
         Ok(bytes)
     }
@@ -312,7 +324,10 @@ pub fn merge_changes(base: &Value, draft: &Value, current: &mut Value, path: &st
         }
     } else {
         if current != base && current != draft {
-            bail!("{path} changed in another client. Reload settings before saving again.");
+            bail!(localized!(
+                "{path} changed in another client. Reload settings before saving again.",
+                "{path} 已在其他客户端中更改。请重新加载设置后再保存。"
+            ));
         }
         *current = draft.clone();
     }
@@ -375,7 +390,7 @@ mod tests {
     #[test]
     fn scene_selection_resets_only_properties_for_a_different_scene() {
         let mut config = json!({"wallpaper":{"path":"old"},"scene":{"quality":"low","properties":{"foo":"bar"}}});
-        let entry: Entry = serde_json::from_value(json!({"name":"Scene", "path":"new", "wallpaper_type":"scene", "engine_mode":true, "size_bytes":0})).unwrap();
+        let entry: Entry = serde_json::from_value(json!({"name":tr("Scene"), "path":"new", "wallpaper_type":"scene", "engine_mode":true, "size_bytes":0})).unwrap();
         select_wallpaper(&mut config, &entry);
         assert_eq!(config["scene"], json!({"quality":"low","properties":{}}));
         config["scene"]["properties"] = json!({"foo":"kept"});

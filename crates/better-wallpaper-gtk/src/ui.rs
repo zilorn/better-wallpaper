@@ -1,3 +1,4 @@
+use crate::i18n::{localized, tr};
 use std::{
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
@@ -182,16 +183,16 @@ impl Outputs {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         let entry = gtk::Entry::builder()
             .text(name)
-            .placeholder_text("Output name, e.g. DP-1")
+            .placeholder_text(tr("Output name, e.g. DP-1"))
             .hexpand(true)
             .build();
         let toggle = gtk::Switch::builder()
             .active(enabled)
             .valign(gtk::Align::Center)
             .build();
-        toggle.set_tooltip_text(Some("Enable this output"));
+        toggle.set_tooltip_text(Some(tr("Enable this output")));
         let remove = gtk::Button::from_icon_name("list-remove-symbolic");
-        remove.set_tooltip_text(Some("Remove output"));
+        remove.set_tooltip_text(Some(tr("Remove output")));
         row.append(&entry);
         row.append(&toggle);
         row.append(&remove);
@@ -252,12 +253,12 @@ impl Desktop {
         let title = gtk::Label::new(Some("Better Wallpaper"));
         title.add_css_class("title");
         header.set_title_widget(Some(&title));
-        let status = gtk::Label::new(Some("Connecting…"));
+        let status = gtk::Label::new(Some(tr("Connecting…")));
         status.add_css_class("dim-label");
         let spinner = gtk::Spinner::new();
         header.pack_start(&spinner);
         header.pack_start(&status);
-        let pause = gtk::Button::with_label("Pause");
+        let pause = gtk::Button::with_label(tr("Pause"));
         pause.set_sensitive(false);
         header.pack_end(&pause);
         window.set_titlebar(Some(&header));
@@ -289,12 +290,14 @@ impl Desktop {
         root.append(&body);
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         margins(&footer, 12);
-        let hint = gtk::Label::new(Some("Closing this window keeps your wallpaper running."));
+        let hint = gtk::Label::new(Some(tr(
+            "Closing this window keeps your wallpaper running.",
+        )));
         hint.set_hexpand(true);
         hint.set_xalign(0.0);
         hint.add_css_class("dim-label");
-        let reload = gtk::Button::with_label("Reconnect");
-        let save = gtk::Button::with_label("Save changes");
+        let reload = gtk::Button::with_label(tr("Reconnect"));
+        let save = gtk::Button::with_label(tr("Save changes"));
         save.add_css_class("suggested-action");
         save.set_sensitive(false);
         footer.append(&hint);
@@ -305,17 +308,18 @@ impl Desktop {
         window.set_child(Some(&root));
 
         let library_page = page(
-            "Your wallpapers",
-            "Choose a wallpaper, then save to apply it to your desktop.",
+            tr("Your wallpapers"),
+            tr("Choose a wallpaper, then save to apply it to your desktop."),
         );
         let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         let search = gtk::SearchEntry::builder()
-            .placeholder_text("Search wallpapers")
+            .placeholder_text(tr("Search wallpapers"))
             .hexpand(true)
             .build();
-        let filter = gtk::DropDown::from_strings(&["All types", "Video", "Web", "Scene"]);
+        let filter =
+            gtk::DropDown::from_strings(&[tr("All types"), tr("Video"), tr("Web"), tr("Scene")]);
         let refresh = gtk::Button::from_icon_name("view-refresh-symbolic");
-        refresh.set_tooltip_text(Some("Refresh library"));
+        refresh.set_tooltip_text(Some(tr("Refresh library")));
         toolbar.append(&search);
         toolbar.append(&filter);
         toolbar.append(&refresh);
@@ -333,47 +337,49 @@ impl Desktop {
             .build();
         library_page.append(&grid);
         let page_bar = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        let previous = gtk::Button::with_label("Previous");
-        let next = gtk::Button::with_label("Next");
+        let previous = gtk::Button::with_label(tr("Previous"));
+        let next = gtk::Button::with_label(tr("Next"));
         let pagination = gtk::Label::builder().hexpand(true).build();
         page_bar.append(&previous);
         page_bar.append(&pagination);
         page_bar.append(&next);
         library_page.append(&page_bar);
-        add_page(&stack, &library_page, "library", "Wallpapers");
+        add_page(&stack, &library_page, "library", tr("Wallpapers"));
 
         let wallpaper_page = page(
-            "Wallpaper settings",
-            "Adjust playback and choose a local file or project.",
+            tr("Wallpaper settings"),
+            tr("Adjust playback and choose a local file or project."),
         );
         let outputs = Outputs::new();
         let display_page = page(
-            "Displays",
-            "Use the output names reported by your desktop. An empty list selects outputs automatically.",
+            tr("Displays"),
+            tr(
+                "Use the output names reported by your desktop. An empty list selects outputs automatically.",
+            ),
         );
         display_page.append(&outputs.list);
-        let add_output = gtk::Button::with_label("Add output");
+        let add_output = gtk::Button::with_label(tr("Add output"));
         add_output.set_halign(gtk::Align::Start);
         display_page.append(&add_output);
         let folders_page = page(
-            "Library folders",
-            "One folder per line. Steam Workshop libraries are discovered automatically.",
+            tr("Library folders"),
+            tr("One folder per line. Steam Workshop libraries are discovered automatically."),
         );
         let settings_page = page(
-            "Settings & diagnostics",
-            "Backend changes take effect after restarting the wallpaper service.",
+            tr("Settings & diagnostics"),
+            tr("Backend changes take effect after restarting the wallpaper service."),
         );
         let diagnostics = wrapped_label("");
         diagnostics.set_selectable(true);
         let properties = column(10);
         let logs_page = page(
-            "Service logs",
-            "Recent messages from the wallpaper service.",
+            tr("Service logs"),
+            tr("Recent messages from the wallpaper service."),
         );
-        let follow_logs = gtk::CheckButton::with_label("Refresh automatically");
+        let follow_logs = gtk::CheckButton::with_label(tr("Refresh automatically"));
         follow_logs.set_active(true);
         let log_search = gtk::SearchEntry::builder()
-            .placeholder_text("Filter log messages")
+            .placeholder_text(tr("Filter log messages"))
             .build();
         let logs = gtk::TextView::builder()
             .editable(false)
@@ -429,13 +435,13 @@ impl Desktop {
         });
         ui.form(&wallpaper_page, &folders_page, &settings_page);
         wallpaper_page.append(&ui.properties);
-        settings_page.append(&section("Connection details"));
+        settings_page.append(&section(tr("Connection details")));
         settings_page.append(&ui.diagnostics);
-        add_page(&ui.stack, &wallpaper_page, "wallpaper", "Playback");
-        add_page(&ui.stack, &display_page, "displays", "Displays");
-        add_page(&ui.stack, &folders_page, "folders", "Library folders");
-        add_page(&ui.stack, &settings_page, "settings", "Settings");
-        add_page(&ui.stack, &logs_page, "logs", "Logs");
+        add_page(&ui.stack, &wallpaper_page, "wallpaper", tr("Playback"));
+        add_page(&ui.stack, &display_page, "displays", tr("Displays"));
+        add_page(&ui.stack, &folders_page, "folders", tr("Library folders"));
+        add_page(&ui.stack, &settings_page, "settings", tr("Settings"));
+        add_page(&ui.stack, &logs_page, "logs", tr("Logs"));
         ui.content.set_sensitive(false);
 
         let weak = Rc::downgrade(&ui);
@@ -536,25 +542,25 @@ impl Desktop {
 
     fn form(self: &Rc<Self>, wallpaper: &gtk::Box, folders: &gtk::Box, settings: &gtk::Box) {
         let path = gtk::Entry::builder()
-            .placeholder_text("Choose a wallpaper file…")
+            .placeholder_text(tr("Choose a wallpaper file…"))
             .hexpand(true)
             .build();
         let path_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let browse = gtk::Button::with_label("Browse…");
+        let browse = gtk::Button::with_label(tr("Browse…"));
         path_row.append(&path);
         path_row.append(&browse);
-        wallpaper.append(&wrapped_label("Wallpaper path"));
+        wallpaper.append(&wrapped_label(tr("Wallpaper path")));
         wallpaper.append(&path_row);
         self.register("/wallpaper/path", Input::Text(path.clone()), json!(""));
         let weak = Rc::downgrade(self);
         browse.connect_clicked(move |_| {
             if let Some(ui) = weak.upgrade() {
                 let chooser = gtk::FileChooserNative::new(
-                    Some("Choose wallpaper"),
+                    Some(tr("Choose wallpaper")),
                     Some(&ui.window),
                     gtk::FileChooserAction::Open,
-                    Some("Choose"),
-                    Some("Cancel"),
+                    Some(tr("Choose")),
+                    Some(tr("Cancel")),
                 );
                 let entry = path.clone();
                 chooser.connect_response(move |dialog, response| {
@@ -570,46 +576,51 @@ impl Desktop {
         });
         self.choice(
             wallpaper,
-            "Wallpaper type",
+            tr("Wallpaper type"),
             "/wallpaper/wallpaper_type",
             &["video", "web", "scene"],
             "video",
         );
         self.choice(
             wallpaper,
-            "Fill mode",
+            tr("Fill mode"),
             "/wallpaper/fill_mode",
             &["cover", "contain", "stretch"],
             "cover",
         );
         self.number(
             wallpaper,
-            "Frame rate limit",
+            tr("Frame rate limit"),
             "/wallpaper/fps_limit",
             1.0,
             240.0,
             60,
         );
-        self.toggle(wallpaper, "Loop playback", "/wallpaper/loop_playback", true);
-        self.toggle(wallpaper, "Mute sound", "/wallpaper/muted", true);
-        wallpaper.append(&section("Scene settings"));
-        wallpaper.append(&wrapped_label("Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented."));
+        self.toggle(
+            wallpaper,
+            tr("Loop playback"),
+            "/wallpaper/loop_playback",
+            true,
+        );
+        self.toggle(wallpaper, tr("Mute sound"), "/wallpaper/muted", true);
+        wallpaper.append(&section(tr("Scene settings")));
+        wallpaper.append(&wrapped_label(tr("Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented.")));
         self.choice(
             wallpaper,
-            "Quality",
+            tr("Quality"),
             "/scene/quality",
             &["high", "medium", "low"],
             "high",
         );
-        self.toggle(wallpaper, "Mouse input", "/scene/mouse", true);
-        self.toggle(wallpaper, "Basic parallax", "/scene/parallax", true);
+        self.toggle(wallpaper, tr("Mouse input"), "/scene/mouse", true);
+        self.toggle(wallpaper, tr("Basic parallax"), "/scene/parallax", true);
         self.toggle(
             wallpaper,
-            "Audio response",
+            tr("Audio response"),
             "/scene/audio_processing",
             false,
         );
-        let reset = gtk::Button::with_label("Reset wallpaper properties to defaults");
+        let reset = gtk::Button::with_label(tr("Reset wallpaper properties to defaults"));
         reset.set_halign(gtk::Align::Start);
         wallpaper.append(&reset);
         let weak = Rc::downgrade(self);
@@ -620,7 +631,7 @@ impl Desktop {
                     draft["scene"]["properties"] = json!({});
                     ui.render_properties_for(&draft);
                     ui.message(
-                        "Property overrides cleared. Save changes to apply the defaults.",
+                        tr("Property overrides cleared. Save changes to apply the defaults."),
                         false,
                     );
                 }
@@ -634,18 +645,18 @@ impl Desktop {
         paths.add_css_class("view");
         folders.append(&paths);
         self.register("/library/paths", Input::Paths(paths.clone()), json!([]));
-        let add_folder = gtk::Button::with_label("Add folder…");
+        let add_folder = gtk::Button::with_label(tr("Add folder…"));
         add_folder.set_halign(gtk::Align::Start);
         folders.append(&add_folder);
         let weak = Rc::downgrade(self);
         add_folder.connect_clicked(move |_| {
             if let Some(ui) = weak.upgrade() {
                 let chooser = gtk::FileChooserNative::new(
-                    Some("Add library folder"),
+                    Some(tr("Add library folder")),
                     Some(&ui.window),
                     gtk::FileChooserAction::SelectFolder,
-                    Some("Add"),
-                    Some("Cancel"),
+                    Some(tr("Add")),
+                    Some(tr("Cancel")),
                 );
                 let paths = paths.clone();
                 chooser.connect_response(move |dialog, response| {
@@ -668,24 +679,24 @@ impl Desktop {
                 chooser.show();
             }
         });
-        folders.append(&wrapped_label("Save changes to update the indexed folders. Removing a folder here does not delete its files."));
+        folders.append(&wrapped_label(tr("Save changes to update the indexed folders. Removing a folder here does not delete its files.")));
         self.choice(
             settings,
-            "Backend",
+            tr("Backend"),
             "/general/backend",
             &["auto", "niri", "kde", "headless"],
             "auto",
         );
         self.choice(
             settings,
-            "Hardware decoding",
+            tr("Hardware decoding"),
             "/decode/hardware",
             &["auto", "software"],
             "auto",
         );
         self.number(
             settings,
-            "Maximum decode height (0 = original)",
+            tr("Maximum decode height (0 = original)"),
             "/decode/max_height",
             0.0,
             16384.0,
@@ -693,14 +704,14 @@ impl Desktop {
         );
         self.choice(
             settings,
-            "Log level",
+            tr("Log level"),
             "/general/log_level",
             &["info", "debug"],
             "info",
         );
         self.toggle(
             settings,
-            "Restore playback on startup",
+            tr("Restore playback on startup"),
             "/general/restore_on_start",
             true,
         );
@@ -716,7 +727,11 @@ impl Desktop {
     }
 
     fn choice(&self, page: &gtk::Box, title: &str, pointer: &str, values: &[&str], default: &str) {
-        let choice = gtk::DropDown::from_strings(values);
+        let labels: Vec<_> = values
+            .iter()
+            .map(|value| crate::i18n::option_label(value))
+            .collect();
+        let choice = gtk::DropDown::from_strings(&labels);
         row(page, title, &choice);
         self.register(
             pointer,
@@ -770,7 +785,7 @@ impl Desktop {
             for output in outputs.as_array().unwrap() {
                 let name = output["name"].as_str().unwrap_or_default();
                 if name.is_empty() || !names.insert(name) {
-                    bail!("Each display needs a unique, nonempty output name.");
+                    bail!(tr("Each display needs a unique, nonempty output name."));
                 }
             }
             draft["outputs"] = outputs;
@@ -822,7 +837,7 @@ impl Desktop {
         if entry.scene_properties.is_empty() {
             return;
         }
-        self.properties.append(&section("Wallpaper properties"));
+        self.properties.append(&section(tr("Wallpaper properties")));
         for property in &entry.scene_properties {
             let Some(key) = property["key"].as_str() else {
                 continue;
@@ -883,7 +898,7 @@ impl Desktop {
             return;
         }
         self.set_busy(true);
-        self.message("Connecting to the wallpaper service…", false);
+        self.message(tr("Connecting to the wallpaper service…"), false);
         let explicit = self.explicit_url.clone();
         task(
             self,
@@ -896,15 +911,15 @@ impl Desktop {
                     ui.load_config(config);
                     ui.set_busy(false);
                     ui.show_status(status);
-                    ui.reload.set_label("Reload settings");
+                    ui.reload.set_label(tr("Reload settings"));
                     ui.message("", false);
                     ui.refresh_library();
                 }
                 Err(error) => {
                     ui.connected.set(false);
                     ui.set_busy(false);
-                    ui.status.set_text("Offline");
-                    ui.reload.set_label("Retry connection");
+                    ui.status.set_text(tr("Offline"));
+                    ui.reload.set_label(tr("Retry connection"));
                     ui.message(&format!("{error:#}"), true);
                 }
             },
@@ -920,13 +935,13 @@ impl Desktop {
             .transient_for(&self.window)
             .modal(true)
             .message_type(gtk::MessageType::Question)
-            .text("Discard unsaved changes?")
-            .secondary_text(
+            .text(tr("Discard unsaved changes?"))
+            .secondary_text(tr(
                 "Reloading replaces the settings you have edited with the saved configuration.",
-            )
+            ))
             .build();
-        dialog.add_button("Keep editing", gtk::ResponseType::Cancel);
-        dialog.add_button("Reload", gtk::ResponseType::Accept);
+        dialog.add_button(tr("Keep editing"), gtk::ResponseType::Cancel);
+        dialog.add_button(tr("Reload"), gtk::ResponseType::Accept);
         let weak = Rc::downgrade(self);
         dialog.connect_response(move |dialog, response| {
             dialog.close();
@@ -945,14 +960,14 @@ impl Desktop {
             .set_text(&format!("{} · {}", status.backend, status.playback.label()));
         self.paused.set(status.playback.paused);
         self.pause.set_label(if status.playback.paused {
-            "Resume"
+            tr("Resume")
         } else {
-            "Pause"
+            tr("Pause")
         });
         self.pause.set_sensitive(
             !self.busy.get() && status.playback.running && !status.playback.cancelled,
         );
-        self.diagnostics.set_text(&format!("Desktop: {}\nRunning backend: {}\nPlayback: {}\nPlasma outputs: {}\nDetection: {}\nCandidates: {}\nAPI version: {}", status.desktop, status.backend, status.playback.label(), status.plasma_instances.iter().map(|v| v.output.as_str()).collect::<Vec<_>>().join(", "), status.evidence, status.candidates.join(", "), status.api_version));
+        self.diagnostics.set_text(&localized!("Desktop: {}\nRunning backend: {}\nPlayback: {}\nPlasma outputs: {}\nDetection: {}\nCandidates: {}\nAPI version: {}", "桌面环境：{}\n当前后端：{}\n播放状态：{}\nPlasma 显示器：{}\n检测依据：{}\n候选桌面：{}\nAPI 版本：{}", status.desktop, status.backend, status.playback.label(), status.plasma_instances.iter().map(|v| v.output.as_str()).collect::<Vec<_>>().join(", "), status.evidence, status.candidates.join(", "), status.api_version));
         if !self.busy.get() {
             self.content.set_sensitive(true);
             self.save.set_sensitive(true);
@@ -972,7 +987,7 @@ impl Desktop {
         };
         let base = self.baseline.borrow().clone();
         self.set_busy(true);
-        self.message("Saving changes…", false);
+        self.message(tr("Saving changes…"), false);
         task(
             self,
             move || api.save(&base, &draft),
@@ -981,8 +996,8 @@ impl Desktop {
                 match result {
                     Ok(saved) => {
                         ui.load_config(saved.config);
-                        ui.message(if saved.restart_required { "Settings saved. Restart the Better Wallpaper service to switch the running backend." }
-                        else if saved.reload_requested { "Settings saved. Wallpaper reload requested." } else { "Settings saved." }, false);
+                        ui.message(if saved.restart_required { tr("Settings saved. Restart the Better Wallpaper service to switch the running backend.") }
+                        else if saved.reload_requested { tr("Settings saved. Wallpaper reload requested.") } else { tr("Settings saved.") }, false);
                         ui.refresh_library();
                     }
                     Err(error) => ui.message(&format!("{error:#}"), true),
@@ -1006,7 +1021,7 @@ impl Desktop {
                 match result {
                     Ok(status) => {
                         ui.show_status(status);
-                        ui.message("Playback updated.", false);
+                        ui.message(tr("Playback updated."), false);
                     }
                     Err(error) => ui.message(&format!("{error:#}"), true),
                 }
@@ -1032,14 +1047,17 @@ impl Desktop {
                         let was_offline = !ui.connected.get();
                         ui.show_status(status);
                         if was_offline {
-                            ui.message("Connection restored. Unsaved edits have been kept.", false);
+                            ui.message(
+                                tr("Connection restored. Unsaved edits have been kept."),
+                                false,
+                            );
                         }
                     }
                     Err(error) => {
                         if ui.connected.replace(false) {
-                            ui.message(&format!("Connection lost: {error:#}. Retry to rediscover the service; unsaved edits are kept."), true);
+                            ui.message(&localized!("Connection lost: {error:#}. Retry to rediscover the service; unsaved edits are kept.", "连接已断开：{error:#}。请重试以重新查找服务；尚未保存的更改已保留。"), true);
                         }
-                        ui.status.set_text("Offline");
+                        ui.status.set_text(tr("Offline"));
                         ui.pause.set_sensitive(false);
                         ui.save.set_sensitive(false);
                     }
@@ -1061,7 +1079,8 @@ impl Desktop {
             self.library_pending.set(false);
             return;
         };
-        self.library_info.set_text("Scanning wallpaper folders…");
+        self.library_info
+            .set_text(tr("Scanning wallpaper folders…"));
         task(
             self,
             move || api.library(),
@@ -1077,8 +1096,9 @@ impl Desktop {
                         }
                     }
                     Err(error) => {
-                        ui.library_info
-                            .set_text("The library could not be loaded. Use Refresh to try again.");
+                        ui.library_info.set_text(tr(
+                            "The library could not be loaded. Use Refresh to try again.",
+                        ));
                         ui.message(&format!("{error:#}"), true);
                     }
                 }
@@ -1106,8 +1126,9 @@ impl Desktop {
         self.page.set(self.page.get().min(pages - 1));
         self.previous.set_sensitive(self.page.get() > 0);
         self.next.set_sensitive(self.page.get() + 1 < pages);
-        self.pagination.set_text(&format!(
+        self.pagination.set_text(&localized!(
             "{} wallpapers · Page {} of {}",
+            "{} 个壁纸 · 第 {} 页，共 {} 页",
             matching.len(),
             self.page.get() + 1,
             pages
@@ -1122,16 +1143,16 @@ impl Desktop {
                 .collect::<Vec<_>>()
                 .join(" · "),
             if library.truncated {
-                "\nShowing the first 1,000 entries (scan limit)."
+                tr("\nShowing the first 1,000 entries (scan limit).")
             } else {
                 ""
             }
         ));
         if matching.is_empty() {
             let empty = wrapped_label(if library.entries.is_empty() {
-                "No wallpapers found. Add a folder in Library folders, save, then refresh."
+                tr("No wallpapers found. Add a folder in Library folders, save, then refresh.")
             } else {
-                "No wallpapers match your search."
+                tr("No wallpapers match your search.")
             });
             margins(&empty, 24);
             self.grid.insert(&empty, -1);
@@ -1171,14 +1192,15 @@ impl Desktop {
             card.append(&title);
             let details = wrapped_label(&format!(
                 "{} · {:.1} MB",
-                entry.wallpaper_type.to_uppercase(),
+                crate::i18n::option_label(&entry.wallpaper_type),
                 entry.size_bytes as f64 / 1048576.0
             ));
             details.add_css_class("dim-label");
             card.append(&details);
             if let Some(report) = &entry.scene_compatibility {
-                let report_button = gtk::Button::with_label(&format!(
+                let report_button = gtk::Button::with_label(&localized!(
                     "Compatibility L{} · details",
+                    "兼容等级 L{} · 查看详情",
                     report["level"]
                 ));
                 let report = report.clone();
@@ -1193,9 +1215,9 @@ impl Desktop {
             let selected =
                 self.baseline.borrow()["wallpaper"]["path"].as_str() == Some(&entry.path);
             let choose = gtk::Button::with_label(if selected {
-                "Use current wallpaper"
+                tr("Use current wallpaper")
             } else {
-                "Use wallpaper"
+                tr("Use wallpaper")
             });
             if selected {
                 card.add_css_class("accent");
@@ -1211,7 +1233,7 @@ impl Desktop {
             });
             card.append(&choose);
             if entry.wallpaper_type == "video" {
-                let preview = gtk::Button::with_label("Preview");
+                let preview = gtk::Button::with_label(tr("Preview"));
                 let weak = Rc::downgrade(self);
                 let path = entry.path.clone();
                 preview.connect_clicked(move |_| {
@@ -1302,8 +1324,9 @@ impl Desktop {
         self.render_properties_for(&draft);
         self.stack.set_visible_child_name("wallpaper");
         self.message(
-            &format!(
+            &localized!(
                 "Selected {}. Save changes to apply this wallpaper.",
+                "已选择 {}。保存更改后将应用此壁纸。",
                 entry.name
             ),
             false,
@@ -1311,12 +1334,13 @@ impl Desktop {
     }
 
     fn compatibility(&self, report: &Value) {
-        let mut text =
-            String::from("Metadata analysis does not guarantee playback on the current backend.\n");
+        let mut text = String::from(tr(
+            "Metadata analysis does not guarantee playback on the current backend.\n",
+        ));
         for (key, title) in [
-            ("supported_features", "Supported features"),
-            ("unsupported_features", "Unsupported features"),
-            ("warnings", "Warnings"),
+            ("supported_features", tr("Supported features")),
+            ("unsupported_features", tr("Unsupported features")),
+            ("warnings", tr("Warnings")),
         ] {
             text.push_str(&format!("\n{title}\n"));
             if let Some(items) = report[key].as_array() {
@@ -1326,7 +1350,7 @@ impl Desktop {
             }
         }
         let dialog = gtk::Window::builder()
-            .title("Scene compatibility")
+            .title(tr("Scene compatibility"))
             .transient_for(&self.window)
             .default_width(560)
             .default_height(420)
@@ -1354,7 +1378,7 @@ impl Desktop {
             .autoplay(true)
             .build();
         let dialog = gtk::Window::builder()
-            .title("Wallpaper preview")
+            .title(tr("Wallpaper preview"))
             .transient_for(&self.window)
             .default_width(720)
             .default_height(440)
@@ -1367,7 +1391,7 @@ impl Desktop {
         content.append(&video);
         content.append(&error);
         dialog.set_child(Some(&content));
-        media.connect_error_notify(move |media| { if let Some(message) = media.error() { error.set_text(&format!("Preview unavailable: {message}. Check the GTK media backend and installed codecs.")); error.set_visible(true); } });
+        media.connect_error_notify(move |media| { if let Some(message) = media.error() { error.set_text(&localized!("Preview unavailable: {message}. Check the GTK media backend and installed codecs.", "无法预览：{message}。请检查 GTK 媒体后端和已安装的解码器。")); error.set_visible(true); } });
         dialog.connect_destroy(move |_| {
             media.pause();
             media.clear();
@@ -1393,7 +1417,10 @@ impl Desktop {
                         *ui.log_text.borrow_mut() = text;
                         ui.render_logs();
                     }
-                    Err(error) => ui.message(&format!("Cannot read logs: {error:#}"), true),
+                    Err(error) => ui.message(
+                        &localized!("Cannot read logs: {error:#}", "无法读取日志：{error:#}"),
+                        true,
+                    ),
                 }
             },
         );
@@ -1421,7 +1448,7 @@ fn task<T: Send + 'static>(
     glib::spawn_future_local(async move {
         let result = gio::spawn_blocking(work)
             .await
-            .unwrap_or_else(|_| Err(anyhow::anyhow!("Background request failed")));
+            .unwrap_or_else(|_| Err(anyhow::anyhow!(tr("Background request failed"))));
         if let Err(error) = &result {
             warn!(%error, "GTK desktop request failed");
         }

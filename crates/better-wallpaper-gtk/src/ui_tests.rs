@@ -49,6 +49,13 @@ fn screenshot(ui: &Desktop, name: &str) {
 #[test]
 #[ignore = "Requires GTK display and session bus; run under dbus-run-session and xvfb-run"]
 fn native_window_connects_edits_saves_filters_and_recovers() {
+    crate::i18n::init(Some(
+        if std::env::var("BETTER_WALLPAPER_GTK_TEST_LANGUAGE").as_deref() == Ok("zh-CN") {
+            crate::i18n::Language::Chinese
+        } else {
+            crate::i18n::Language::English
+        },
+    ));
     gtk::init().unwrap();
     let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
     let endpoint =
@@ -136,15 +143,34 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
         ui.connected.get() && !ui.busy.get() && ui.library.borrow().entries.len() == 15
     });
     assert!(!ui.dirty());
-    assert_eq!(ui.pagination.text(), "15 wallpapers · Page 1 of 2");
+    assert_eq!(
+        ui.pagination.text(),
+        localized!(
+            "15 wallpapers · Page 1 of 2",
+            "15 个壁纸 · 第 1 页，共 2 页"
+        )
+    );
+    assert_eq!(ui.save.label().as_deref(), Some(tr("Save changes")));
+    assert_eq!(
+        ui.stack
+            .page(&ui.stack.child_by_name("library").unwrap())
+            .title()
+            .as_deref(),
+        Some(tr("Wallpapers"))
+    );
     screenshot(&ui, "library");
     ui.next.emit_clicked();
     assert_eq!(ui.page.get(), 1);
     ui.filter.set_selected(3);
-    assert_eq!(ui.pagination.text(), "1 wallpapers · Page 1 of 1");
+    assert_eq!(
+        ui.pagination.text(),
+        localized!("1 wallpapers · Page 1 of 1", "1 个壁纸 · 第 1 页，共 1 页")
+    );
     ui.search.set_text("missing");
     pump_until("search filter", || {
-        ui.pagination.text().starts_with("0 wallpapers")
+        ui.pagination
+            .text()
+            .starts_with(&localized!("0 wallpapers", "0 个壁纸"))
     });
     screenshot(&ui, "empty-search");
     ui.search.set_text("");
@@ -207,7 +233,10 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     backend.set_selected(3);
     ui.save.emit_clicked();
     pump_until("backend save", || !ui.busy.get());
-    assert!(ui.notice.text().contains("Restart"));
+    assert_eq!(
+        ui.notice.text(),
+        tr("Settings saved. Restart the Better Wallpaper service to switch the running backend.")
+    );
     ui.stack.set_visible_child_name("settings");
     screenshot(&ui, "settings");
     ui.stack.set_visible_child_name("logs");
@@ -222,7 +251,10 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     config.lock().unwrap()["general"]["backend"] = json!("niri");
     ui.save.emit_clicked();
     pump_until("conflicting save", || !ui.busy.get());
-    assert!(ui.notice.text().contains("changed in another client"));
+    assert!(ui.notice.text().contains(&localized!(
+        "changed in another client",
+        "已在其他客户端中更改"
+    )));
     assert_eq!(config.lock().unwrap()["general"]["backend"], "niri");
     offline.store(true, Ordering::Relaxed);
     ui.poll();

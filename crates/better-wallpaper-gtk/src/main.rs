@@ -1,4 +1,5 @@
 mod client;
+mod i18n;
 mod ui;
 
 use clap::Parser;
@@ -11,11 +12,15 @@ struct Cli {
     /// Connect to a local daemon without starting the installed user service.
     #[arg(long, value_parser = client::validate_endpoint)]
     url: Option<Url>,
+    /// Interface language (en or zh-CN); defaults to the system locale.
+    #[arg(long, value_enum)]
+    language: Option<i18n::Language>,
 }
 
 fn main() -> gtk::glib::ExitCode {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
+    i18n::init(cli.language);
     let app = gtk::Application::builder()
         .application_id("org.betterwallpaper.desktop")
         .build();

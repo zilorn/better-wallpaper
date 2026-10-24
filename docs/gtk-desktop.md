@@ -19,6 +19,8 @@ cargo run -p better-wallpaper-daemon -- --backend headless
 cargo run -p better-wallpaper-gtk
 # Use a particular daemon without starting the installed systemd service:
 cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
+# Simplified Chinese, regardless of the desktop locale:
+cargo run -p better-wallpaper-gtk -- --language zh-CN
 # Retained webview client (requires built and served web assets):
 cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy
 ```
@@ -30,8 +32,25 @@ paths, queries, fragments, redirects and proxy forwarding are rejected. Without
 and polls readiness for ten seconds. Failures are visible and retryable.
 
 GTK Application uses the desktop session bus to focus the existing window on
-repeat launches. A second launch keeps the first window's endpoint. Closing the
+repeat launches. A second launch keeps the first window's endpoint and language. Closing the
 client leaves daemon playback and the tray running. No new tray is created.
+
+## Language support / 语言支持
+
+The native interface supports English and Simplified Chinese. It reads the first
+nonempty `LC_ALL`, `LC_MESSAGES`, then `LANG`; Chinese (`zh`) locales select
+Simplified Chinese, and other locales fall back to English. `--language en` or
+`--language zh-CN` overrides detection for that process. Close the existing window
+before launching with a different override. Built-in labels, dropdown display
+values, notices, dialogs and error summaries are translated; protocol/configuration
+values stay unchanged. Service logs, daemon-provided details, file paths and
+wallpaper-authored names/properties retain their original text. System file-picker
+chrome follows the desktop's own GTK/portal locale. Chinese glyphs require an
+installed CJK font, such as Noto Sans CJK.
+
+原生界面支持英文和简体中文，默认跟随系统语言。可使用 `--language zh-CN` 强制中文，
+或使用 `--language en` 强制英文。更改启动语言前请先关闭已有窗口。日志、文件路径和
+壁纸作者提供的名称、属性说明保持原文；语言切换不会修改壁纸配置。
 
 ## Native views
 
@@ -76,6 +95,10 @@ cargo clippy
 cargo fmt --all -- --check
 cargo test -p better-wallpaper-gtk
 dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
+  cargo test -p better-wallpaper-gtk -- --ignored --test-threads=1
+# Repeat the same native workflows with Chinese labels and notices:
+dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
+  BETTER_WALLPAPER_GTK_TEST_LANGUAGE=zh-CN \
   cargo test -p better-wallpaper-gtk -- --ignored --test-threads=1
 ./packaging/verify.sh
 ```
