@@ -6,7 +6,7 @@ Run from the repository root:
 LIBGL_ALWAYS_SOFTWARE=1 cargo test -p gpu-renderer --test scene_golden -- --ignored --test-threads=1 --nocapture
 ```
 
-The two GPU tests are explicitly ignored in the ordinary workspace suite because each
+The three GPU tests are explicitly ignored in the ordinary workspace suite because each
 requires EGL 1.5, `EGL_MESA_platform_surfaceless`, GLES 2 and an installed software
 renderer. Explicit runs fail on missing GPU support; they never silently skip.
 No desktop display or visible surface is used. The comparison gate itself runs
@@ -43,6 +43,13 @@ python3 crates/gpu-renderer/tests/golden/generate_references.py
 # Read-only A1 check; add --write only for a deliberate analytical update.
 python3 crates/gpu-renderer/tests/golden/generate_atlas_references.py
 ```
+
+A third GPU case adds two exact analytical byte assertions without PNG files.
+It replaces the multi-image sample's texture with a 5×5 opaque black image whose
+center is RGB (250, 150, 100). Reduction to 1×1 must yield (10, 6, 4, 255), from
+the center's 1/25 coverage. Adding an authored solid 2×2 mip must instead yield
+its color (80, 40, 20, 255), proving that only missing levels are synthesized.
+This covers our area-weighted mip convention, not native-engine filtering parity.
 
 The gate requires all of:
 

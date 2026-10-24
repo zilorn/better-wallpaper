@@ -1449,25 +1449,35 @@ fn downsample_rgba8(data: &[u8], width: u32, height: u32) -> (u32, u32, Vec<u8>)
     let mut output = Vec::with_capacity((next_width * next_height * 4) as usize);
     for y in 0..next_height {
         for x in 0..next_width {
-            let mut sums = [0_u32; 4];
-            let mut samples = 0_u32;
-            let start_x = x * width / next_width;
-            let end_x = (x + 1) * width / next_width;
-            let start_y = y * height / next_height;
-            let end_y = (y + 1) * height / next_height;
-            for source_y in start_y..end_y {
-                for source_x in start_x..end_x {
-                    let offset = ((source_y * width + source_x) * 4) as usize;
+            let mut sums = [0_u64; 4];
+            let mut total_weight = 0_u64;
+            // Express source coordinates in units of 1 / next_dimension.
+            // Integer overlaps preserve equal-area footprints even when an odd
+            // dimension places their boundary through the middle of a texel.
+            let scale_x = u64::from(next_width);
+            let scale_y = u64::from(next_height);
+            let start_x = u64::from(x) * u64::from(width);
+            let end_x = u64::from(x + 1) * u64::from(width);
+            let start_y = u64::from(y) * u64::from(height);
+            let end_y = u64::from(y + 1) * u64::from(height);
+            for source_y in start_y / scale_y..end_y.div_ceil(scale_y) {
+                let weight_y =
+                    end_y.min((source_y + 1) * scale_y) - start_y.max(source_y * scale_y);
+                for source_x in start_x / scale_x..end_x.div_ceil(scale_x) {
+                    let weight_x =
+                        end_x.min((source_x + 1) * scale_x) - start_x.max(source_x * scale_x);
+                    let weight = weight_x * weight_y;
+                    let offset = ((source_y * u64::from(width) + source_x) * 4) as usize;
                     if let Some(pixel) = data.get(offset..offset + 4) {
                         for channel in 0..4 {
-                            sums[channel] += u32::from(pixel[channel]);
+                            sums[channel] += u64::from(pixel[channel]) * weight;
                         }
-                        samples += 1;
+                        total_weight += weight;
                     }
                 }
             }
             for sum in sums {
-                output.push((sum / samples.max(1)) as u8);
+                output.push((sum / total_weight.max(1)) as u8);
             }
         }
     }
@@ -1729,6 +1739,26 @@ mod tests {
         let odd_pixels = [0, 0, 0, 255, 90, 0, 0, 255, 180, 0, 0, 255];
         let (_, _, odd_downsampled) = downsample_rgba8(&odd_pixels, 3, 1);
         assert_eq!(odd_downsampled, [90, 0, 0, 255]);
+    }
+
+    #[test]
+    fn odd_mip_footprints_share_boundary_pixels_in_both_axes() {
+        // The middle texel straddles the two equal 2.5-texel footprints.
+        for (width, height) in [(5, 1), (1, 5)] {
+            let mut pixels = vec![0; width * height * 4];
+            pixels[8..12].copy_from_slice(&[250, 150, 100, 200]);
+            let (_, _, mip) = downsample_rgba8(&pixels, width as u32, height as u32);
+            assert_eq!(mip, [50, 30, 20, 40].repeat(2));
+        }
+
+        // Both axes split the center texel into four equal contributions.
+        let mut pixels = vec![0; 5 * 5 * 4];
+        pixels[48..52].copy_from_slice(&[250, 150, 100, 200]);
+        let (width, height, mip) = downsample_rgba8(&pixels, 5, 5);
+        assert_eq!((width, height), (2, 2));
+        assert_eq!(mip, [10, 6, 4, 8].repeat(4));
+        let (_, _, last) = downsample_rgba8(&mip, width, height);
+        assert_eq!(last, [10, 6, 4, 8]);
     }
 
     #[test]

@@ -130,6 +130,15 @@ with actual uploads. Respect `GL_MAX_TEXTURE_SIZE` and GLES restrictions. Existi
 mip selection and filtering behavior is implemented; do not classify it as missing
 without a reproduction. Release GPU resources with the owning context alive.
 
+Generated RGBA mip levels use integer area-weighted box filtering. For odd
+dimensions, source texels crossing a destination footprint boundary contribute
+proportionally to both sides (for example 5→2 uses two 2.5-texel footprints).
+All four byte channels retain truncating division; authored mip levels and the
+compressed-texture path are unchanged. This does not establish native filtering,
+linear-light/alpha-aware filtering, or packed-atlas edge parity. The explicit GPU
+case `odd_texture_minification_preserves_area_and_authored_mips` checks a 5×5→1×1
+readback against analytical bytes and verifies authored mip precedence.
+
 The niri backend retains CPU scene assets across output removal and uploads them
 into each replacement EGL context. Its upload, render, and teardown paths restore
 the owning context before GL calls; missing outputs defer upload, while a ready

@@ -100,6 +100,13 @@ need reference sample coverage.
 
 ## Native TEX Reader and 2D Atlases — Implemented / Native Parity Pending
 
+Generated odd-sized mip filtering now weights fractional texel coverage instead
+of partitioning the source into unequal whole-texel bins. A 5×1 center impulse
+previously produced asymmetric 0/83 red values instead of 50/50; regressions cover
+both axes, all RGBA channels, the 5×5 chain and GPU minification with authored-mip
+precedence. This fixes a local sampling defect; native and packed-edge parity
+remain pending. See [validation](../../../../docs/validation/a1-odd-mip-filtering.md).
+
 Evidence: `docs/reverse-engineering/wallpaper-engine-textures.md` records the
 Wallpaper Engine 2.8.42 binary identity, REA Evidence IDs, assembly corroboration,
 and exact local sample hashes. Corrected TEXB1 image count, TEXB3 field order,

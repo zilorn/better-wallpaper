@@ -675,3 +675,47 @@ fn atlas_upload_failure_and_image_limit_preserve_complete_resident_atlases() {
     renderer.draw_scene(&rotated, 0.25).unwrap();
     compare("atlas-identity", &context.pixels(32, 32), 32, 32);
 }
+
+#[test]
+#[ignore = "requires surfaceless EGL/GLES; run explicitly with software rendering"]
+fn odd_texture_minification_preserves_area_and_authored_mips() {
+    use better_wallpaper_scene_format::{TexFormat, TextureMipLevel};
+
+    let context = Offscreen::new();
+    let matrix = matrix();
+    let sample = matrix
+        .samples
+        .iter()
+        .find(|s| s.id == "multi-image")
+        .unwrap();
+    let mut assets = sample_assets(sample).unwrap();
+    let draw = &mut assets.draws[0];
+    draw.animation = None;
+    draw.additional_textures.clear();
+    draw.uv = [0.0, 0.0, 1.0, 1.0];
+    draw.texture.format = TexFormat::RGBA8888;
+    let mut pixels = [0, 0, 0, 255].repeat(25);
+    pixels[48..52].copy_from_slice(&[250, 150, 100, 255]);
+    draw.texture.levels = vec![TextureMipLevel {
+        width: 5,
+        height: 5,
+        data: pixels.into(),
+    }];
+    let mut renderer = SceneGpuRenderer::new(context.gl(), 1, 1).unwrap();
+    renderer.upload_scene_textures(&assets).unwrap();
+    renderer.draw_scene(&assets, 0.0).unwrap();
+    // The central texel covers 1/25 of the image, shared equally by all
+    // four texels of mip 1. Mip 2 and the framebuffer retain that average.
+    assert_eq!(context.pixels(1, 1), [10, 6, 4, 255]);
+
+    // An authored level must take precedence over generating it from level 0.
+    assets.draws[0].texture.levels.push(TextureMipLevel {
+        width: 2,
+        height: 2,
+        data: [80, 40, 20, 255].repeat(4).into(),
+    });
+    renderer.clear_textures();
+    renderer.upload_scene_textures(&assets).unwrap();
+    renderer.draw_scene(&assets, 0.0).unwrap();
+    assert_eq!(context.pixels(1, 1), [80, 40, 20, 255]);
+}
