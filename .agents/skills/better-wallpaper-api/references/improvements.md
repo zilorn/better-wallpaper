@@ -2,9 +2,10 @@
 
 ## Native GTK Desktop — Implemented, Specialized Property Editors Pending
 
-`better-wallpaper-gtk` replaces the installed desktop command with native widgets;
-the Tauri client and web source remain available. The GTK client preserves full
-configuration documents, merges edits against a fresh GET and detects same-field
+`better-wallpaper-gtk` provides the installed desktop command with native widgets;
+the old Tauri client has been removed, while the web UI remains available for
+browser access. The GTK client preserves full configuration documents, merges
+edits against a fresh GET and detects same-field
 conflicts, with regression coverage for unrelated concurrent changes. The API
 still has no revision/conditional-write mechanism; completion of atomic conflict
 protection requires a daemon-supported revision checked by PUT plus concurrent

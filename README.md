@@ -31,10 +31,8 @@ cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
 cargo run -p better-wallpaper-gtk -- --language zh-CN
 ```
 
-原 Tauri 客户端源码完整保留在 `crates/better-wallpaper-desktop`，Web UI 保留在 `web/`。
-运行旧客户端使用 `cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy`，
-仍需 GTK 3、WebKitGTK 4.1 和已构建的 Web 页面。普通构建和安装默认使用 GTK 客户端；
-`--workspace` 会同时构建两个客户端。原生客户端的功能、测试及已知限制见
+桌面客户端使用 GTK，Web UI 保留在 `web/`，可通过浏览器访问。
+原生客户端的功能、测试及已知限制见
 [`docs/gtk-desktop.md`](docs/gtk-desktop.md)。
 
 管理服务固定绑定到 `127.0.0.1:43129`，并将管理地址写入

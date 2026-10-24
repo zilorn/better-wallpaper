@@ -15,8 +15,6 @@ if [ -z "${SYSTEMD_USER_UNIT_DIR:-}" ]; then
 fi
 
 if [ "$SKIP_BUILD" != "1" ]; then
-    # Default workspace members build the GTK desktop client. The preserved
-    # Tauri client is opt-in and has a separate legacy binary name.
     cargo build --locked --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
     cmake -S "$PROJECT_ROOT/native/web-wallpaper" -B "$PROJECT_ROOT/target/web-wallpaper" -DCMAKE_BUILD_TYPE=Release
     cmake --build "$PROJECT_ROOT/target/web-wallpaper" --parallel 2

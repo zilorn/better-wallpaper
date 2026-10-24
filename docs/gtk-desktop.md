@@ -6,11 +6,8 @@ does not embed a browser or require built web assets. The daemon retains playbac
 configuration persistence, the library index, media authorization and the sole
 system tray. No rendering or backend behavior changes are required.
 
-The original Tauri implementation remains in `crates/better-wallpaper-desktop`;
-its binary is now `better-wallpaper-desktop-legacy`. All of its Rust, JavaScript,
-HTML, CSS and capabilities are retained. `web/` remains available and packaged.
-Workspace default members select GTK; `--workspace` explicitly includes Tauri
-and therefore also needs GTK 3 and WebKitGTK 4.1 development libraries.
+GTK is the desktop client for both default and `--workspace` builds.
+`web/` remains available and packaged for browser access.
 
 ## Run
 
@@ -21,8 +18,6 @@ cargo run -p better-wallpaper-gtk
 cargo run -p better-wallpaper-gtk -- --url http://127.0.0.1:43129
 # Simplified Chinese, regardless of the desktop locale:
 cargo run -p better-wallpaper-gtk -- --language zh-CN
-# Retained webview client (requires built and served web assets):
-cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy
 ```
 
 Endpoint discovery uses the daemon's runtime file and falls back to

@@ -37,7 +37,6 @@ DESTDIR="$PWD/pkg" PREFIX=/usr SKIP_BUILD=1 ./packaging/install.sh
 - ALSA 开发库（Rodio/CPAL 的 Linux 音频输出后端）
 - Wayland 客户端开发文件
 - GTK 4.8+ 开发库（原生桌面客户端）
-- 仅显式构建保留的 Tauri 客户端时需要 GTK 3 和 WebKitGTK 4.1；普通构建不会构建它
 
 Debian/Ubuntu 和 Fedora 的完整安装命令见项目根目录的
 [`README.md`](../README.md#依赖)。包名随发行版和仓库变化，构建时以 Cargo 和
@@ -57,9 +56,7 @@ CPU `wl_shm` 路径。
 服务未就绪时尝试 `systemctl --user --no-block start better-wallpaper.service`，随后限时等待，
 失败可在窗口内重试。`--url` 可指定本机管理地址，指定后不自动启动用户服务。
 客户端使用 GTK Application 的会话总线单实例机制，重复启动聚焦现有窗口；关闭窗口退出客户端，daemon 和托盘继续运行。
-原 Tauri 客户端及其 NVIDIA WebKit 兼容逻辑仍保留在源码中，使用
-`cargo run -p better-wallpaper-desktop --bin better-wallpaper-desktop-legacy` 启动。
-它不在默认构建和安装范围内；Web UI 继续随包安装，供浏览器与旧客户端使用。
+Web UI 继续随包安装，供浏览器访问。
 
 托盘“Open desktop client”需要 `systemd-run` 和正在运行的 systemd 用户管理器。
 它优先启动 daemon 同目录的 `better-wallpaper-desktop --url <endpoint>`；未安装客户端时
