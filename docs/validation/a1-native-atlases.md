@@ -1,8 +1,8 @@
 # A1 completion: native atlas rendering
 
-Date: 2026-10-24. Implementation commit subject:
-`fix: match native sprite atlas sampling` (commit identity recorded in the
-[adaptation plan](../wallpaper-engine-adaptation-plan.md)). This completes A1's
+Date: 2026-10-24. Implementation commit: `d5a4ac1`,
+`fix: match native sprite atlas sampling`; recorded in the
+[adaptation plan](../wallpaper-engine-adaptation-plan.md). This completes A1's
 bounded main-material 2D atlas task. It does not complete other adaptation stages.
 
 ## Change and native evidence

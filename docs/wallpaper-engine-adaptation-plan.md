@@ -249,7 +249,7 @@ GPU 实际设备为 llvmpipe（LLVM 23.1.1, 256 bits）；未修改已有包或�
 
 2026-10-24 第六批交付记录（原程序对照与 A1 验收完成）：
 
-本批实现提交主题：`fix: match native sprite atlas sampling`；提交编号在提交后补记。
+本批实现提交：`d5a4ac1`（`fix: match native sprite atlas sampling`）。
 完整追踪帧更新、uniform ID 分派、常量缓冲写入/绑定和着色器仿射 UV 消费。
 14 张自主样本的原程序截图覆盖独立图像/mip、旋转、双轴翻转、斜切、重复/钳制、
 线性/点采样和打包帧作者 mip 缩小。显式 `SPRITESHEET: 1` 使用原始 UV 与作者采样；
