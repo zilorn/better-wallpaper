@@ -37,6 +37,22 @@ pub const MAX_ATLAS_DECODED_BYTES: u64 = 128 * 1024 * 1024;
 #[path = "texture_atlas_tests.rs"]
 mod atlas_tests;
 
+#[cfg(test)]
+#[path = "texture_texb4_tests.rs"]
+mod texb4_tests;
+
+/// Bounded TEXB4 editor records. The integer fields are retained in file order;
+/// their authoring semantics are not inferred from their values.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct TexEditorMetadata {
+    pub fields: [u32; 3],
+    pub json: String,
+}
+
+pub const MAX_EDITOR_RECORDS: u32 = 256;
+pub const MAX_EDITOR_STRING_BYTES: usize = 64 * 1024;
+pub const MAX_EDITOR_METADATA_BYTES: usize = 1024 * 1024;
+
 // ── Data model ──────────────────────────────────────────────────────────────
 
 /// Pixel format of a Wallpaper Engine texture
@@ -98,7 +114,6 @@ pub enum FreeImageFormat {
     Bmp,
     Targa,
     Tiff,
-    Mp4,
     Other(u32),
 }
 
@@ -180,6 +195,7 @@ pub struct TexAtlas {
     pub container_version: u32,
     pub free_image_format: Option<FreeImageFormat>,
     pub is_video: bool,
+    pub editor_metadata: Vec<TexEditorMetadata>,
 }
 
 /// A parsed .tex texture file
@@ -197,6 +213,7 @@ pub struct TexTexture {
     pub container_version: u32,
     pub free_image_format: Option<FreeImageFormat>,
     pub is_video: bool,
+    pub editor_metadata: Vec<TexEditorMetadata>,
     pub spritesheet_cols: u32,
     pub spritesheet_rows: u32,
     pub spritesheet_frames: u32,
@@ -265,6 +282,11 @@ impl TexTexture {
 
     /// Convert container-specific mipmaps into a size-validated renderer input.
     pub fn to_texture_image(&self) -> Result<TextureImage, TexError> {
+        if self.is_video {
+            return Err(TexError::InvalidData(
+                "Video texture pixels require a media decoder".into(),
+            ));
+        }
         validate_mipmaps(
             self.format,
             [self.texture_width, self.texture_height],
@@ -651,6 +673,7 @@ impl TexAtlas {
             container_version: self.container_version,
             free_image_format: self.free_image_format,
             is_video: self.is_video,
+            editor_metadata: self.editor_metadata,
             spritesheet_cols,
             spritesheet_rows,
             spritesheet_duration,
@@ -698,7 +721,7 @@ impl TexAtlas {
                 max: MAX_TEXTURE_DIMENSION as u64,
             });
         }
-        if atlas_mode
+        if (atlas_mode || flags & 32 != 0)
             && [width, height, texture_width, texture_height]
                 .iter()
                 .any(|value| !(1..=MAX_TEXTURE_DIMENSION).contains(value))
@@ -725,9 +748,17 @@ impl TexAtlas {
                 return Err(TexError::BadContainerBlock(other.to_string()));
             }
         };
+        // TEXB4 uses the same bounded payload contract through both adapters.
+        // The legacy TEXB1–3 static adapter keeps its established behavior.
+        let strict_payload = atlas_mode || is_video || container_version == 4;
+        let max_decoded_bytes = if container_version == 4 {
+            max_decoded_bytes.min(MAX_ATLAS_DECODED_BYTES)
+        } else {
+            max_decoded_bytes
+        };
 
         // All TEXB versions start with image_count. Version 3 then adds the
-        // FreeImage codec, and version 4 adds video metadata. See the native
+        // FreeImage codec, and version 4 adds an editor-record count. See the native
         // reader evidence in docs/reverse-engineering/wallpaper-engine-textures.md.
         let image_count = read_u32_le(data, &mut offset)?;
         if !atlas_mode && image_count != 1 {
@@ -740,18 +771,20 @@ impl TexAtlas {
                 "Atlas image count {image_count} is outside 1..={MAX_ATLAS_IMAGES}"
             )));
         }
-        let mut free_image_format = if container_version >= 3 {
+        let free_image_format = if container_version >= 3 {
             Some(FreeImageFormat::from(read_u32_le(data, &mut offset)?))
         } else {
             None
         };
-        let mut is_video_texb4 = false;
-
-        if container_version == 4 {
-            is_video_texb4 = read_u32_le(data, &mut offset)? == 1;
-            if is_video_texb4 {
-                free_image_format = Some(FreeImageFormat::Mp4);
-            }
+        let editor_metadata = read_editor_metadata(data, &mut offset, container_version)?;
+        if is_video
+            && (image_count != 1
+                || is_animated
+                || !matches!(free_image_format, None | Some(FreeImageFormat::Unknown)))
+        {
+            return Err(TexError::InvalidData(
+                "Video TEX requires one nonanimated raw media image".into(),
+            ));
         }
 
         let mut images = Vec::new();
@@ -762,27 +795,29 @@ impl TexAtlas {
 
         for _image_idx in 0..image_count {
             let mip_count = read_u32_le(data, &mut offset)?;
-            if atlas_mode && !(1..=MAX_ATLAS_MIPS_PER_IMAGE).contains(&mip_count) {
+            if is_video && mip_count != 1 {
+                return Err(TexError::InvalidData(
+                    "Video TEX requires exactly one media payload".into(),
+                ));
+            }
+            if strict_payload && !(1..=MAX_ATLAS_MIPS_PER_IMAGE).contains(&mip_count) {
                 return Err(TexError::InvalidData(format!(
                     "Atlas mip count {mip_count} is outside 1..={MAX_ATLAS_MIPS_PER_IMAGE}"
                 )));
             }
             let mut mipmaps = Vec::new();
             for _mip_idx in 0..mip_count {
-                // Video-flavoured TEXB0004 entries carry editor metadata before
-                // the payload. Non-video TEXB0004 FreeImage mip chains use the
-                // same per-mip layout as TEXB0003.
-                if container_version == 4 && is_video_texb4 {
-                    // skip 3 uint32 fields (editor metadata)
-                    read_u32_le(data, &mut offset)?;
-                    read_u32_le(data, &mut offset)?;
-                    // json string
-                    let _json = read_null_terminated(data, &mut offset);
-                    read_u32_le(data, &mut offset)?;
-                }
-
                 let mip_w = read_u32_le(data, &mut offset)?;
                 let mip_h = read_u32_le(data, &mut offset)?;
+                if is_video
+                    && [mip_w, mip_h]
+                        .iter()
+                        .any(|v| !(1..=MAX_TEXTURE_DIMENSION).contains(v))
+                {
+                    return Err(TexError::InvalidData(
+                        "Video TEX dimensions are outside the supported range".into(),
+                    ));
+                }
 
                 let (compression, uncompressed_size) = if container_version >= 2 {
                     let comp = read_u32_le(data, &mut offset)?;
@@ -792,7 +827,7 @@ impl TexAtlas {
                     (0u32, 0i32)
                 };
 
-                if atlas_mode && compression > 1 {
+                if strict_payload && compression > 1 {
                     return Err(TexError::InvalidData(format!(
                         "Unsupported atlas compression {compression}"
                     )));
@@ -806,7 +841,7 @@ impl TexAtlas {
                 };
 
                 if actual_uncompressed <= 0 {
-                    if atlas_mode {
+                    if strict_payload {
                         return Err(TexError::InvalidData(
                             "Atlas mip payload must be nonempty".into(),
                         ));
@@ -815,6 +850,18 @@ impl TexAtlas {
                 }
 
                 let uncomp_u64 = actual_uncompressed as u64;
+                if is_video && uncomp_u64 > max_decoded_bytes {
+                    return Err(TexError::MipmapTooLarge {
+                        size: uncomp_u64,
+                        max: max_decoded_bytes,
+                    });
+                }
+                if u64::from(compressed_size) > MAX_MIPMAP_SIZE {
+                    return Err(TexError::MipmapTooLarge {
+                        size: u64::from(compressed_size),
+                        max: MAX_MIPMAP_SIZE,
+                    });
+                }
 
                 // Safety: check size limits
                 if uncomp_u64 > MAX_MIPMAP_SIZE {
@@ -841,7 +888,7 @@ impl TexAtlas {
                     let mut decomp_buf = vec![0u8; actual_uncompressed as usize];
                     let result = lz4_flex::decompress_into(comp_bytes, &mut decomp_buf);
                     match result {
-                        Ok(decoded) if !atlas_mode || decoded == decomp_buf.len() => decomp_buf,
+                        Ok(decoded) if !strict_payload || decoded == decomp_buf.len() => decomp_buf,
                         Ok(decoded) => {
                             return Err(TexError::InvalidData(format!(
                                 "Atlas LZ4 payload decoded {decoded} bytes, expected {}",
@@ -856,6 +903,14 @@ impl TexAtlas {
                     let raw = get_slice(data, &mut offset, actual_uncompressed as usize)?;
                     raw.to_vec()
                 };
+                // Native TEXB4 stores per-mip variant groups after the main
+                // payload when editor records exist. Conditional replacement
+                // semantics need a separate consumer; never select one by guess.
+                if !editor_metadata.is_empty() && read_u32_le(data, &mut offset)? != 0 {
+                    return Err(TexError::InvalidData(
+                        "Conditional TEXB4 mip variants are not supported".into(),
+                    ));
+                }
                 // FreeImage payloads may themselves be LZ4-compressed. Decode
                 // every concatenated mip image instead of returning after the
                 // first payload, preserving the complete GPU mip chain.
@@ -885,9 +940,9 @@ impl TexAtlas {
             images.push(TexAtlasImage { mipmaps });
         }
 
-        // The inspection model requires an entire declared animation block;
-        // preserve the legacy adapter's optional-block behavior for playback.
-        if atlas_mode && is_animated && !data[offset..].starts_with(b"TEXS") {
+        // Atlas/TEXB4 readers require an entire declared animation block;
+        // the earlier static adapter keeps its optional-block behavior.
+        if strict_payload && is_animated && !data[offset..].starts_with(b"TEXS") {
             return Err(TexError::InvalidData(
                 "Animated atlas has no complete TEXS block".into(),
             ));
@@ -933,7 +988,7 @@ impl TexAtlas {
                             "Animation frame references missing texture image {frame_number}"
                         )));
                     }
-                    if atlas_mode
+                    if strict_payload
                         && (!components.iter().all(|v| v.is_finite())
                             || !frametime.is_finite()
                             || frametime < 0.0)
@@ -950,6 +1005,11 @@ impl TexAtlas {
                 }
             }
         }
+        if (is_video || !editor_metadata.is_empty()) && offset != len {
+            return Err(TexError::InvalidData(
+                "Unexpected trailing data after TEX payload".into(),
+            ));
+        }
         let atlas = TexAtlas {
             format,
             width,
@@ -963,9 +1023,10 @@ impl TexAtlas {
             is_animated,
             container_version,
             free_image_format,
-            is_video: is_video || is_video_texb4 || free_image_format == Some(FreeImageFormat::Mp4),
+            is_video,
+            editor_metadata,
         };
-        if atlas_mode {
+        if strict_payload {
             if atlas.is_video && atlas.images.len() != 1 {
                 return Err(TexError::InvalidData(
                     "Multiple video atlas images are not supported".into(),
@@ -1027,14 +1088,60 @@ fn read_f32_le(data: &[u8], offset: &mut usize) -> Result<f32, TexError> {
     Ok(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
 }
 
-fn read_null_terminated<'a>(data: &'a [u8], offset: &mut usize) -> &'a str {
-    let start = *offset;
-    let end = data[start..]
-        .iter()
-        .position(|b| *b == 0)
-        .unwrap_or(data.len() - start);
-    *offset += end + 1; // +1 for NUL
-    std::str::from_utf8(&data[start..start + end]).unwrap_or("")
+fn read_editor_metadata(
+    data: &[u8],
+    offset: &mut usize,
+    version: u32,
+) -> Result<Vec<TexEditorMetadata>, TexError> {
+    if version < 4 {
+        return Ok(Vec::new());
+    }
+    let count = read_u32_le(data, offset)?;
+    if count > MAX_EDITOR_RECORDS {
+        return Err(TexError::InvalidData(format!(
+            "TEXB4 editor record count exceeds {MAX_EDITOR_RECORDS}"
+        )));
+    }
+    let mut records = Vec::new();
+    let mut retained = 0;
+    for _ in 0..count {
+        let fields = [
+            read_u32_le(data, offset)?,
+            read_u32_le(data, offset)?,
+            read_u32_le(data, offset)?,
+        ];
+        let remaining = data.get(*offset..).ok_or(TexError::UnexpectedEof)?;
+        let length = remaining
+            .iter()
+            .take(MAX_EDITOR_STRING_BYTES + 1)
+            .position(|b| *b == 0)
+            .ok_or_else(|| {
+                TexError::InvalidData("Unterminated or oversized TEXB4 editor string".into())
+            })?;
+        retained += length + 13;
+        if retained > MAX_EDITOR_METADATA_BYTES {
+            return Err(TexError::InvalidData(
+                "TEXB4 editor metadata exceeds 1 MiB".into(),
+            ));
+        }
+        let json =
+            std::str::from_utf8(get_slice(data, offset, length + 1)?.split_last().unwrap().1)
+                .map_err(|_| TexError::InvalidData("TEXB4 editor string is not UTF-8".into()))?;
+        if !json.is_empty() {
+            let value: serde_json::Value = serde_json::from_str(json)
+                .map_err(|e| TexError::InvalidData(format!("Invalid TEXB4 editor JSON: {e}")))?;
+            if !value.is_object() {
+                return Err(TexError::InvalidData(
+                    "TEXB4 editor JSON requires an object".into(),
+                ));
+            }
+        }
+        records.push(TexEditorMetadata {
+            fields,
+            json: json.into(),
+        });
+    }
+    Ok(records)
 }
 
 fn get_slice<'a>(data: &'a [u8], offset: &mut usize, size: usize) -> Result<&'a [u8], TexError> {

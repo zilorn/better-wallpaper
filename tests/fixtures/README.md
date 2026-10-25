@@ -1,5 +1,12 @@
 # Test fixtures
 
+[`texb4/`](texb4/README.md) contains owned raw video and static TEXB4 inputs with
+zero/two editor records. A3's parser boundaries, asset resolution, scene-clock
+pause/loop/reload and extracted-file cleanup checks use these inputs or the
+corrected `scene-behavior/video/scene.pkg`. Commercial sample identities and
+explicit size-limit exclusions are recorded separately in
+[`a3-texb4-samples.json`](../../docs/validation/a3-texb4-samples.json).
+
 [`scene-behavior/`](scene-behavior/README.md) contains 13 reproducible standalone
 synthetic scene projects and a fixed-input matrix. GPU goldens consume these
 packages directly: eight scenes retain the existing 20 comparisons; five A1

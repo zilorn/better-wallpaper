@@ -1,0 +1,401 @@
+{
+  "scope": {
+    "selected_packages": 30,
+    "tex_entries_examined": 554,
+    "video_entries": 11,
+    "selection": "all video-flagged entries among the 30 local workshop PKG indexes; 128-package and 20000-entry ceilings"
+  },
+  "records": [
+    {
+      "source": "workshop-2877983034",
+      "path": "materials/usp.tex",
+      "offset": 3938,
+      "size": 7586929,
+      "sha256": "faead6294b0b86816bb13bfb30bcf26a94dcd83c3764f7ddbc84df9db70dd8bb",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        1920,
+        1080
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 7586842,
+      "encoded_sha256": "5de7d78857e77a4c49515cc38c84edd706e78d12704101ba43121803ba03427b",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [
+          {
+            "streams": [
+              {
+                "codec_name": "h264",
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080
+              },
+              {
+                "codec_type": "data"
+              }
+            ]
+          }
+        ],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "codec_type": "data"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "24.000000"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3326873240",
+      "path": "materials/窗边的伊蕾娜 昼夜变化.tex",
+      "offset": 195032,
+      "size": 102479556,
+      "sha256": "11fcb836ee814a7f1c0bce5521ac8f25609b79a64bd2ae100afd952444131618",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 102479469,
+      "encoded_sha256": "f0a1b5c29dfb0711baaec57e383311ae45701e8472cd2313103eb1883231ca9b",
+      "parser_status": "rejected_64_mib_payload_limit"
+    },
+    {
+      "source": "workshop-3326873240",
+      "path": "materials/窗边的伊蕾娜（黄昏）.tex",
+      "offset": 102679209,
+      "size": 30581716,
+      "sha256": "6be4e4ecfb3e8e16903b6687c98967861f899413c0f159ccbb1421cf81ea81ef",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 30581629,
+      "encoded_sha256": "e47501bacb5fe29981dad95adaab0fb126740a6d995cdf590f66f0e4e96030dd",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "19.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3326873240",
+      "path": "materials/窗边的伊蕾娜（白天）.tex",
+      "offset": 133261186,
+      "size": 30562947,
+      "sha256": "878657e18c83d397633963e00d4faec14dbb4f83fc139276c87c12732e67e53a",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 30562860,
+      "encoded_sha256": "e50ad5147a27a4f3772a8e17242af420a71241258c1c99e091029c07342f1a80",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "19.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3326873240",
+      "path": "materials/窗边的伊蕾娜（夜晚）.tex",
+      "offset": 163824394,
+      "size": 30534751,
+      "sha256": "be860d14abc180c5af8a8238a6a94eae7dddefb87a2507859a0dab00ea4ca603",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 30534664,
+      "encoded_sha256": "12ae5fb8c304615687d4c95c50ec1812837d76c556f26ff88d55a4ad5f10d9c2",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "19.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3326873240",
+      "path": "materials/窗边的伊蕾娜（清晨）.tex",
+      "offset": 194390122,
+      "size": 30561135,
+      "sha256": "e7cf5c710343316b4fd2075b4cc93df33cdcf2dd4a16d885c52c221e3bef1da0",
+      "container_version": 3,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 87,
+      "encoded_bytes": 30561048,
+      "encoded_sha256": "987dd096ad79d36de59fa69298f6bb8e9862ecf3e01640982c8d1e744dc9be58",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "19.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3470764447",
+      "path": "materials/60帧 伊蕾娜 ：静谧时光 清晨.tex",
+      "offset": 132779,
+      "size": 31096422,
+      "sha256": "fabd9fd13b0033106344bbbbcfb30ed09d2fc1f1bb705382a33ed82fbb35b3fb",
+      "container_version": 4,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 91,
+      "encoded_bytes": 31096331,
+      "encoded_sha256": "b0e5183a1f63c371c44d12f6e1bfc6408c0e7dfaf18ea40b5d3ce7d05c545c34",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "23.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3470764447",
+      "path": "materials/60帧 伊蕾娜 ：静谧时光 昼夜变化.tex",
+      "offset": 35877919,
+      "size": 122028914,
+      "sha256": "6fd9c2e03477e9cd3e1765fb0b54961cf07672a57ecde7a55f94e6925091f47e",
+      "container_version": 4,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 91,
+      "encoded_bytes": 122028823,
+      "encoded_sha256": "82bd2980b279e253a301df6a3df029cd2d180e1f0606f7b76ba4e644ec715588",
+      "parser_status": "rejected_64_mib_payload_limit"
+    },
+    {
+      "source": "workshop-3470764447",
+      "path": "materials/60帧 伊蕾娜 ：静谧时光 白天.tex",
+      "offset": 157908474,
+      "size": 50919202,
+      "sha256": "52f693db40240135647194adc56aaeb285e4cfd0adb78b48e41fd16ae0eff2a3",
+      "container_version": 4,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 91,
+      "encoded_bytes": 50919111,
+      "encoded_sha256": "bec5cd1d8022b1f72c3637ce89c9adcff3c84a28f172b029e321a6f5c165bc74",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "23.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3470764447",
+      "path": "materials/60帧 伊蕾娜 ：静谧时光 黄昏.tex",
+      "offset": 208830826,
+      "size": 50923914,
+      "sha256": "af762207c8b5e07283bf8450303dd0d82a027b981a0d9483ced2974810daba02",
+      "container_version": 4,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 91,
+      "encoded_bytes": 50923823,
+      "encoded_sha256": "15be0a445fae1af42ed954b80b9fcb1105541c53f0b5dcd898b4dafc6d42a6f2",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "23.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    },
+    {
+      "source": "workshop-3470764447",
+      "path": "materials/60帧 伊蕾娜 ：静谧时光 夜晚.tex",
+      "offset": 259963076,
+      "size": 50936757,
+      "sha256": "5ff70c0c3fc31d4586a39ecf29b9448a04138e23935b80fd217c4ac4674b8d66",
+      "container_version": 4,
+      "flags": 34,
+      "storage": [
+        3840,
+        2160
+      ],
+      "metadata_count": 0,
+      "payload_offset": 91,
+      "encoded_bytes": 50936666,
+      "encoded_sha256": "d56e3580f6eafe4e637aa33a9daebab9679b0262066e26ce5d475e89aca24ced",
+      "media_probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio"
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "23.983333"
+        }
+      },
+      "parser_status": "exact_media_payload"
+    }
+  ]
+}

@@ -170,7 +170,7 @@ construction exposed that flipped frames previously parsed successfully, then
 were discarded by `sprite_animation`, silently leaving a static full atlas.
 Legacy regression coverage still rejects both axes in TEXS1/2/3; the new main
 material path renders the validated affine sequence instead.
-TEXB4 video/editor metadata still needs separate native/sample corroboration.
+TEXB4 video/editor metadata now has the bounded A3 reader/sample evidence below.
 Particle atlases do not establish particle simulation support. Local pixel-size
 validation and synthetic goldens do not establish Wallpaper Engine visual parity.
 
@@ -198,3 +198,30 @@ parameters, general effect stacks and minification/resampling parity, other volu
 formats/codecs/mips and Plasma consumption. They require separate native probes
 and concrete admission/visual/lifecycle criteria. The completed bounded A2 scope
 does not imply arbitrary shaders, full effect parity or A9 soak/release completion.
+
+## TEXB4 Video and Editor Metadata — A3 Bounded Contract Validated
+
+Native assembly identifies the TEXB4 extra word as an editor-record count;
+TEXI flag 0x20 identifies video independently. The parser retains bounded records
+before images and consumes empty per-mip variant tables after payloads. It no
+longer invents an MP4 codec or treats metadata count one as video. Nonempty
+conditional variants and volume editor metadata are explicit exclusions.
+
+Real local observations cover six TEXB3/five TEXB4 videos: nine exact payloads
+decode at 720p, while two exceed the preserved 64 MiB TEX mip ceiling. The 440
+loose TEX inventory retains 412 valid 2D payloads and 28 volume exclusions. Owned
+metadata/static/video samples, all truncation prefixes, length/count/byte budgets,
+LZ4/version differences and PNG mip regressions cover parser boundaries.
+
+Daemon checks cover shared scene times, pause/loops, three reloads, decoder
+sharing/limit, partial startup rollback, private extracted-file cleanup and byte
+ownership release. Existing file-only FFmpeg container/protocol restrictions and
+64 MiB RGBA-frame/128 MiB runtime-input limits are preserved. Both available
+renderers pass all nine explicit GPU cases, including corrected video inputs,
+storage resize and context replacement. See [evidence](../../../../docs/reverse-engineering/wallpaper-engine-texb4.md)
+and [validation](../../../../docs/validation/a3-texb4.md).
+
+Remaining extensions require their own samples/consumer: conditional editor mip
+selection, volume metadata, larger media budgets, native video screenshot/clock
+equivalence, video-texture audio, Plasma scene playback and A9 desktop/soak gates.
+No arbitrary editor/property/script execution is implied by retaining metadata.

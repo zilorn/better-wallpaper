@@ -2019,6 +2019,49 @@ mod tests {
     }
 
     #[test]
+    fn texb4_editor_records_do_not_change_media_detection_or_static_pixels() {
+        for (bytes, is_video) in [
+            (
+                &include_bytes!("../../../tests/fixtures/texb4/video-metadata.tex")[..],
+                true,
+            ),
+            (
+                &include_bytes!("../../../tests/fixtures/texb4/static-metadata.tex")[..],
+                false,
+            ),
+        ] {
+            let package = package(&[
+                (
+                    "models/bg.json",
+                    br#"{"material":"materials/bg.json"}"#.to_vec(),
+                ),
+                (
+                    "materials/bg.json",
+                    br#"{"passes":[{"shader":"genericimage4","textures":["bg"]}]}"#.to_vec(),
+                ),
+                ("materials/bg.tex", bytes.to_vec()),
+            ]);
+            let scene = r#"{"objects":[{"id":1,"image":"models/bg.json","size":"16 16"}]}"#;
+            let assets = resolve_scene_2d_assets(&package, plan(scene).unwrap()).unwrap();
+            assert_eq!(assets.draws[0].video.is_some(), is_video);
+            let meta =
+                better_wallpaper_scene_format::analyse_scene_with_package(scene, &package).unwrap();
+            assert_eq!(meta.has_video_texture, is_video);
+            if let Some(video) = &assets.draws[0].video {
+                assert_eq!(
+                    &*video.encoded,
+                    include_bytes!("../../../tests/fixtures/scene-video.mp4")
+                );
+            } else {
+                assert_eq!(
+                    &*assets.draws[0].texture.levels[0].data,
+                    &[23, 67, 119, 255]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn resolves_shared_model_material_texture_submission() {
         let package = package(&[
             (

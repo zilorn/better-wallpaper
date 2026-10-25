@@ -102,15 +102,18 @@ fn main() -> Result<()> {
             "logical_size": [atlas.width, atlas.height],
             "storage_size": [atlas.texture_width, atlas.texture_height],
             "container_version": atlas.container_version,
+            "editor_metadata": atlas.editor_metadata,
+            "is_video": atlas.is_video,
             "frame_dimensions": atlas.frame_dimensions,
             "images": atlas.images.iter().enumerate().map(|(index, image)| serde_json::json!({
                 "index": index,
                 "mips": image.mipmaps.iter().map(|mip| serde_json::json!({
                     "width": mip.width, "height": mip.height, "decoded_bytes": mip.data.len(),
+                    "decoded_sha256": format!("{:x}", Sha256::digest(&mip.data)),
                 })).collect::<Vec<_>>()
             })).collect::<Vec<_>>(),
             "frames": atlas.frames,
-            "payload_status": if atlas.is_video { "video_unverified" } else { "validated_2d_images" },
+            "payload_status": if atlas.is_video { "encoded_video_requires_decoder" } else { "validated_2d_images" },
             "native_visual_validation": "pending",
             "sprite_layout": {
                 "accepted": !atlas.is_video && sprite_error.is_none(),

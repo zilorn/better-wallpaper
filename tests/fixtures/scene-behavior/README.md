@@ -3,9 +3,11 @@
 These 13 independently authored scene projects are inputs for the A0 adaptation
 baseline and A1 atlas regressions. Each directory contains `project.json` and `scene.pkg`; the package has
 the scene, models, materials and original TEX pixels. No Wallpaper Engine binary
-or commercial artwork is included. Native acceptance has not been tested. The
-synthetic video container establishes the current Better Wallpaper parser
-contract, not the original TEXB4 metadata layout.
+or commercial artwork is included. Native acceptance of these original projects
+has not been tested. A3 corrected the synthetic video container to the verified
+native TEXB4 layout: flag `0x20`, raw codec and zero editor records. Separate
+[metadata fixtures](../texb4/README.md) cover editor records without implying
+original-program visual or clock equivalence.
 
 [`matrix.json`](matrix.json) is consumed by
 [`scene_golden.rs`](../../../crates/gpu-renderer/tests/scene_golden.rs). It records
@@ -146,7 +148,8 @@ For a future controlled capture:
 
 This covers the shared 2D golden baseline and A1 synthetic atlas rendering. A2
 now has eleven owned LUT effect probes and native captures in
-[`../lut-native`](../lut-native/README.md); A3 needs native video-TEX/metadata evidence; A4 needs an observed
+[`../lut-native`](../lut-native/README.md); A3 has [reader/sample evidence](../../../docs/reverse-engineering/wallpaper-engine-texb4.md)
+and shared-clock lifecycle checks. A4 needs an observed
 effect mismatch and broader motion coverage. A5 web callbacks, A6 particles,
 A7 SceneScript and A8 Plasma consumers need their own defined subsets/fixtures.
 The [decoder fixtures](../README.md) cover A0 decoding separately. These gaps

@@ -5,6 +5,12 @@ compatibility, using the locally installed application and its assets. This is
 static reverse engineering, not recovery of the original source or a claim of
 complete Wallpaper Engine compatibility.
 
+Follow-up: [A3 TEXB4 investigation](wallpaper-engine-texb4.md) corrects the
+previously unverified video/editor interpretation: TEXB4 adds an editor-record
+count, while TEXI flag `0x20` identifies video. It records native-reader evidence,
+real TEXB3/4 video payload checks and bounded metadata/runtime validation. The
+remaining-question statements below describe this original investigation's date.
+
 ## Target and retained evidence
 
 The selected installation was `~/.local/share/Steam/steamapps/common/wallpaper_engine`.

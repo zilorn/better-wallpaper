@@ -432,9 +432,9 @@
           "sha256": "57286995ed0a6ec99d75dc9f86baf9a78ba36481f734b27bca7f9cf756fcebcd"
         },
         "scene.pkg": {
-          "bytes": 7837,
+          "bytes": 7824,
           "path": "video/scene.pkg",
-          "sha256": "392cbe0729a6490412d59e7595e7be57e2df17b5072f2270132f0bed9c537c36"
+          "sha256": "a6c89fbacd29a7cf5865f6df699a8c9f32e6fc9d19ffde11215dbcea6134adb2"
         }
       },
       "canvas": [
@@ -450,7 +450,7 @@
         "skipped_nodes": 0
       },
       "properties": {},
-      "purpose": "Synthetic current-parser TEXB4 layout (native structure unverified); decode, storage resize, context replacement.",
+      "purpose": "Native-reader TEXB4 layout, video flag 0x20 and zero editor records; decode, storage resize, context replacement.",
       "random_seed": null,
       "steps": [
         {

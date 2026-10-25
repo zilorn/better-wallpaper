@@ -17,7 +17,7 @@ use better_wallpaper_core::{
 };
 use better_wallpaper_ffmpeg::{FfmpegDecoder, FrameQueueReceiver, frame_queue};
 use better_wallpaper_renderer::{Scene2dAssets, SceneVideoFrame, SceneVideoTexture};
-use tempfile::Builder;
+use tempfile::{Builder, NamedTempFile};
 use tracing::{info, warn};
 
 const MAX_VIDEO_TEXTURES: usize = 8;
@@ -51,6 +51,19 @@ pub struct SceneVideoRuntime {
 
 impl SceneVideoRuntime {
     pub fn start(assets: &Scene2dAssets, quality: SceneQuality) -> Result<Self> {
+        Self::start_with_files(assets, quality, || {
+            Builder::new()
+                .prefix("better-wallpaper-scene-video-")
+                .suffix(".media")
+                .tempfile()
+        })
+    }
+
+    fn start_with_files(
+        assets: &Scene2dAssets,
+        quality: SceneQuality,
+        mut create_file: impl FnMut() -> std::io::Result<NamedTempFile>,
+    ) -> Result<Self> {
         let mut runtime = Self::default();
         let mut seen = HashSet::new();
         for draw in &assets.draws {
@@ -64,11 +77,7 @@ impl SceneVideoRuntime {
                 warn!(resource = %draw.texture_path, "scene video resource limit exceeded; skipping video layer");
                 continue;
             }
-            let mut file = Builder::new()
-                .prefix("better-wallpaper-scene-video-")
-                .suffix(".media")
-                .tempfile()
-                .context("failed to create private scene video file")?;
+            let mut file = create_file().context("failed to create private scene video file")?;
             file.write_all(&texture.encoded)
                 .context("failed to extract scene video payload")?;
             let (sender, receiver) = frame_queue(2);
@@ -243,6 +252,13 @@ mod tests {
             runtime.update(elapsed).unwrap();
             if let Some(frame) = texture.frame.read().unwrap().as_ref()
                 && frame.rgba[..4] == color
+                && runtime.workers.iter().all(|worker| {
+                    worker.finished
+                        || worker
+                            .pending
+                            .as_ref()
+                            .is_some_and(|pending| pending.presentation_time() > elapsed)
+                })
             {
                 return frame.generation;
             }
@@ -256,27 +272,26 @@ mod tests {
 
     #[test]
     fn rejects_playlists_and_corrupt_media_without_blocking_teardown() {
-        let mut assets = assets();
-        for draw in &mut assets.draws {
-            draw.video.as_mut().unwrap().encoded = Arc::from(&b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttps://example.com/media.ts\n"[..]);
+        for payload in [
+            &b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttps://example.com/media.ts\n"[..],
+            &include_bytes!("../../../tests/fixtures/corrupt-video.bin")[..],
+        ] {
+            let mut assets = embedded_assets();
+            assets.draws[0].video.as_mut().unwrap().encoded = Arc::from(payload);
+            let directory = tempfile::tempdir().unwrap();
+            let mut runtime = SceneVideoRuntime::start_with_files(&assets, SceneQuality::Low, || {
+                Builder::new().tempfile_in(directory.path())
+            }).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while !runtime.workers[0].finished {
+                runtime.update(Duration::ZERO).unwrap();
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(assets.draws[0].video.as_ref().unwrap().frame.read().unwrap().is_none());
+            drop(runtime);
+            assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
         }
-        let mut runtime = SceneVideoRuntime::start(&assets, SceneQuality::Low).unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !runtime.workers[0].finished {
-            runtime.update(Duration::ZERO).unwrap();
-            assert!(std::time::Instant::now() < deadline);
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert!(
-            assets.draws[0]
-                .video
-                .as_ref()
-                .unwrap()
-                .frame
-                .read()
-                .unwrap()
-                .is_none()
-        );
     }
 
     #[test]
@@ -317,5 +332,169 @@ mod tests {
         drop(runtime); // Must join even with a full queue.
         assert!(cancel.load(Ordering::Acquire));
         assert!(stopped.elapsed() < Duration::from_secs(1));
+    }
+
+    fn embedded_assets() -> Scene2dAssets {
+        let pkg = PkgReader::parse(
+            include_bytes!("../../../tests/fixtures/scene-behavior/video/scene.pkg").to_vec(),
+        )
+        .unwrap();
+        let scene = pkg.read_entry(pkg.find("scene.json").unwrap());
+        let graph = parse_scene_graph(std::str::from_utf8(scene).unwrap()).unwrap();
+        let plan = build_scene_2d_plan(
+            &graph,
+            Scene2dOptions {
+                viewport_width: 32,
+                viewport_height: 32,
+            },
+        )
+        .unwrap();
+        resolve_scene_2d_assets(&pkg, plan).unwrap()
+    }
+
+    #[test]
+    fn texb4_clock_pause_loop_reload_release_files_workers_and_frames() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        for _reload in 0..3 {
+            let mut assets = embedded_assets();
+            assets.draws.push(assets.draws[0].clone());
+            let a = assets.draws[0].video.as_ref().unwrap();
+            let b = assets.draws[1].video.as_ref().unwrap();
+            assert!(Arc::ptr_eq(&a.frame, &b.frame));
+            let encoded = Arc::downgrade(&a.encoded);
+            let mut paths = Vec::new();
+            let mut runtime =
+                SceneVideoRuntime::start_with_files(&assets, SceneQuality::High, || {
+                    let file = Builder::new().tempfile_in(directory.path())?;
+                    paths.push(file.path().to_path_buf());
+                    Ok(file)
+                })
+                .unwrap();
+            assert_eq!(runtime.workers.len(), 1);
+            assert_eq!(paths.len(), 1);
+            assert_eq!(
+                std::fs::metadata(&paths[0]).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            for (millis, color) in [
+                (0, [255, 0, 0, 255]),
+                (499, [255, 0, 0, 255]),
+                (500, [0, 255, 0, 255]),
+                (999, [0, 255, 0, 255]),
+                (1000, [0, 0, 255, 255]),
+                (1499, [0, 0, 255, 255]),
+                (1500, [255, 255, 0, 255]),
+                (1999, [255, 255, 0, 255]),
+                (2000, [255, 0, 0, 255]),
+                (4500, [0, 255, 0, 255]),
+            ] {
+                let time = Duration::from_millis(millis);
+                let generation = wait_for_color(&mut runtime, a, time, color);
+                std::thread::sleep(Duration::from_millis(15));
+                runtime.update(time).unwrap();
+                assert_eq!(
+                    a.frame.read().unwrap().as_ref().unwrap().generation,
+                    generation
+                );
+                assert_eq!(b.frame.read().unwrap().as_ref().unwrap().rgba[..4], color);
+            }
+            let frame = Arc::downgrade(&a.frame.read().unwrap().as_ref().unwrap().rgba);
+            let cancel = Arc::clone(&runtime.workers[0].cancel);
+            let stopped = std::time::Instant::now();
+            drop(runtime);
+            assert!(stopped.elapsed() < Duration::from_secs(1));
+            assert!(cancel.load(Ordering::Acquire));
+            assert!(!paths[0].exists());
+            drop(assets);
+            assert!(encoded.upgrade().is_none());
+            assert!(frame.upgrade().is_none());
+            assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+        }
+    }
+
+    #[test]
+    fn texb4_decoder_limit_and_partial_start_failure_release_private_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut assets = embedded_assets();
+        let template = assets.draws[0].clone();
+        assets.draws.clear();
+        for index in 0..=MAX_VIDEO_TEXTURES {
+            let mut draw = template.clone();
+            draw.texture_path = format!("materials/video-{index}.tex");
+            draw.video.as_mut().unwrap().frame = Arc::new(std::sync::RwLock::new(None));
+            assets.draws.push(draw);
+        }
+        let mut calls = 0;
+        let runtime = SceneVideoRuntime::start_with_files(&assets, SceneQuality::Low, || {
+            calls += 1;
+            Builder::new().tempfile_in(directory.path())
+        })
+        .unwrap();
+        assert_eq!(runtime.workers.len(), MAX_VIDEO_TEXTURES);
+        assert_eq!(calls, MAX_VIDEO_TEXTURES);
+        let cancellations: Vec<_> = runtime.workers.iter().map(|w| w.cancel.clone()).collect();
+        drop(runtime);
+        assert!(cancellations.iter().all(|c| c.load(Ordering::Acquire)));
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+        calls = 0;
+        let failure = SceneVideoRuntime::start_with_files(&assets, SceneQuality::Low, || {
+            calls += 1;
+            if calls == 2 {
+                return Err(std::io::Error::other("injected extraction failure"));
+            }
+            Builder::new().tempfile_in(directory.path())
+        });
+        assert!(failure.is_err());
+        assert_eq!(calls, 2);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    #[ignore = "requires an explicit legally available local video TEX; set BW_LOCAL_VIDEO_TEX"]
+    fn local_video_tex_decodes_and_releases_runtime_resources() {
+        let path = std::env::var_os("BW_LOCAL_VIDEO_TEX").expect("set BW_LOCAL_VIDEO_TEX");
+        assert!(std::fs::metadata(&path).unwrap().len() <= 128 * 1024 * 1024);
+        let bytes = std::fs::read(&path).unwrap();
+        let atlas = better_wallpaper_scene_format::TexAtlas::parse(&bytes).unwrap();
+        assert!(atlas.is_video);
+        let mut assets = embedded_assets();
+        let video = assets.draws[0].video.as_mut().unwrap();
+        video.encoded = atlas.images[0].mipmaps[0].data.clone();
+        let directory = tempfile::tempdir().unwrap();
+        let mut runtime = SceneVideoRuntime::start_with_files(&assets, SceneQuality::Low, || {
+            Builder::new().tempfile_in(directory.path())
+        })
+        .unwrap();
+        let texture = assets.draws[0].video.as_ref().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            runtime.update(Duration::ZERO).unwrap();
+            if let Some(frame) = texture.frame.read().unwrap().as_ref() {
+                assert!(frame.height <= 720);
+                assert_eq!(
+                    frame.rgba.len(),
+                    frame.width as usize * frame.height as usize * 4
+                );
+                println!(
+                    "local TEXB{}: {}x{} -> {}x{}, retained {} RGBA bytes",
+                    atlas.container_version,
+                    atlas.width,
+                    atlas.height,
+                    frame.width,
+                    frame.height,
+                    frame.rgba.len()
+                );
+                break;
+            }
+            assert!(!runtime.workers[0].finished, "local media decoder failed");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "local media decode timed out"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        drop(runtime);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
     }
 }

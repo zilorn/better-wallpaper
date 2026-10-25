@@ -137,13 +137,13 @@ def generate():
 
     media = (ROOT.parent / "scene-video.mp4").read_bytes()
     video = (b"TEXV0005\0TEXI0001\0" + words(0, 32, 16, 16, 16, 16, 0) + b"TEXB0004\0"
-             + words(1, 0, 1, 1, 0, 0) + b"\0" + words(0, 16, 16, 0, len(media), len(media)) + media)
+             + words(1, 0xffffffff, 0, 1, 16, 16, 0, len(media), len(media)) + media)
     add("video", scene_for("video"), [("video", video, "opaque")],
         [step(0, "video-red", video={"kind": "decode_next"}),
          step(0.5, "video-green", video={"kind": "decode_next"}),
          step(1, "video-green", video={"kind": "replace_solid", "size": [8, 8], "rgba": [0, 255, 0, 255]}),
          step(1, "video-green", recreate=True)],
-        "Synthetic current-parser TEXB4 layout (native structure unverified); decode, storage resize, context replacement.")
+        "Native-reader TEXB4 layout, video flag 0x20 and zero editor records; decode, storage resize, context replacement.")
 
     def atlas_steps(first, second):
         return [step(0, first), step(0.499999, first), step(0.5, second),

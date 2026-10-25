@@ -1,0 +1,26 @@
+{
+  "provenance": "owned generated inputs; native reader layout, no original-program captures",
+  "source_media_sha256": "e28037d5d651971e1fa7211d858d5a44a7c89ad031f5661b20de013eba94a874",
+  "inputs": {
+    "scene_times_seconds": [
+      0,
+      0.499,
+      0.5,
+      0.999,
+      1,
+      1.499,
+      1.5,
+      1.999,
+      2,
+      4.5
+    ],
+    "pointer": null,
+    "properties": {},
+    "random_seed": null
+  },
+  "sha256": {
+    "video.tex": "a309cf5ddc6f53bea12a5ff5b54edcf697db9c74f5fa0aad9e6d1c42299cbc7d",
+    "video-metadata.tex": "fdddac97b35477970ca7de0035a55ab89a17fa046cfaebaf30568c52fc955798",
+    "static-metadata.tex": "9d28feab11fed374fa01e4a2cc67407c6995c2ed09ee44e42b252819e4e03824"
+  }
+}

@@ -62,6 +62,22 @@ Its scene property editor changes configuration overrides, not renderer support.
 TEX container contracts are verified against local Wallpaper Engine 2.8.42
 native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md`.
 TEXB1–4 store image count first; TEXB3/4 then store the FreeImage codec.
+TEXB4 next stores an editor-record count, not a video boolean. Video is TEXI
+flag `0x20`; raw video requires one image/mip, codec -1 (or no codec in TEXB1/2),
+valid dimensions, nonempty/exactly decompressed media and no trailing bytes.
+The existing 64 MiB encoded/decoded TEX mip and caller budget limits apply.
+Both TEXB4 adapters enforce mip counts, exact LZ4 lengths and pixel-size checks;
+retained TEXB4 bytes cannot exceed 128 MiB even through the legacy adapter.
+`TexAtlas.editor_metadata` and `TexTexture.editor_metadata` retain three opaque
+words and UTF-8 JSON per record. Caps are 256 records, 64 KiB per string and
+1 MiB total serialized metadata; malformed JSON/UTF-8/NUL termination fails.
+A nonzero editor count also requires a per-mip variant-table count after the
+main payload. Nonempty conditional tables and volume editor metadata return
+explicit unsupported errors; no property/script condition evaluation occurs.
+`scene-inspect FILE.tex --atlas --json` reports metadata, video detection and
+payload SHA-256; `encoded_video_requires_decoder` does not claim decoding.
+See [native TEXB4 evidence](../../../../docs/reverse-engineering/wallpaper-engine-texb4.md)
+and [A3 validation](../../../../docs/validation/a3-texb4.md).
 TEXS1 reads signed integer coordinates, TEXS2/3 read floats, and TEXS3 adds logical
 frame dimensions. Frame records contain image index, duration, origin and two
 basis vectors. The legacy `TexTexture` adapter (tools, fallback/effect textures)
@@ -134,7 +150,7 @@ images, 32 mips per image, 10,000 frames and 128 MiB retained bytes across image
 apply, with one temporary mip during decoding. It requires finite frame fields,
 nonnegative durations, valid indices, complete animation blocks and validated
 2D payload sizes. Zero-duration, degenerate and out-of-range bases remain data,
-not proof of draw support until sprite admission. Single video metadata remains unverified; volume and
+not proof of draw support until sprite admission. Editor metadata follows the bounded TEXB4 contract above; volume and
 multi-video layouts fail. `to_texture_images` validates independent pixel chains;
 `try_into_single_texture` enforces the legacy single-image layout gate.
 `scene-inspect /path/atlas.tex --atlas --json` adds bounded (128 MiB file input)
@@ -205,7 +221,7 @@ the bounded JSON inventory for named loose TEX/JSON roots, explicit shared roots
 and selected PKGs. It records SHA-256, package member offsets, format/payload
 results and JSON-field candidate references without loading unselected resources.
 `TexTexture::parse_with_budget` adds a caller-selected retained mip-byte ceiling;
-ordinary `parse` behavior is unchanged. Exit 2 still emits a report but indicates
+TEXB4 also has the unconditional 128 MiB ceiling described above. Exit 2 still emits a report but indicates
 incomplete traversal/read/reference coverage. Audit JSON accepts line/block comments
 and trailing commas after strict parsing fails, reporting `json_extended_syntax_valid`
 separately from `json_syntax_valid`. Its temporary normalization preserves strings
@@ -238,7 +254,7 @@ contracts and pending desktop verification.
 
 Video submission: `SceneNodeKind::Video` accepts package-relative `video` resources
 and media paths in `image`; image model/material base textures also accept direct
-media and embedded video TEX payloads (TEXB0004 and the TEX video flag). Encoded
+media and embedded video TEX payloads (TEXI video flag `0x20`, including TEXB3/4). Encoded
 bytes and `SceneVideoTexture.frame` are shared across draws and outputs. Each GL
 context tracks frame generations, updates RGBA storage on size changes, and
 reuploads the retained CPU frame after output replacement. Media uses full UVs.
@@ -250,8 +266,14 @@ Private extracted files and workers are released on scene reload/cancellation.
 FFmpeg package decoding permits file-only MOV/Matroska/AVI containers and disables
 external MOV references; playlists and network demuxers are rejected. Video texture
 audio is not mixed; use the scene background audio node. Compatibility detection
-reports references, not successful decoding. Desktop/GPU and eight-hour stability
-verification remain separate requirements.
+reports references, not successful decoding. A3 verifies nine local TEXB3/4
+payloads with exact byte hashes and first-frame decoding at 720p; two over-limit
+video mips remain explicitly rejected. Owned inputs cover scene-clock boundaries,
+pause, looping, three reloads, shared decoders, the eight-decoder ceiling, partial
+startup failure, private-file permissions/removal and release of CPU/encoded bytes.
+All nine explicit GPU regressions pass on NVIDIA and llvmpipe. Texture audio is
+still not mixed, and no native video clock/visual equivalence is claimed. Desktop
+lifecycle and eight-hour stability verification remain separate requirements.
 
 Basic parallax: `SceneCamera.parallax` parses `cameraparallaxamount` (0–100),
 `cameraparallaxdelay` (0–10 seconds) and `cameraparallaxmouseinfluence` (0–10),

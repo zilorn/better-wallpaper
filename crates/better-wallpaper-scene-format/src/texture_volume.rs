@@ -150,7 +150,9 @@ impl TexVolume {
             )));
         }
         if container_version == 4 && read_u32_le(data, &mut offset)? != 0 {
-            return Err(invalid("Video TEXB0004 volumes are not supported"));
+            return Err(invalid(
+                "TEXB0004 editor metadata on volumes is not supported",
+            ));
         }
         let mip_count = read_u32_le(data, &mut offset)?;
         let complete_levels = texture_width.max(texture_height).max(depth).ilog2() + 1;
