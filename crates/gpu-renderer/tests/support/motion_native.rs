@@ -8,7 +8,7 @@ fn manifest() -> serde_json::Value {
     serde_json::from_slice(&std::fs::read(root().join("manifest.json")).unwrap()).unwrap()
 }
 
-fn assets(name: &str) -> Scene2dAssets {
+pub(super) fn assets(name: &str) -> Scene2dAssets {
     let pkg =
         PkgReader::parse(std::fs::read(root().join(name).join("scene.pkg")).unwrap()).unwrap();
     let json = pkg
@@ -29,7 +29,7 @@ fn assets(name: &str) -> Scene2dAssets {
     assets
 }
 
-fn expected(name: &str) -> Vec<u8> {
+pub(super) fn expected(name: &str) -> Vec<u8> {
     let mut decoder = png::Decoder::new(
         std::fs::File::open(root().join("captures").join(format!("{name}.png"))).unwrap(),
     );

@@ -266,6 +266,7 @@ pub struct Scene2dQuad {
     pub resource: String,
     pub text: Option<SceneText>,
     pub video: bool,
+    pub particle: bool,
     pub parallax_depth: [f32; 2],
     pub dynamic_scale: Option<DynamicScaleKind>,
     pub audio_response: Option<SceneAudioResponse>,
@@ -433,6 +434,57 @@ pub struct Scene2dDraw {
     pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
     pub color_lut: Option<Scene2dColorLut>,
     pub tint: Option<better_wallpaper_scene_format::TintEffect>,
+    pub particles: Option<SceneParticleDraw>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SceneParticleDraw {
+    pub system: better_wallpaper_scene_format::particle::ParticleSystem,
+    pub seed: u64,
+    pub capacity: u32,
+    pub sampling: better_wallpaper_scene_format::atlas_animation::SpriteSampling,
+}
+
+impl Scene2dDraw {
+    /// Six vertices per particle: XY, UV, effect UV, RGBA (40-byte stride).
+    /// At most 24 MiB for the 100,000-particle hard scene limit; no history.
+    pub fn particle_vertices_at(&self, seconds: f64) -> Result<Vec<f32>, String> {
+        let particles = self
+            .particles
+            .as_ref()
+            .ok_or("draw is not a particle system")?;
+        let level = self
+            .texture
+            .levels
+            .first()
+            .ok_or("particle image has no base level")?;
+        let aspect = level.height as f32 / level.width as f32;
+        let mut vertices =
+            Vec::with_capacity(particles.capacity.min(particles.system.capacity()) as usize * 60);
+        particles
+            .system
+            .sample(seconds, particles.seed, particles.capacity, |p| {
+                // Native zero-range probes: sampled size 32 produces width 16
+                // at layer scale one (and width 32 at scale two).
+                let width = p.size * 0.5;
+                let corners = [[-0.5, 0.5], [0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]];
+                let uv = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+                for i in [0, 1, 2, 0, 2, 3] {
+                    let point = self.quad.layout_transform.transform_point([
+                        p.position[0] + corners[i][0] * width,
+                        p.position[1] + corners[i][1] * width * aspect,
+                    ]);
+                    vertices.extend_from_slice(&[
+                        point[0], point[1], uv[i][0], uv[i][1], uv[i][0], uv[i][1], p.color[0],
+                        p.color[1], p.color[2], p.color[3],
+                    ]);
+                }
+            })?;
+        if vertices.iter().any(|v| !v.is_finite()) {
+            return Err("non-finite particle geometry".into());
+        }
+        Ok(vertices)
+    }
 }
 
 /// Immutable encoded media plus a CPU frame shared by every output/context.
@@ -496,6 +548,19 @@ pub struct Scene2dAssets {
     pub camera_zoom_animation: Option<ScalarAnimation>,
     pub parallax: Option<better_wallpaper_scene_format::SceneParallax>,
     pub audio_spectrum: Option<Arc<SceneAudioSpectrum>>,
+}
+
+impl Scene2dAssets {
+    /// Apply one aggregate budget in authored draw order, including zero/off.
+    pub fn set_particle_limit(&mut self, limit: u32) {
+        let mut remaining = limit.min(better_wallpaper_scene_format::particle::MAX_PARTICLES);
+        for draw in &mut self.draws {
+            if let Some(particles) = &mut draw.particles {
+                particles.capacity = particles.system.capacity().min(remaining);
+                remaining -= particles.capacity;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -570,6 +635,10 @@ pub fn resolve_scene_2d_assets(
     let mut lut_bytes = 0_u64;
     const MAX_SCENE_ATLAS_BYTES: u64 = 512 * 1024 * 1024;
     let mut draws = Vec::with_capacity(plan.quads.len());
+    let mut particle_assets =
+        HashMap::<String, better_wallpaper_scene_format::particle::ParticleAsset>::new();
+    let mut particle_bytes = 0_u64;
+    let mut particle_count = 0;
     let mut tint_masks = better_wallpaper_scene_format::TintMaskCache::default();
     let mut skipped_nodes = plan.skipped_nodes;
     let projection_size = plan.projection_size;
@@ -581,6 +650,47 @@ pub fn resolve_scene_2d_assets(
     let text_resolution_scale = (projection_size[1] / layout_viewport[1] as f32).clamp(0.25, 8.0);
     for quad in plan.quads {
         let resolved = (|| {
+            if quad.particle {
+                use better_wallpaper_scene_format::particle::*;
+                particle_count += 1;
+                if particle_count > MAX_PARTICLE_SYSTEMS {
+                    return Err(Scene2dError::InvalidAssetManifest(
+                        "scene exceeds 64 particle systems".into(),
+                    ));
+                }
+                if !particle_assets.contains_key(&quad.resource) {
+                    let asset = resolve_particle(
+                        package,
+                        &quad.resource,
+                        MAX_SCENE_PARTICLE_TEXTURE_BYTES - particle_bytes,
+                    )
+                    .map_err(|error| {
+                        Scene2dError::InvalidAssetManifest(format!(
+                            "Particle node {} ({}): {error}",
+                            quad.node_id, quad.resource
+                        ))
+                    })?;
+                    particle_bytes += asset
+                        .texture
+                        .levels
+                        .iter()
+                        .map(|l| l.data.len() as u64)
+                        .sum::<u64>();
+                    particle_assets.insert(quad.resource.clone(), asset);
+                }
+                let asset = &particle_assets[&quad.resource];
+                let particles = SceneParticleDraw {
+                    system: asset.system.clone(),
+                    seed: ParticleSystem::seed(&quad.node_id),
+                    capacity: 0,
+                    sampling: asset.sampling,
+                };
+                let mut draw = procedural_draw(quad, asset.texture.clone(), None);
+                draw.texture_path = asset.texture_path.clone();
+                draw.blend_mode = asset.blend_mode.clone();
+                draw.particles = Some(particles);
+                return Ok(draw);
+            }
             if quad.video {
                 let entry = package
                     .find(&quad.resource)
@@ -704,6 +814,7 @@ pub fn resolve_scene_2d_assets(
                     pulse_masks: Vec::new(),
                     color_lut: None,
                     tint: None,
+                    particles: None,
                 });
             }
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
@@ -989,6 +1100,7 @@ pub fn resolve_scene_2d_assets(
                     })
                     .transpose()?;
             Ok(Scene2dDraw {
+                particles: None,
                 color_lut,
                 tint,
                 quad,
@@ -1016,11 +1128,11 @@ pub fn resolve_scene_2d_assets(
             Ok(draw) => draws.push(draw),
             Err(error) => {
                 skipped_nodes += 1;
-                warn!(%error, "Skipping unsupported scene image node");
+                warn!(%error, "Skipping unsupported scene draw");
             }
         }
     }
-    Ok(Scene2dAssets {
+    let mut assets = Scene2dAssets {
         draws,
         skipped_nodes,
         projection_size,
@@ -1029,7 +1141,9 @@ pub fn resolve_scene_2d_assets(
         camera_zoom_animation: plan.camera_zoom_animation,
         parallax: plan.parallax,
         audio_spectrum: None,
-    })
+    };
+    assets.set_particle_limit(better_wallpaper_scene_format::particle::DEFAULT_PARTICLE_LIMIT);
+    Ok(assets)
 }
 
 fn procedural_draw(
@@ -1060,6 +1174,7 @@ fn procedural_draw(
         pulse_masks: Vec::new(),
         color_lut: None,
         tint: None,
+        particles: None,
     }
 }
 
@@ -1586,6 +1701,9 @@ pub fn build_scene_2d_plan(
     let mut quads = Vec::new();
     let mut skipped_nodes = 0;
     for (index, node) in graph.nodes.iter().enumerate() {
+        if matches!(node.kind, SceneNodeKind::Particle(_)) && !visible[index].unwrap_or(false) {
+            continue;
+        }
         let (resource, text) = match &node.kind {
             SceneNodeKind::Image(resource) | SceneNodeKind::Video(resource) => {
                 (resource.clone(), None)
@@ -1594,6 +1712,16 @@ pub fn build_scene_2d_plan(
                 format!("__better_wallpaper/text/{}", node.id),
                 Some(text.clone()),
             ),
+            SceneNodeKind::Particle(path) => {
+                if let Err(error) =
+                    better_wallpaper_scene_format::particle::validate_particle_node(node)
+                {
+                    skipped_nodes += 1;
+                    warn!(node = %node.id, %error, "Skipping unsupported particle node");
+                    continue;
+                }
+                (path.clone(), None)
+            }
             _ => {
                 skipped_nodes += 1;
                 continue;
@@ -1620,7 +1748,12 @@ pub fn build_scene_2d_plan(
             );
             continue;
         }
-        let Some(size) = node.transform.size else {
+        let particle = matches!(node.kind, SceneNodeKind::Particle(_));
+        let Some(size) = node
+            .transform
+            .size
+            .or_else(|| particle.then_some(better_wallpaper_scene_format::Vec2 { x: 1., y: 1. }))
+        else {
             skipped_nodes += 1;
             continue;
         };
@@ -1659,6 +1792,7 @@ pub fn build_scene_2d_plan(
                     resource: resource.clone(),
                     text: None,
                     video: matches!(node.kind, SceneNodeKind::Video(_)),
+                    particle: false,
                     parallax_depth: node
                         .parallax_depth
                         .map_or([0.0, 0.0], |depth| [depth.x, depth.y]),
@@ -1719,6 +1853,7 @@ pub fn build_scene_2d_plan(
             resource,
             text,
             video: matches!(node.kind, SceneNodeKind::Video(_)),
+            particle,
             parallax_depth: node
                 .parallax_depth
                 .map_or([0.0, 0.0], |depth| [depth.x, depth.y]),

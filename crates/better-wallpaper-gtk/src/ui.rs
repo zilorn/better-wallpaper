@@ -651,7 +651,7 @@ impl Desktop {
         );
         wallpaper.append(&wrapped_label(tr("Web properties are saved per project. File properties must stay inside the project folder. Desktop audio and media information are shared with the wallpaper only when enabled.")));
         wallpaper.append(&section(tr("Scene settings")));
-        wallpaper.append(&wrapped_label(tr("Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented.")));
+        wallpaper.append(&wrapped_label(tr("Scene support depends on the playback backend. niri supports basic wallpaper-surface parallax, limited 2D particles, and opt-in restricted SceneScript. Zero disables particles.")));
         self.choice(
             wallpaper,
             tr("Quality"),
@@ -661,6 +661,14 @@ impl Desktop {
         );
         self.toggle(wallpaper, tr("Mouse input"), "/scene/mouse", true);
         self.toggle(wallpaper, tr("Basic parallax"), "/scene/parallax", true);
+        self.number(
+            wallpaper,
+            tr("Particle limit"),
+            "/scene/particle_limit",
+            0.0,
+            100_000.0,
+            10_000,
+        );
         self.toggle(
             wallpaper,
             tr("Audio response"),

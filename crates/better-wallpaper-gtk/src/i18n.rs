@@ -112,9 +112,10 @@ fn translate(source: &str, chinese: bool) -> &str {
             "网页属性按项目保存。文件属性必须位于项目文件夹内。仅在启用后，才会向壁纸提供桌面音频和媒体信息。"
         }
         "Scene settings" => "场景设置",
-        "Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented." => {
-            "场景支持情况取决于播放后端。niri 支持鼠标位于桌面背景时的基础视差；粒子数量限制和脚本执行尚未实现。"
+        "Scene support depends on the playback backend. niri supports basic wallpaper-surface parallax, limited 2D particles, and opt-in restricted SceneScript. Zero disables particles." => {
+            "场景支持情况取决于播放后端。niri 支持桌面背景上的基础视差、有限二维粒子及可选的受限 SceneScript。粒子上限设为 0 可关闭粒子。"
         }
+        "Particle limit" => "粒子上限",
         "Quality" => "画质",
         "Mouse input" => "鼠标输入",
         "Basic parallax" => "基础视差",

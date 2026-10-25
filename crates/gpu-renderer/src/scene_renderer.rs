@@ -139,6 +139,9 @@ impl SceneGpuRenderer {
                                 for state in states.drain(..) {
                                     self.gl.delete_texture(state.texture);
                                 }
+                                if draw.particles.is_some() && path == &draw.texture_path {
+                                    return Err(format!("Particle texture {path}: {error}"));
+                                }
                                 warn!(texture = %path, image_index = index, %error,
                                     "Skipping scene texture after image upload failure");
                                 break;
@@ -343,7 +346,17 @@ impl SceneGpuRenderer {
     ) -> Result<bool, String> {
         let mut last_rgba = None;
         for (level, mip) in image.levels.iter().enumerate() {
+            let expected = (mip.width as usize)
+                .checked_mul(mip.height as usize)
+                .and_then(|n| n.checked_mul(4))
+                .ok_or("scene RGBA byte count overflow")?;
             let rgba = convert_to_rgba8(image.format, &mip.data, mip.width, mip.height);
+            if rgba.len() != expected {
+                return Err(format!(
+                    "scene mip {level} has {} RGBA bytes; expected {expected}",
+                    rgba.len()
+                ));
+            }
             unsafe {
                 self.gl.tex_image_2d(
                     glow::TEXTURE_2D,
@@ -425,6 +438,12 @@ impl SceneGpuRenderer {
         pointer: Option<[f32; 2]>,
     ) -> Result<(), String> {
         for draw in &assets.draws {
+            if draw.particles.is_some() && !self.textures.contains_key(&draw.texture_path) {
+                return Err(format!(
+                    "Particle texture {} has not been uploaded",
+                    draw.texture_path
+                ));
+            }
             if let Some(lut) = &draw.color_lut {
                 if !(0.0..=1.0).contains(&lut.amount) {
                     return Err(format!(
@@ -462,6 +481,10 @@ impl SceneGpuRenderer {
                 .get_attrib_location(self.program, "a_effect_coord")
                 .unwrap_or(2);
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
+            let color_loc = self
+                .gl
+                .get_attrib_location(self.program, "a_color")
+                .ok_or("scene color attribute missing")?;
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
             let lut_sampler = self.gl.get_uniform_location(self.program, "u_color_lut");
             let tint_color = self.gl.get_uniform_location(self.program, "u_tint_color");
@@ -661,6 +684,8 @@ impl SceneGpuRenderer {
                 .gl
                 .get_uniform_location(self.program, "u_parallax_offset");
             for draw in &assets.draws {
+                self.gl.disable_vertex_attrib_array(color_loc);
+                self.gl.vertex_attrib_4_f32(color_loc, 1., 1., 1., 1.);
                 let offset = better_wallpaper_renderer::scene_parallax_offset(
                     assets.parallax,
                     pointer,
@@ -854,7 +879,8 @@ impl SceneGpuRenderer {
                 let native_sampling = draw
                     .animation
                     .as_ref()
-                    .and_then(|animation| animation.native_sampling);
+                    .and_then(|animation| animation.native_sampling)
+                    .or_else(|| draw.particles.as_ref().map(|p| p.sampling));
                 let wrap = if native_sampling.is_some_and(|sampler| !sampler.clamp)
                     || (native_sampling.is_none() && draw.quad.scroll.is_some())
                 {
@@ -1303,6 +1329,38 @@ impl SceneGpuRenderer {
                 if let Some(scroll) = draw.quad.scroll {
                     uv = scroll_uv(uv, scroll, elapsed_seconds);
                 }
+                if draw.particles.is_some() {
+                    let vertices = draw.particle_vertices_at(elapsed_seconds)?;
+                    if vertices.is_empty() {
+                        continue;
+                    }
+                    let bytes = std::slice::from_raw_parts(
+                        vertices.as_ptr().cast::<u8>(),
+                        vertices.len() * std::mem::size_of::<f32>(),
+                    );
+                    self.gl
+                        .buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes, glow::DYNAMIC_DRAW);
+                    self.gl
+                        .vertex_attrib_pointer_f32(position_loc, 2, glow::FLOAT, false, 40, 0);
+                    self.gl
+                        .vertex_attrib_pointer_f32(tex_coord_loc, 2, glow::FLOAT, false, 40, 8);
+                    self.gl.vertex_attrib_pointer_f32(
+                        effect_coord_loc,
+                        2,
+                        glow::FLOAT,
+                        false,
+                        40,
+                        16,
+                    );
+                    self.gl.enable_vertex_attrib_array(color_loc);
+                    self.gl
+                        .vertex_attrib_pointer_f32(color_loc, 4, glow::FLOAT, false, 40, 24);
+                    self.gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+                    self.gl
+                        .draw_arrays(glow::TRIANGLES, 0, (vertices.len() / 10) as i32);
+                    drawn += 1;
+                    continue;
+                }
                 let mut vertices = if let Some(mesh) = &draw.mesh {
                     puppet_vertices(mesh.positions_at(elapsed_seconds), &mesh.uv, uv)
                 } else {
@@ -1369,6 +1427,7 @@ impl SceneGpuRenderer {
             self.gl.disable_vertex_attrib_array(position_loc);
             self.gl.disable_vertex_attrib_array(tex_coord_loc);
             self.gl.disable_vertex_attrib_array(effect_coord_loc);
+            self.gl.disable_vertex_attrib_array(color_loc);
             self.gl.bind_buffer(glow::ARRAY_BUFFER, None);
             self.gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
             self.gl.bind_texture(glow::TEXTURE_2D, None);
@@ -1390,6 +1449,12 @@ impl SceneGpuRenderer {
     pub fn clear_textures(&mut self) {
         self.parallax = Default::default();
         unsafe {
+            // Particle batches can be much larger than a quad. Release their
+            // storage on reload as well as on context teardown.
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+            self.gl
+                .buffer_data_size(glow::ARRAY_BUFFER, 0, glow::DYNAMIC_DRAW);
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, None);
             for (_, texture) in self.color_luts.drain() {
                 self.gl.delete_texture(texture);
             }

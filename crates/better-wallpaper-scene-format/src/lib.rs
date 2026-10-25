@@ -17,6 +17,7 @@ pub mod error;
 pub mod ir;
 pub mod material;
 pub mod model;
+pub mod particle;
 pub mod pkg;
 pub mod puppet;
 pub mod resource;

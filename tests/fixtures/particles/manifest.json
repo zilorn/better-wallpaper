@@ -1,0 +1,81 @@
+{
+  "native_capture_sha256": {
+    "additive.png": "7185564ded26d6ff39883cc83f1cefda7e4bee27e74040fc7a443bdf3583d977",
+    "finite.png": "62bc04ec0520a95489fea8d51f5437eb383d693faa4db3168f536a81a9620474",
+    "overlap.png": "0e903ddf84634951d5c23a08f6eedc6676dc09b3ce056dd3719ec24608eacee8",
+    "pattern.png": "222ac5a9ed3c51c2f33fd528f44d332fe32503869ff79ba090d46cf142ec3127",
+    "rotated.png": "27ec57a37826a86b942b60f01fdd91a4bed006f0f8e3c005648eb47c64579584",
+    "scale-one.png": "86c726201ba450b3e42ce3b6d4ff4c5c04c9ff18bb48af579c8c6e075adbdb9f",
+    "scale-two.png": "ce2fa6ce7003008592cefe8c28ae1a5b7b86dbb7e57052f04cf05cf7a3cc918d",
+    "starttime-probe.png": "86c726201ba450b3e42ce3b6d4ff4c5c04c9ff18bb48af579c8c6e075adbdb9f",
+    "static.png": "86c726201ba450b3e42ce3b6d4ff4c5c04c9ff18bb48af579c8c6e075adbdb9f",
+    "stretched.png": "cdc77df82f119e43e9a10673029a4f888b2dbf38a5185aa5bf5a25e21c2ff5db"
+  },
+  "native_cases": [
+    "static",
+    "overlap",
+    "additive",
+    "scale-one",
+    "scale-two",
+    "pattern",
+    "rotated",
+    "stretched",
+    "finite"
+  ],
+  "native_rejected_probes": [
+    "starttime-probe"
+  ],
+  "pointer": {},
+  "program": {
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0"
+  },
+  "random_seed": "FNV-1a node 17 / SplitMix64 counters",
+  "sha256": {
+    "additive/project.json": "49b5be8f94bde9d6d72481ef2e0ad9506f2d64d81f38cc3b4e6c2eb23355b6c4",
+    "additive/scene.pkg": "9f8574f10e21f5d72c1b9bf45c4247cdf9ebfc9d927ecd5e5b2c08c2a032cce2",
+    "budget/project.json": "30c248a1f489f150b9e82fce5ad83009eddeec2b50b7aeb313cf6c41bd8fb63c",
+    "budget/scene.pkg": "b7363eb4d7476481582718c08d851d179d9855fc6f6435129d0729c531b59339",
+    "continuous/project.json": "f89a9ac277fabdf7e474161add8780585102ea105a41121cac0480b8485cd63d",
+    "continuous/scene.pkg": "3d1ecd69cb4e3152257a3e155c6b1afe577929b8d13de7b3182be890fa68ed28",
+    "delayed/project.json": "ef1e52bb6f2cb1f49f51d76f68beebd5626a240f8a31c5006a83e0cb9b2fa9ea",
+    "delayed/scene.pkg": "263a0bdca6cd49428a2dd3a5dee68dede9f9154b1840793e14bdc4b50b7699fa",
+    "finite/project.json": "d9d1a60c5f5449b251abd65514abbff0ec7a9370b75c08881bc59915989887d4",
+    "finite/scene.pkg": "73e0ef9bca11c0e2f0dac6ec550a4de9a6fef5ed2181a82f2643af501b5ac684",
+    "overlap/project.json": "22593d599fa91361d39f5efcb5523bea18898034a334e5aa8b008440d864e75e",
+    "overlap/scene.pkg": "45300d415b31fd3690cde60a16e92661972c5b8b7f124d74d9ed7ec5634758e9",
+    "pattern/project.json": "7a6712d294474514343aa3d75c4083b696e07474b4866000029c4b0951b75393",
+    "pattern/scene.pkg": "8addf10bd92f7f263906a306d222bc8ade130ba823c83e952c87ae195798aaf9",
+    "random/project.json": "621b7c386d1c8a6bc233e5cb1419baf69bb54f41ebf1da459d4b089c856d6977",
+    "random/scene.pkg": "a630412303f630e43ac48735fa6a1863a14462d00c8d1f424d1ab86f754ec3d3",
+    "rotated/project.json": "47bdab7ffe316e8d2d4a92af4e4b932ac483995975cc8fa0aa598bfc0623bc3b",
+    "rotated/scene.pkg": "3f43d402564b38b58ad41d1a37ec9fe30141a135ef6e33f23b5e35294d01b2bc",
+    "scale-one/project.json": "9f56b1ff1bc65422d69c3442f40dc8bc8740128d7943fb6a4ab90a33246f169c",
+    "scale-one/scene.pkg": "3b13e9a688b2179b8cf939013fddb9b2212991bc7a0fa0e243b3568f030a4b42",
+    "scale-two/project.json": "aa04e4fe957e519947a5aa5f42afb7563b8fb9b574d1021dda19311953f5cbf0",
+    "scale-two/scene.pkg": "5cddb0e9507c732971133dde27dedcf78a117f2452fc85405fb6eb665947e9da",
+    "starttime-probe/project.json": "d6f7628fe7185477216a45527a72449c8cfd61af5aa08914e986d664ee0e9947",
+    "starttime-probe/scene.pkg": "81f9d18e8b2e6546af6c2c0704a301c58e0eb4900ce49f3c63f7306db4c6a5ec",
+    "static/project.json": "8e6a8c1725fea3ff3a15bc84cefe176bbd2f3c4b40fa599d3e5a3a411fc02402",
+    "static/scene.pkg": "404561db70c293e89398eea48082ca4e4b6b181fe4b277e4767027fcdaa68f91",
+    "stretched/project.json": "342830a25fbe6076437cd7fee13aa33a852f7cf0675b04bc38822c54d5287925",
+    "stretched/scene.pkg": "e974bab55bdc2a2fb61e658d3ff174af0cc4a2df55f55b8f95b084b46ac110ac",
+    "unsupported/project.json": "c6e22d7c35a71a6253a57e1321a662e5b4c32300a944bbcef482d4f759befd30",
+    "unsupported/scene.pkg": "584ababb886a04d2cb9a2aa51c6dfae9fad531fe4f6f188d262c5b13ba115896"
+  },
+  "times": [
+    0,
+    0.1,
+    0.5,
+    1,
+    2,
+    3,
+    4,
+    5,
+    3600,
+    1000000000
+  ],
+  "viewport": [
+    128,
+    128
+  ]
+}

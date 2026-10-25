@@ -28,6 +28,8 @@ mod tint_native;
 
 #[path = "support/motion_native.rs"]
 mod motion_native;
+#[path = "support/particles.rs"]
+mod particles;
 
 #[path = "support/scenescript_native.rs"]
 mod scenescript_native;

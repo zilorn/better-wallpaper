@@ -46,11 +46,19 @@ Wayland does not provide other windows' global pointer positions; a supported
 compositor input source is required before claiming desktop-wide mouse tracking.
 Depth-map parallax and arbitrary mouse scripts remain unsupported.
 
-## Particle Settings — Unsupported by Design
+## Bounded 2D Particles — Implemented; Broader Operators Excluded
 
-`scene.particle_limit` is preserved and validated, but particle nodes are skipped.
-The daemon reports it as ignored and the GTK UI does not offer this control.
-Particle rendering and runtime budget enforcement remain outside the L2 task.
+A6 implements strict box emission, fixed lifetime, initialized XY motion/size/color
+and static sprite submission. The shared scene budget is enforced and exposed in
+GTK. Admission and package-aware compatibility use the same checks and preserve
+specific limitations for mixed scenes. See `docs/validation/a6-particle-subset.md`
+and `docs/validation/a6-particles.md` for evidence and validation.
+
+Variable lifetimes, gravity/drag, alphafade, sphere emitters, atlas/random-frame
+animation, trails, events/children and scripts remain excluded. Native RNG stream
+identity and general maxcount scheduling are not reproduced. Extend an operator
+only with an owned fixed-input sample, native semantic evidence, bounded CPU/GPU
+behavior and visible rejection of its unverified variants. Plasma still needs A8.
 
 ## Scene Fidelity — Sample-Driven Candidate
 

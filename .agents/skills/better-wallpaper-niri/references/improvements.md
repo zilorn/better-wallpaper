@@ -11,6 +11,16 @@ outputs, hotplug/restart, native clock equivalence and A9 soak remain pending;
 no arbitrary mouse scripts or Plasma scene consumer is implied. See
 [A7 acceptance](../../../../docs/validation/a7-scenescript.md).
 
+## Bounded Particle Submission — Verified on One Real Output
+
+`crates/better-wallpaper-daemon/tests/particles_niri.rs` uses explicitly named
+DP-1 and submitted 54 frames at 1920×1080/scale 1/normal transform for static,
+continuous and seeded random particles. Zero/seven budgets, repeated paused
+times, rewind, asset reload and backend/EGL context replacement passed. Shared
+offscreen native comparisons remain separate from compositor presentation.
+See `docs/validation/a6-particles.md`; multi-output/hotplug/reconnect and long-run
+release gates below are not established by this bounded particle check.
+
 ## Decoder Storage and Height Limit — Baseline Verified
 
 `better-wallpaper-ffmpeg/tests/fixture_decode.rs` distinguishes CPU RGBA from CUDA

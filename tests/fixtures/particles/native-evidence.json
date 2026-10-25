@@ -1,0 +1,143 @@
+{
+  "evidence": [
+    {
+      "id": "ev_0841629f09fb3cee63849e88dfc8930cc0038b74185abc190b09343c4a9d2e06",
+      "operation": "search_strings",
+      "parameters": {
+        "case_sensitive": false,
+        "mode": "regex",
+        "pattern": "(boxrandom|lifetimerandom|velocityrandom|sizerandom|colorrandom|emitter|spriterenderer)"
+      }
+    },
+    {
+      "id": "ev_16aab6e06b99b69f0deb485ebb09843b6a6bf7bc5e9aa976ea0d693001a942ba",
+      "operation": "xrefs",
+      "parameters": {
+        "address": "0x14048fdd0"
+      }
+    },
+    {
+      "id": "ev_2a64bd61aa1a8eb658ba62a4e839bb581ef19efa255a161652624ac4faa24479",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401b9100"
+      }
+    },
+    {
+      "id": "ev_379791ccadeba77f7210b8b3110dae3bcbcc85a9b49476918ef886ab6c14375a",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401bc9a0"
+      }
+    },
+    {
+      "id": "ev_3b0a308cd9e931828278fd54dc852e215a64553e2b2af8c261aa0e9cbd3e5a7c",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c6390"
+      }
+    },
+    {
+      "id": "ev_45a3a8889aea356ee0915d668cde585789a7f41eeb1134903e0dde7982bbe096",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c802b"
+      }
+    },
+    {
+      "id": "ev_609a9f9534afcd5b19ec910ec3b6bb6f100e0aee4fa1bc1c0f571f543c7fdde2",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401b9520"
+      }
+    },
+    {
+      "id": "ev_74c9015427e75ba57c6de17d1afb5799358aa38c5df1b0979ce09265c7c0caec",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401bac50"
+      }
+    },
+    {
+      "id": "ev_8f0903d8e50d6c77f5d5b3c3ab7e1b1c98ec8dc18d0339a0bb25210cea658f04",
+      "operation": "xrefs",
+      "parameters": {
+        "address": "0x14048fdf0"
+      }
+    },
+    {
+      "id": "ev_adaca515718e84097ff98df409b230c94a1caa509f8526770b696d71484e96de",
+      "operation": "xrefs",
+      "parameters": {
+        "address": "0x14048fd70"
+      }
+    },
+    {
+      "id": "ev_aff84b74bf6ca03d7b98940fb341795440954c12538cb262502d27faa3fc8d2c",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c730c"
+      }
+    },
+    {
+      "id": "ev_ba77a6292a83ef7465ec22cde4dd8aea95a0bc8235dc36be54b2eb5d23f4f0c5",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c22e0"
+      }
+    },
+    {
+      "id": "ev_bafe1a8e2c12096fdcf7e5a359435f6b6386a33f9fb05cec528fcdad68f5db75",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c7135"
+      }
+    },
+    {
+      "id": "ev_c1fe82eb6050ec2ddd5489d0a043814e5bd5813d975233218567649457c7082a",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401b8df0"
+      }
+    },
+    {
+      "id": "ev_ca44372f566d402c8aaec6ec8dd1c9057ceecf4240da8ee5a88c61aa00ee821e",
+      "operation": "xrefs",
+      "parameters": {
+        "address": "0x14048fd90"
+      }
+    },
+    {
+      "id": "ev_de05b65413fcc5ae0704b77910f55be66edf281ec961dd5db08f8e2d0469afe4",
+      "operation": "procedure_pseudo_code",
+      "parameters": {
+        "procedure": "0x1401c74bb"
+      }
+    },
+    {
+      "id": "ev_fe3bce1e8cc539f901c1d296336577333cb954647852ede7c49c867b7e024ebf",
+      "operation": "xrefs",
+      "parameters": {
+        "address": "0x14048fc98"
+      }
+    }
+  ],
+  "local_evidence_bundle": {
+    "bytes": 5368777,
+    "path": "/tmp/a6-particles-evidence.json",
+    "sha256": "2c95d5565b4735a7809372e4afebf82e0bf55acc9ced41cfdae86b19e514fa64"
+  },
+  "native_input_sha256": {
+    "assets/scenes/particleelementpreviews/boxrandom/particles/new_particle_system.json": "4d31fd41bad82dfe520a250575a0183939e272c0c4997fdccdc93d447e4d1c92",
+    "assets/scenes/particleelementpreviews/colorrandom/particles/new_particle_system.json": "58c989caa8a180a12245b0b4cf50aa000227978375430a5b649afdaede50038b",
+    "assets/scenes/particleelementpreviews/lifetimerandom/particles/new_particle_system.json": "50342343b33bd0cda527cfb5b3381c29b05f8ff188e31828ee86cb14e7ba2f37",
+    "assets/scenes/particleelementpreviews/sizerandom/particles/new_particle_system.json": "90b0d54b8bd37e210813efd3059115888123f41a6128ba69b8291a7c0b7f0885",
+    "assets/scenes/particleelementpreviews/sprite/particles/new_particle_system.json": "bf1d095fcbb6f68024cb4706c9d953b637beb6f7e3f109bd22a536c1ffb7d9be",
+    "assets/scenes/particleelementpreviews/velocityrandom/particles/new_particle_system.json": "fdf17f0f76cdf6affd2dda23d61ee70d7f07156fb987eba011a3cc273f901f2d",
+    "assets/shaders/common_particles.h": "a8a73e28ea5e72c7628d032a11e5f223a996f89fbe9e8318d71b483f0e5078be",
+    "assets/shaders/genericparticle.frag": "aed28ef81a5d870c07bc6cfa6bd17b6adf388efb352bd1fd8d1fd3fc0dbf7cd5",
+    "assets/shaders/genericparticle.vert": "43fd60ac760a57072b5e57ce93f46142c22b2f19aa0942bcf47cfd58752f6224",
+    "wallpaper64.exe": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0"
+  },
+  "program_version": "Wallpaper Engine 2.8.42 / Steam build 23967692"
+}

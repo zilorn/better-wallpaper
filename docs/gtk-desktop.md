@@ -60,7 +60,8 @@ installed CJK font, such as Noto Sans CJK.
 - **Playback:** file picker, wallpaper type, fill mode, frame limit, mute/loop,
   scene quality, mouse/parallax/audio controls, and editable project properties.
   Scene reports retain supported features, unsupported features and warnings.
-  Reserved particle and script execution controls are not offered.
+  The particle limit bounds the admitted niri 2D subset; zero disables particles.
+  Script execution controls are not offered.
 - **Displays:** add named outputs, enable/disable them, or remove overrides.
 - **Library folders:** add folders with a native picker or edit one path per
   line; saving updates the daemon index and refreshes the library.
