@@ -174,22 +174,27 @@ TEXB4 video/editor metadata still needs separate native/sample corroboration.
 Particle atlases do not establish particle simulation support. Local pixel-size
 validation and synthetic goldens do not establish Wallpaper Engine visual parity.
 
-## Volume TEX / 3D LUT — Inspection Subset Implemented, Playback Pending
+## Volume TEX / 3D LUT — Bounded A2 Subset Complete
 
-`TexVolume` now inspects a bounded single-image raw ARGB8888/PNG subset separately
-from 2D playback. Native-reader evidence verifies conditional TEXI/mip depth and
-the embedded decoder's width×(height*depth) layout. All 28 selected local LUT PNGs
-parse, retain their A0 input identities and match independent Pillow decoded
-hashes; all 32,768 neutral-cube voxels match the analytical x/y/z ramp. Owned
-fixtures cover a neutral PNG and odd noncubic mip chain, with regressions for
-TEXB1–4, LZ4, shape/length/count errors, cumulative budgets and every truncated
-prefix. `scene-inspect --volume --json` explicitly reports playback unavailable.
-See [evidence](../../../../docs/reverse-engineering/wallpaper-engine-volumes.md)
-and [validation](../../../../docs/validation/a2-volume-parser.md).
+The earlier TexVolume reader remains independently inspectable, with bounded
+raw ARGB8888/PNG and LZ4 decoding, mip/depth/byte checks and explicit exclusions.
+All 28 selected local PNG LUTs retain A0 input identities and independently checked
+voxel hashes. ColorLut now admits a stricter base-only 2–128-axis, 8 MiB LDR subset
+for package-verified ccsimple effects; raw volumes do not become 2D image textures.
 
-Completion of A2: verify color-grading coordinates, interpolation/color space and
-parameter binding against native captures; choose bounded GPU storage and
-capability diagnostics; connect actual effects and test neutral/nonneutral and
-boundary colors. BCn/other codecs, multi-image/video volumes and nonconsecutive
-mips remain explicitly unsupported. No LUT playback or compatibility-tier claim
-follows from successful parsing; the legacy and main 2D parsers still reject it.
+Native target/shader evidence and eleven owned captures establish normalized
+coordinate, byte-RGB, interpolation, channel, alpha and parameter semantics.
+The normal neutral 32³ cube is not a mathematical identity under native edge
+sampling (max bias 4); strength zero is exact and native neutral output is matched
+exactly. Explicit high-precision samplers fix the measured repeat-boundary error.
+Both NVIDIA and llvmpipe pass the full nine GPU cases, 176 native LUT comparisons
+each plus failure/recovery/residency checks, and upload/draw all 28 selected LUTs.
+Live niri covers 90 submissions and five context replacements. See
+[evidence](../../../../docs/reverse-engineering/wallpaper-engine-luts.md) and
+[acceptance](../../../../docs/validation/a2-lut-rendering.md).
+
+Broader work remains: app-global filter settings, COL/HDR, animated/property-bound
+parameters, general effect stacks and minification/resampling parity, other volume
+formats/codecs/mips and Plasma consumption. They require separate native probes
+and concrete admission/visual/lifecycle criteria. The completed bounded A2 scope
+does not imply arbitrary shaders, full effect parity or A9 soak/release completion.

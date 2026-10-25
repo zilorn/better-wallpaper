@@ -86,3 +86,17 @@ This confirms real configure/presentation/context lifecycle on one output, not
 compositor pixel readback, physical display colors, visibility through other
 layers, multi-output hotplug, resize, compositor restart or an eight-hour soak.
 The broader desktop verification requirements above remain open.
+
+## A2 LUT Presentation — Single-Output Desktop Verified
+
+`crates/better-wallpaper-daemon/tests/lut_niri.rs` is an opt-in live probe requiring
+BETTER_WALLPAPER_NIRI_TEST_OUTPUT. On 2026-10-25 five owned LUT layouts (neutral,
+nonneutral, periodic edges, alpha and noncubic) completed 90 accepted submissions
+on DP-1 at 1920×1080, scale 1, normal transform, including reload, frozen/rewound
+time and five backend/EGL-context replacements. Shared LUT CPU assets survive
+replacement and their GPU objects are recreated/released with the owning context.
+See [A2 acceptance](../../../../docs/validation/a2-lut-rendering.md).
+
+Pixel parity is tested separately in surfaceless EGL on NVIDIA and llvmpipe.
+This live test does not establish compositor pixel readback, physical color
+accuracy, other outputs, hotplug/restart or long-running A9 stability.

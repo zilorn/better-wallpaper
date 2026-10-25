@@ -1,4 +1,5 @@
-//! Inspection-only volume subset. See docs/reverse-engineering/wallpaper-engine-volumes.md.
+//! Bounded volume subset. See docs/reverse-engineering/wallpaper-engine-volumes.md.
+//! Playback admission is separate in color_lut; this model alone grants none.
 //! This model deliberately cannot be converted to the renderer's 2D TextureImage.
 
 use super::{

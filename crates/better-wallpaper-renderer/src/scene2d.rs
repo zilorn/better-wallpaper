@@ -104,6 +104,7 @@ pub struct Scene2dQuad {
     pub iris: Option<better_wallpaper_scene_format::IrisEffect>,
     pub foliage_sway: Vec<better_wallpaper_scene_format::FoliageSwayEffect>,
     pub shine: Option<better_wallpaper_scene_format::ShineEffect>,
+    pub effect_instances: Vec<serde_json::Value>,
 }
 
 /// Smooth pointer motion on the scene clock: equal paused timestamps produce
@@ -235,6 +236,7 @@ pub struct Scene2dDraw {
     pub shine_mask: Option<Scene2dEffectTexture>,
     pub shake_maps: Vec<Option<Scene2dEffectTexture>>,
     pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
+    pub color_lut: Option<Scene2dColorLut>,
 }
 
 /// Immutable encoded media plus a CPU frame shared by every output/context.
@@ -277,6 +279,13 @@ impl Scene2dMesh {
 pub struct Scene2dEffectTexture {
     pub path: String,
     pub texture: TextureImage,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scene2dColorLut {
+    pub path: String,
+    pub amount: f32,
+    pub texture: better_wallpaper_scene_format::ColorLut,
 }
 
 #[derive(Debug, Clone)]
@@ -359,6 +368,8 @@ pub fn resolve_scene_2d_assets(
     // by one resolved scene, including encoded video TEX data.
     let mut atlases = HashMap::<String, TexAtlas>::new();
     let mut atlas_bytes = 0_u64;
+    let mut luts = HashMap::<String, better_wallpaper_scene_format::ColorLut>::new();
+    let mut lut_bytes = 0_u64;
     const MAX_SCENE_ATLAS_BYTES: u64 = 512 * 1024 * 1024;
     let mut draws = Vec::with_capacity(plan.quads.len());
     let mut skipped_nodes = plan.skipped_nodes;
@@ -489,6 +500,7 @@ pub fn resolve_scene_2d_assets(
                     shine_mask: None,
                     shake_maps: Vec::new(),
                     pulse_masks: Vec::new(),
+                    color_lut: None,
                 });
             }
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
@@ -730,7 +742,40 @@ pub fn resolve_scene_2d_assets(
                         .transpose()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            let color_lut =
+                better_wallpaper_scene_format::resolve_color_lut(package, &quad.effect_instances)
+                    .map_err(Scene2dError::InvalidAssetManifest)?
+                    .map(|binding| {
+                        if !luts.contains_key(&binding.path) {
+                            let entry = package.find(&binding.path).ok_or_else(|| {
+                                Scene2dError::MissingTexture(binding.path.clone())
+                            })?;
+                            let texture = better_wallpaper_scene_format::ColorLut::parse(
+                                package.read_entry(entry),
+                            )
+                            .map_err(|detail| {
+                                Scene2dError::InvalidTexture {
+                                    path: binding.path.clone(),
+                                    detail,
+                                }
+                            })?;
+                            if lut_bytes + texture.pixels.len() as u64 > 32 * 1024 * 1024 {
+                                return Err(Scene2dError::InvalidAssetManifest(
+                                    "Scene color LUTs exceed 32 MiB".into(),
+                                ));
+                            }
+                            lut_bytes += texture.pixels.len() as u64;
+                            luts.insert(binding.path.clone(), texture);
+                        }
+                        Ok(Scene2dColorLut {
+                            path: binding.path.clone(),
+                            amount: binding.amount,
+                            texture: luts[&binding.path].clone(),
+                        })
+                    })
+                    .transpose()?;
             Ok(Scene2dDraw {
+                color_lut,
                 quad,
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
@@ -798,6 +843,7 @@ fn procedural_draw(
         shine_mask: None,
         shake_maps: Vec::new(),
         pulse_masks: Vec::new(),
+        color_lut: None,
     }
 }
 
@@ -1388,6 +1434,7 @@ pub fn build_scene_2d_plan(
                     iris: node.iris.clone(),
                     foliage_sway: node.foliage_sway.clone(),
                     shine: node.shine.clone(),
+                    effect_instances: node.effect_instances.clone(),
                 });
             }
             continue;
@@ -1421,6 +1468,7 @@ pub fn build_scene_2d_plan(
             iris: node.iris.clone(),
             foliage_sway: node.foliage_sway.clone(),
             shine: node.shine.clone(),
+            effect_instances: node.effect_instances.clone(),
         });
     }
     Ok(Scene2dPlan {

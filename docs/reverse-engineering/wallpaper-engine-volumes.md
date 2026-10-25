@@ -1,5 +1,9 @@
 # A2 volume TEX layout evidence
 
+Parser-stage investigation: 2026-10-24. The later bounded GPU/effect consumption
+and native captures are recorded in [LUT evidence](wallpaper-engine-luts.md).
+The statements below describe this parser-stage investigation.
+
 Investigation: 2026-10-24. Scope: single-image RGBA8 volume parsing for inspection.
 No GPU upload, LUT interpolation, color transfer or color-grading effect behavior
 is established by this investigation.

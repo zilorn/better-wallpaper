@@ -144,6 +144,9 @@ pub struct SceneNode {
     #[serde(default)]
     pub audio_visualizer: Option<SceneAudioVisualizer>,
     pub effects: Vec<String>,
+    /// Retained for package-verified admission of the bounded ccsimple LUT pass.
+    #[serde(default)]
+    pub effect_instances: Vec<Value>,
     pub scroll: Option<ScrollEffect>,
     pub water_waves: Vec<WaterWaveEffect>,
     pub water_flow: Option<WaterFlowEffect>,
@@ -773,6 +776,11 @@ fn parse_node(
         backdrop_fade,
         dynamic_scale: parse_dynamic_scale(object.get("scale")),
         audio_visualizer,
+        effect_instances: object
+            .get("effects")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
         effects,
         scroll,
         water_waves,

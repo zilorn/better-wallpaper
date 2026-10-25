@@ -3,7 +3,13 @@ precision highp float;
 const float PI = 3.14159265;
 const float TWO_PI = 6.2831853;
 
-uniform sampler2D u_texture;
+uniform highp sampler2D u_texture;
+// Base-only volume stored as vertically stacked XY slices. Explicit voxel
+// addressing preserves native normalized 3D sampling on GLES2 as well.
+uniform highp sampler2D u_color_lut;
+uniform vec3 u_color_lut_size;
+// Amount, nearest sampling, clamp addressing.
+uniform vec3 u_color_lut_params;
 uniform float u_opacity;
 uniform float u_time;
 // Maps a displacement in logical layer UV space into the potentially padded
@@ -379,6 +385,38 @@ vec4 applyPulses(vec4 color) {
     return color;
 }
 
+vec3 lutVoxel(vec3 p) {
+    if (u_color_lut_params.z > 0.5) {
+        p = clamp(p, vec3(0.0), u_color_lut_size - 1.0);
+    } else {
+        p = mod(p, u_color_lut_size);
+    }
+    vec2 uv = vec2(p.x + 0.5, p.y + p.z * u_color_lut_size.y + 0.5)
+            / vec2(u_color_lut_size.x, u_color_lut_size.y * u_color_lut_size.z);
+    return texture2D(u_color_lut, uv).rgb;
+}
+
+vec3 colorLut(vec3 color) {
+    if (u_color_lut_params.x <= 0.0) {
+        return color;
+    }
+    vec3 p = color * u_color_lut_size;
+    vec3 graded;
+    if (u_color_lut_params.y > 0.5) {
+        graded = lutVoxel(floor(p));
+    } else {
+        p -= 0.5;
+        vec3 base = floor(p);
+        vec3 f = fract(p);
+        vec3 lower = mix(mix(lutVoxel(base), lutVoxel(base + vec3(1,0,0)), f.x),
+                         mix(lutVoxel(base + vec3(0,1,0)), lutVoxel(base + vec3(1,1,0)), f.x), f.y);
+        vec3 upper = mix(mix(lutVoxel(base + vec3(0,0,1)), lutVoxel(base + vec3(1,0,1)), f.x),
+                         mix(lutVoxel(base + vec3(0,1,1)), lutVoxel(base + vec3(1,1,1)), f.x), f.y);
+        graded = mix(lower, upper, f.z);
+    }
+    return mix(color, graded, u_color_lut_params.x);
+}
+
 void main() {
     // Effects and their masks are authored against the logical image bounds,
     // not the padded dimensions used by the main TEX allocation.
@@ -394,6 +432,7 @@ void main() {
                            + displacement.y * u_texture_uv_basis.zw;
 
     vec4 color = texture2D(u_texture, uv);
+    color.rgb = colorLut(color.rgb);
     color = applyPulses(color);
     color = applyShine(color);
     gl_FragColor = vec4(color.rgb, color.a * u_opacity);

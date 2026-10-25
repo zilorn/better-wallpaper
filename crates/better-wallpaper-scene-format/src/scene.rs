@@ -420,6 +420,46 @@ pub fn analyse_scene_with_package(
     let Ok(graph) = parse_scene_graph(scene_json) else {
         return Ok(meta);
     };
+    let mut color_luts = std::collections::BTreeMap::<String, Result<(), String>>::new();
+    let mut color_lut_bytes = 0_u64;
+    for node in &graph.nodes {
+        if !matches!(&node.kind, crate::SceneNodeKind::Image(path) if path != "models/util/solidlayer.json")
+            || node.texture_override.is_some()
+        {
+            continue;
+        }
+        match crate::resolve_color_lut(package, &node.effect_instances) {
+            Ok(Some(binding)) => {
+                let result = color_luts.entry(binding.path.clone()).or_insert_with(|| {
+                    let entry = package
+                        .find(&binding.path)
+                        .ok_or("Color LUT is missing from package")?;
+                    let lut = crate::ColorLut::parse(package.read_entry(entry))?;
+                    color_lut_bytes += lut.pixels.len() as u64;
+                    if color_lut_bytes > 32 * 1024 * 1024 {
+                        return Err("Scene color LUTs exceed 32 MiB".into());
+                    }
+                    Ok(())
+                });
+                match result {
+                    Ok(()) => {
+                        meta.unsupported_effects
+                            .retain(|file| file != &binding.effect);
+                        if !meta.supported_effects.contains(&binding.effect) {
+                            meta.supported_effects.push(binding.effect);
+                        }
+                    }
+                    Err(error) => meta
+                        .unsupported_textures
+                        .push(format!("{}: {error}", binding.path)),
+                }
+            }
+            Err(error) => meta
+                .unsupported_textures
+                .push(format!("Color LUT: {error}")),
+            Ok(None) => {}
+        }
+    }
     let mut textures = std::collections::BTreeSet::new();
     for node in &graph.nodes {
         let crate::SceneNodeKind::Image(path) = &node.kind else {

@@ -8,5 +8,6 @@ license.workspace = true
 ash.workspace = true
 better-wallpaper-scene-format = { path = "../better-wallpaper-scene-format" }
 fontdue.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

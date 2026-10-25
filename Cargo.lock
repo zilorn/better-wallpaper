@@ -246,6 +246,7 @@ dependencies = [
  "ash",
  "better-wallpaper-scene-format",
  "fontdue",
+ "serde_json",
  "thiserror 2.0.18",
  "tracing",
 ]

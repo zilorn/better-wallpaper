@@ -12,6 +12,7 @@
 //! - [`resource::ResourceManifest`] — deterministic package resource inventory
 
 pub mod atlas_animation;
+pub mod color_lut;
 pub mod error;
 pub mod ir;
 pub mod material;
@@ -23,6 +24,7 @@ pub mod scene;
 pub mod texture;
 
 pub use atlas_animation::{SpriteAnimation, SpriteFrame, TextureUv};
+pub use color_lut::{ColorLut, ColorLutBinding, resolve_color_lut};
 pub use error::{FormatError, PkgError, SceneParseError, TexError};
 pub use ir::{
     AnimationMode, DynamicScaleKind, DynamicTextKind, FoliageSwayEffect, IrisEffect, PulseEffect,

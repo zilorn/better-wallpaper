@@ -147,8 +147,11 @@ Symlinks in configured library traversal are skipped. Scene compatibility contai
 `level`, `level_name`, `supported_features`, `unsupported_features`, `warnings`.
 The level is the highest supported feature tier identified in the scene (L0–L3
 currently), with limitations listed separately even for higher tiers. Package
-analysis includes referenced sprite and video textures, plus basic parallax with
-the niri pointer-focus warning. It does not promise validated
+analysis includes referenced sprite and video textures, package-validated bounded
+ccsimple LUT effects, plus basic parallax with the niri pointer-focus warning.
+A LUT effect reaches L3 only after its material/instance and volume layout pass
+shared admission; a parsed/unused volume alone does not. Concrete LUT errors
+remain in unsupported features. It does not promise validated
 assets, successful playback on the selected backend, or full engine parity.
 Library cards show supported-feature counts/details as well as limits and warnings;
 the optional UI field permits responses from older daemons without support lists.

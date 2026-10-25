@@ -144,9 +144,9 @@ For a future controlled capture:
    failure/difference images. Do not overwrite analytical PNGs, loosen gates
    after viewing results, or label Better Wallpaper output a native reference.
 
-This covers the shared 2D golden baseline and A1 synthetic atlas rendering. A2 still
-needs a minimal LUT effect/volume sample (the audit records the local neutral
-LUT's identity); A3 needs native video-TEX/metadata evidence; A4 needs an observed
+This covers the shared 2D golden baseline and A1 synthetic atlas rendering. A2
+now has eleven owned LUT effect probes and native captures in
+[`../lut-native`](../lut-native/README.md); A3 needs native video-TEX/metadata evidence; A4 needs an observed
 effect mismatch and broader motion coverage. A5 web callbacks, A6 particles,
 A7 SceneScript and A8 Plasma consumers need their own defined subsets/fixtures.
 The [decoder fixtures](../README.md) cover A0 decoding separately. These gaps

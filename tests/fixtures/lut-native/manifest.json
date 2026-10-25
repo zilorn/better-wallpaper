@@ -1,0 +1,66 @@
+{
+  "capture_environment": {
+    "d3d11_dxgi": "Wine built-in",
+    "requested_gl_software": true,
+    "window_system": "isolated Xvfb 640x480x24",
+    "wine": "11.20"
+  },
+  "gate": {
+    "channel_error_max": 2,
+    "rgb_mse_max": 1,
+    "ssim_min": 0.995
+  },
+  "native_neutral_max_error_from_control": 4,
+  "pointer": null,
+  "program": {
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0",
+    "fragment_sha256": "0cb10ceff0b7fe6e14576928ee09e4d2fed7fb405dc6ff38d94970687e46ed3b",
+    "steam_build": "23967692",
+    "stock_vertex_sha256": "25d48e4e45c8f2092e87d1a29eb2aeb62e5592e1581a6efc15dd06e9790f53cd",
+    "version": "2.8.42"
+  },
+  "random_seed": null,
+  "reference_kind": "original_program_window_capture_owned_input",
+  "schema_version": 1,
+  "sha256": {
+    "alpha/project.json": "cf12c250c0eb71e6e476a17dd2c7e51bf62c4ae8ce7cdb50b41b6275286faf36",
+    "alpha/scene.pkg": "31dbc4b0019039b2e865a627ccdad2e1af4c223dd9d110e9bb23476bd07fe27f",
+    "baseline/project.json": "8aa22d9fdf98ace6494982a3ae2e7637460de55538913b08508a552e9f9386a9",
+    "baseline/scene.pkg": "5b52e0700e9e3947cf239c9fc3ec9a1ab871f34b01d7d292807d1cd86662a1bf",
+    "bypass/project.json": "858b9fa7681cdbfc96045f72f5bf5465669f2753c531c81d6f75a2a9b0ca74d7",
+    "bypass/scene.pkg": "e3eb4893e60a0c0ed57ce1958347071354d3395419b1faa0d34447c714f15647",
+    "captures/alpha.png": "a8ba93e7188c671d32a0b893e95d46135c6e124fc2ded91a51abd33f78b6ee31",
+    "captures/baseline.png": "16e81bfe46f011f54619e8cc8d5c4c39c3f1a6f4006ca24bba3103d5ffef9fd3",
+    "captures/bypass.png": "16e81bfe46f011f54619e8cc8d5c4c39c3f1a6f4006ca24bba3103d5ffef9fd3",
+    "captures/invert.png": "3b462d14ebd59c84b7876c0996367f457a48d06bf114312a7cb5b1314cf1ea8f",
+    "captures/mixed.png": "3c903e3fc98285455600126d20bd329a32d41dda03523df005b35e6bf60fcbc9",
+    "captures/nearest.png": "1e83d6830b734632b2acea59cbaed9f23caec19b0985ba4755fa805af5571c41",
+    "captures/neutral.png": "28e319ac2eeddec23128b67bd9bfd5ced7c38dd38b1cf212c87c4b4423f3529f",
+    "captures/noncubic.png": "9f901ae17ae8d98b7d15d06c9673fe2864bed0cd8ba04cb0e2b6c15bf7c1e02f",
+    "captures/nonlinear.png": "f4c1e2d2657f9b698490a613fde7756b67c71a5f892229f658ba14aa48b928c5",
+    "captures/raw.png": "3b462d14ebd59c84b7876c0996367f457a48d06bf114312a7cb5b1314cf1ea8f",
+    "captures/repeat.png": "e2924628888816f870fbd2a1fbe190e04d626127edb615b6c57a04363e448446",
+    "invert/project.json": "ad2921ece23d340b2f913cbfdf8e795a2baa9b63c0a84a40b0850ebd0703f16a",
+    "invert/scene.pkg": "520673e613bd980ce528975b8f7de4ce24d1bb42149a93ad6daef86873762922",
+    "mixed/project.json": "1353e652eb59c140431ac288b244c6870756f34c88e670fd8f85591e628ad5e3",
+    "mixed/scene.pkg": "8ae6a35b639dbbafa058e894e1ba2065c59f094f4b8dea796ad1ebc019a4d1f6",
+    "nearest/project.json": "7c5e6aab6257752bfed6c7d5344d38a25e4649d093761d4c83ca4a3e3130f688",
+    "nearest/scene.pkg": "3c8bff1af86e558c6efaa435325adaae26883dfa75c76a25ae52493f9f4f8ae8",
+    "neutral/project.json": "df94863748410a475d58a37b7ad0c28856625f7d78b29a9dce267ed21db9d368",
+    "neutral/scene.pkg": "6cbedab7e2969905a2d6527796cf635b8dfeb6d8d82c72ef63f2ca2bb13e713f",
+    "noncubic/project.json": "b91bd702111884d9f640e1bc6cb808807df8a84d0f439e2c4a1d3124e9aa7730",
+    "noncubic/scene.pkg": "7f01cb8e8ad79c66d40e228128d36d49c921eeb96560b2b73655d799b7d8d81c",
+    "nonlinear/project.json": "86d74d734ac6fc4affa02691ee5d9e1edc1774d1c2e3d951f162edda75082829",
+    "nonlinear/scene.pkg": "dc2ad3115ff5d1cf24c5783a36ede617c1352b6fc5970b948e7e0da7529485f9",
+    "raw/project.json": "79d7c4e51bacde4973fd4ca7bb2bb69cccf9141954303ae8029d58f363b0c905",
+    "raw/scene.pkg": "388fdb784bb97d366d876d0a7766441af74a51c47e1b873d8182552f01a87faf",
+    "repeat/project.json": "74b5ca2823e7be385dca9ed9580685dffa4bdf121b3f5e51c00563ccfedde62f",
+    "repeat/scene.pkg": "1c43235964588adb94bc59fca194abea09502420ddad25e4f065ef164978e093"
+  },
+  "time": "static",
+  "vertex_adapter": "Owned model-view-projection vertex shader; unmodified shipped ccsimple fragment shader",
+  "viewport": [
+    128,
+    128
+  ]
+}

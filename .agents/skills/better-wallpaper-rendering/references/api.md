@@ -87,11 +87,45 @@ consecutive floor-halved prefix. Reject other formats/codecs, multiple images,
 animation/video, malformed LZ4/PNG, trailing data and unsupported layouts.
 `scene-inspect FILE.tex --volume --json` bounds input at 128 MiB and reports
 dimensions, raw format, decoded byte hashes and `scene_playback_available: false`.
-Neither 2D parser, scene compatibility admission nor GPU input accepts volumes.
+The 2D parsers continue to reject volumes as image textures. A separate bounded
+`ColorLut` effect path now admits a stricter volume subset, described below.
 The 28 local base-level LUT PNGs pass inspection and independent decoded-hash
 checks; that is not LUT playback or native visual parity. See
 [layout evidence](../../../../docs/reverse-engineering/wallpaper-engine-volumes.md)
 and [validation](../../../../docs/validation/a2-volume-parser.md).
+
+`ColorLut::parse` admits one base-only raw ARGB8888/PNG volume with axes 2–128,
+point/clamp flags only and at most 8 MiB decoded bytes. `resolve_color_lut` reads
+package effect/material/instance definitions and grants the known `ccsimple`
+LUT-only operation only with one visible effect/pass, texture slot one and static
+`lutparams` in 0–1. COL/HDR, unknown fields/combos/constants, extra targets/passes,
+arbitrary fragment/vertex overrides and unsafe paths fail admission. The owned
+MVP probe adapter is the only supported package vertex override. Image-model
+quads preserve raw effect instances for this package check; text, procedural
+solids, direct video and fallback shortcuts retain their previous limits.
+
+`Scene2dDraw.color_lut` carries shared RGBA voxels, dimensions/sampler flags,
+package path and blend amount. LUT bytes deduplicate by path with a separate
+32 MiB scene budget; one additional bounded decode can coexist during admission.
+GPU contexts keep a separate LUT cache, counted with images against the 256
+resident-object limit. A nearest-filtered 2D slice stack and explicit voxel
+interpolation/addressing implement normalized 3D sampling in GLES2. Stack width
+and height*depth must fit GL_MAX_TEXTURE_SIZE; there is no resizing fallback.
+Failed upload/missing required LUT returns an error; clear/drop releases every
+LUT in the owning context. Reloaded assets require cache clear as for 2D images.
+Package-aware compatibility only adds L3 for valid effect binding plus LUT layout;
+volume parsing alone never grants the tier. No Plasma scene consumer is implied.
+
+Native normalized sampling uses c*N-0.5 for linear and floor(c*N) for point,
+with per-axis clamp/repeat. RGB is sampled directly in the verified LDR path;
+alpha is retained and strength zero is exact. The standard 32³ neutral lattice
+has an observed native bias of up to four byte values; this is matched, not
+silently corrected. Eleven independently recaptured native probes pass 176
+comparisons per device on NVIDIA and llvmpipe, max error 1; neutral is exact.
+See [LUT evidence](../../../../docs/reverse-engineering/wallpaper-engine-luts.md)
+and [acceptance](../../../../docs/validation/a2-lut-rendering.md). Broader source
+minification/post-process order, app-global filters, HDR/COL and animated property
+bindings remain outside this bounded operation.
 
 `TexAtlas::parse` is the model for inspection and main scene material textures: independent image/mip lists,
 full signed affine frame bases and TEXS3 logical frame dimensions. It caps 64

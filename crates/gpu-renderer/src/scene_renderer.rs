@@ -12,6 +12,7 @@ pub struct SceneGpuRenderer {
     vbo: glow::Buffer,
     index_buffer: glow::Buffer,
     textures: HashMap<String, Vec<GpuTextureState>>,
+    color_luts: HashMap<String, glow::Texture>,
     output_size: (u32, u32),
     supports_npot_mipmaps: bool,
     max_texture_size: u32,
@@ -55,6 +56,7 @@ impl SceneGpuRenderer {
                 vbo,
                 index_buffer,
                 textures: HashMap::new(),
+                color_luts: HashMap::new(),
                 output_size: (output_width, output_height),
                 supports_npot_mipmaps,
                 max_texture_size,
@@ -65,6 +67,21 @@ impl SceneGpuRenderer {
     pub fn upload_scene_textures(&mut self, assets: &Scene2dAssets) -> Result<(), String> {
         unsafe {
             for draw in &assets.draws {
+                if let Some(lut) = &draw.color_lut
+                    && !self.color_luts.contains_key(&lut.path)
+                {
+                    let resident =
+                        self.textures.values().map(Vec::len).sum::<usize>() + self.color_luts.len();
+                    if resident >= MAX_GPU_TEXTURES {
+                        return Err(format!(
+                            "Scene texture image count exceeds {MAX_GPU_TEXTURES}"
+                        ));
+                    }
+                    let texture = self
+                        .upload_color_lut(&lut.texture)
+                        .map_err(|error| format!("Color LUT {}: {error}", lut.path))?;
+                    self.color_luts.insert(lut.path.clone(), texture);
+                }
                 let mut pending = vec![(
                     &draw.texture_path,
                     std::iter::once(&draw.texture)
@@ -102,7 +119,8 @@ impl SceneGpuRenderer {
                     if self.textures.contains_key(path) {
                         continue;
                     }
-                    let resident = self.textures.values().map(Vec::len).sum::<usize>();
+                    let resident =
+                        self.textures.values().map(Vec::len).sum::<usize>() + self.color_luts.len();
                     if resident + images.len() > MAX_GPU_TEXTURES {
                         return Err(format!(
                             "Scene texture image count exceeds {MAX_GPU_TEXTURES}"
@@ -131,6 +149,54 @@ impl SceneGpuRenderer {
             }
         }
         Ok(())
+    }
+
+    fn upload_color_lut(
+        &self,
+        lut: &better_wallpaper_scene_format::ColorLut,
+    ) -> Result<glow::Texture, String> {
+        let height = validate_color_lut_upload(lut, self.max_texture_size)?;
+        unsafe {
+            let texture = self
+                .gl
+                .create_texture()
+                .map_err(|error| format!("LUT allocation: {error}"))?;
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            for parameter in [glow::TEXTURE_MIN_FILTER, glow::TEXTURE_MAG_FILTER] {
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, parameter, glow::NEAREST as i32);
+            }
+            for parameter in [glow::TEXTURE_WRAP_S, glow::TEXTURE_WRAP_T] {
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, parameter, glow::CLAMP_TO_EDGE as i32);
+            }
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                lut.width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                Some(&lut.pixels),
+            );
+            self.gl.bind_texture(glow::TEXTURE_2D, None);
+            let error = self.gl.get_error();
+            if error != glow::NO_ERROR {
+                self.gl.delete_texture(texture);
+                return Err(format!("LUT upload failed with OpenGL error 0x{error:04x}"));
+            }
+            debug!(
+                width = lut.width,
+                height = lut.height,
+                depth = lut.depth,
+                "Uploaded color LUT as bounded 2D slices"
+            );
+            Ok(texture)
+        }
     }
 
     unsafe fn upload_texture(&mut self, image: &TextureImage) -> Result<GpuTextureState, String> {
@@ -355,6 +421,19 @@ impl SceneGpuRenderer {
         elapsed_seconds: f64,
         pointer: Option<[f32; 2]>,
     ) -> Result<(), String> {
+        for draw in &assets.draws {
+            if let Some(lut) = &draw.color_lut {
+                if !(0.0..=1.0).contains(&lut.amount) {
+                    return Err(format!(
+                        "Color LUT {} amount must be finite and in 0..=1",
+                        lut.path
+                    ));
+                }
+                if !self.color_luts.contains_key(&lut.path) {
+                    return Err(format!("Color LUT {} has not been uploaded", lut.path));
+                }
+            }
+        }
         let pointer = self
             .parallax
             .update(assets.parallax, elapsed_seconds, pointer);
@@ -381,6 +460,14 @@ impl SceneGpuRenderer {
                 .unwrap_or(2);
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
+            let lut_sampler = self.gl.get_uniform_location(self.program, "u_color_lut");
+            let lut_size = self
+                .gl
+                .get_uniform_location(self.program, "u_color_lut_size");
+            let lut_params = self
+                .gl
+                .get_uniform_location(self.program, "u_color_lut_params");
+            self.gl.uniform_1_i32(lut_sampler.as_ref(), 1);
             let time_loc = self.gl.get_uniform_location(self.program, "u_time");
             let texture_uv_basis_loc = self
                 .gl
@@ -1062,6 +1149,25 @@ impl SceneGpuRenderer {
                         false,
                     );
                 }
+                if let Some(lut) = &draw.color_lut {
+                    self.gl.active_texture(glow::TEXTURE1);
+                    self.gl
+                        .bind_texture(glow::TEXTURE_2D, self.color_luts.get(&lut.path).copied());
+                    self.gl.uniform_3_f32(
+                        lut_size.as_ref(),
+                        lut.texture.width as f32,
+                        lut.texture.height as f32,
+                        lut.texture.depth as f32,
+                    );
+                    self.gl.uniform_3_f32(
+                        lut_params.as_ref(),
+                        lut.amount,
+                        u8::from(lut.texture.nearest) as f32,
+                        u8::from(lut.texture.clamp) as f32,
+                    );
+                } else {
+                    self.gl.uniform_3_f32(lut_params.as_ref(), 0.0, 0.0, 1.0);
+                }
                 self.gl.active_texture(glow::TEXTURE0);
                 // Optional samplers can refer to the same GL texture object.
                 self.gl
@@ -1189,6 +1295,9 @@ impl SceneGpuRenderer {
 
     pub fn clear_textures(&mut self) {
         unsafe {
+            for (_, texture) in self.color_luts.drain() {
+                self.gl.delete_texture(texture);
+            }
             for (_, images) in self.textures.drain() {
                 for state in images {
                     self.gl.delete_texture(state.texture);
@@ -1196,6 +1305,30 @@ impl SceneGpuRenderer {
             }
         }
     }
+}
+
+fn validate_color_lut_upload(
+    lut: &better_wallpaper_scene_format::ColorLut,
+    limit: u32,
+) -> Result<u32, String> {
+    if [lut.width, lut.height, lut.depth]
+        .iter()
+        .any(|axis| !(2..=128).contains(axis))
+    {
+        return Err("LUT axes must be in 2..=128".into());
+    }
+    let height = lut.height * lut.depth;
+    let expected = u64::from(lut.width) * u64::from(height) * 4;
+    if expected != lut.pixels.len() as u64 {
+        return Err("LUT voxel byte count does not match its dimensions".into());
+    }
+    if lut.width > limit || height > limit {
+        return Err(format!(
+            "LUT slice storage {}x{height} exceeds GPU 2D texture limit {limit}",
+            lut.width
+        ));
+    }
+    Ok(height)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1649,6 +1782,35 @@ unsafe fn compile_program(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lut_storage_limits_are_checked_without_downsampling_or_truncation() {
+        let mut lut = better_wallpaper_scene_format::ColorLut {
+            width: 2,
+            height: 2,
+            depth: 2,
+            pixels: vec![128; 32].into(),
+            nearest: false,
+            clamp: true,
+        };
+        assert_eq!(super::validate_color_lut_upload(&lut, 4), Ok(4));
+        assert!(
+            super::validate_color_lut_upload(&lut, 3)
+                .unwrap_err()
+                .contains("exceeds GPU")
+        );
+        lut.pixels = vec![0; 31].into();
+        assert!(
+            super::validate_color_lut_upload(&lut, 4096)
+                .unwrap_err()
+                .contains("byte count")
+        );
+        lut.width = u32::MAX;
+        assert!(
+            super::validate_color_lut_upload(&lut, u32::MAX)
+                .unwrap_err()
+                .contains("axes")
+        );
+    }
     use std::sync::Arc;
 
     use super::{

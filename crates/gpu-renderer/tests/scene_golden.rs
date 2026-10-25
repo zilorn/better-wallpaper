@@ -20,6 +20,9 @@ mod atlas_sampling;
 #[path = "support/atlas_native.rs"]
 mod atlas_native;
 
+#[path = "support/lut_native.rs"]
+mod lut_native;
+
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,
     display: egl::Display,

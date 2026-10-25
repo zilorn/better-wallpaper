@@ -145,7 +145,10 @@ fn parse_pass(index: usize, value: &Value) -> Result<MaterialPass, SceneParseErr
     })
 }
 
-fn validate_texture_reference(field: &str, value: &str) -> Result<String, SceneParseError> {
+pub(crate) fn validate_texture_reference(
+    field: &str,
+    value: &str,
+) -> Result<String, SceneParseError> {
     let normalized = value.replace('\\', "/");
     let has_drive = normalized.len() >= 2
         && normalized.as_bytes()[0].is_ascii_alphabetic()
