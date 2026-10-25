@@ -674,12 +674,16 @@ fn media_response(
         }
     };
     let content_type = video_content_type(&canonical);
-    let range = request
+    if let Some(range) = request
         .headers()
         .iter()
         .find(|header| header.field.equiv("Range"))
-        .and_then(|header| parse_byte_range(header.value.as_str(), length));
-    if let Some((start, end)) = range {
+    {
+        let Some((start, end)) = parse_byte_range(range.value.as_str(), length) else {
+            return error_response(StatusCode(416), "invalid media byte range")
+                .with_header(header("Content-Range", &format!("bytes */{length}")))
+                .boxed();
+        };
         if file.seek(SeekFrom::Start(start)).is_err() {
             return error_response(StatusCode(500), "cannot seek media file").boxed();
         }
@@ -1601,6 +1605,89 @@ mod tests {
         assert_eq!(parse_byte_range("bytes=10-19", 100), Some((10, 19)));
         assert_eq!(parse_byte_range("bytes=90-", 100), Some((90, 99)));
         assert_eq!(parse_byte_range("bytes=100-", 100), None);
+    }
+
+    #[test]
+    fn media_ranges_reject_invalid_requests_without_sending_the_full_file() {
+        use super::*;
+        use better_wallpaper_core::desktop::DesktopKind;
+
+        let directory = tempfile::tempdir().unwrap();
+        let media = directory.path().join("video.mp4");
+        fs::write(&media, b"0123456789").unwrap();
+        let mut config = AppConfig::default();
+        config.wallpaper.path = Some(media.clone());
+        config.library.paths = vec![directory.path().into()];
+        let state = ApiState::new(
+            Arc::new(RwLock::new(config)),
+            ConfigStore::new(
+                directory.path().join("config.toml"),
+                directory.path().into(),
+            ),
+            DesktopDetection {
+                kind: DesktopKind::Unknown,
+                evidence: "test".into(),
+                candidates: vec![],
+            },
+            BackendKind::Headless,
+            PlaybackControl::default(),
+            directory.path().into(),
+            LogStore::new(10),
+            LogLevelController::new("info"),
+        );
+        for require_library_entry in [true, false] {
+            for (range, status, content_range, expected_body) in [
+                (None, 200, None, Some("0123456789")),
+                (Some("bytes=2-5"), 206, Some("bytes 2-5/10"), Some("2345")),
+                (Some("bytes=7-"), 206, Some("bytes 7-9/10"), Some("789")),
+                (Some("bytes=8-99"), 206, Some("bytes 8-9/10"), Some("89")),
+                (Some("bytes=10-"), 416, Some("bytes */10"), None),
+                (Some("bytes=5-2"), 416, Some("bytes */10"), None),
+                (Some("bytes=0-1,4-5"), 416, Some("bytes */10"), None),
+                (Some("bytes=bad"), 416, Some("bytes */10"), None),
+            ] {
+                let mut request = tiny_http::TestRequest::new();
+                if let Some(range) = range {
+                    request = request.with_header(header("Range", range));
+                }
+                let response = media_response(
+                    &request.into(),
+                    media.clone(),
+                    &state,
+                    require_library_entry,
+                );
+                assert_eq!(response.status_code(), StatusCode(status), "{range:?}");
+                assert_eq!(
+                    response
+                        .headers()
+                        .iter()
+                        .find(|header| header.field.equiv("Content-Range"))
+                        .map(|header| header.value.as_str()),
+                    content_range,
+                    "{range:?}"
+                );
+                let mut body = String::new();
+                response.into_reader().read_to_string(&mut body).unwrap();
+                if let Some(expected) = expected_body {
+                    assert_eq!(body, expected);
+                } else {
+                    assert!(
+                        serde_json::from_str::<serde_json::Value>(&body).unwrap()["error"]
+                            .is_string()
+                    );
+                }
+            }
+        }
+        fs::write(&media, b"").unwrap();
+        let request = tiny_http::TestRequest::new().with_header(header("Range", "bytes=0-"));
+        let response = wallpaper_media_response(&request.into(), &state);
+        assert_eq!(response.status_code(), StatusCode(416));
+        assert!(
+            response
+                .headers()
+                .iter()
+                .any(|header| header.field.equiv("Content-Range") && header.value == "bytes */0")
+        );
     }
 
     #[test]

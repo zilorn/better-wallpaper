@@ -1,5 +1,13 @@
 # Management API Improvements
 
+## Invalid Media Range Responses — Resolved
+
+`media_response` previously treated a rejected Range header like an absent header
+and sent the entire file with `200`. Both library and current-wallpaper media now
+return the documented `416` with the file length in `Content-Range`. Regression
+coverage checks full responses, bounded/open-ended/clamped ranges, malformed and
+multiple ranges, unsatisfiable ranges, and empty files.
+
 ## Relative Configuration File Saves — Resolved
 
 `ConfigStore::save` previously treated the empty parent of a bare filename as a

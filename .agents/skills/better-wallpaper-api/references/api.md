@@ -142,6 +142,10 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 | `GET /api/v1/wallpaper/media` | Serves the configured wallpaper path with range support; `404` when none is configured. |
 | `GET /api/v1/wallpaper/web/<asset>` | Serves the current Wallpaper Engine web project's assets; empty suffix serves its entry file; explicit relative entry URLs preserve nested resource paths. Supports single byte ranges and rejects malformed asset encoding. Canonical files must stay inside the project root; inaccessible assets return `404`. |
 
+Library and current-wallpaper media reject invalid or unsatisfiable ranges with
+`416` and `Content-Range: bytes */<length>`, including ranges on empty files.
+Requests without a Range header still return the full file.
+
 Percent-encode paths and output names in query parameters. Library scanning uses
 `library.paths` (default `~/Videos`) and discovered Steam Workshop roots for app
 431960. Scanning is bounded by 1,000 entries and depth 4; check `truncated`.
