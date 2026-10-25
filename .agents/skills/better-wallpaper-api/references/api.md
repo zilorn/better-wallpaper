@@ -96,6 +96,9 @@ application-menu entry and icon.
 PUT replaces the config document; it is not a field patch. Start from GET and
 preserve unrelated settings. Serde defaults apply to omitted fields. Invalid JSON
 or validation/save failure returns `400`; bodies over 1 MiB return `413`.
+API saves and tray writes share a write lock across persistence and shared-state
+updates, keeping disk configuration, running settings and log filtering ordered.
+An unavailable shared-state lock returns `500` before changing the file.
 Persistence/reload request success does not prove playback has restarted.
 The backend is selected at daemon startup. `restart_required` is true when the
 saved backend preference (with `auto` resolved using startup desktop detection)

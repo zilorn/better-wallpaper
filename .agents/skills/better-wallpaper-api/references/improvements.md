@@ -1,5 +1,16 @@
 # Management API Improvements
 
+## Configuration Write Ordering — Resolved
+
+`update_config` used to save and reload the file before acquiring the shared
+configuration write lock. Parallel PUTs and tray writes could interleave those
+steps, leaving disk and runtime settings different. A poisoned lock also allowed
+a PUT to change the file before returning `500`. The API now holds the same lock
+as the tray across save, reload, shared-state/log-filter updates and the playback
+reload request. Regressions reproduce both the concurrent mismatch and the
+failed-request file mutation. This orders daemon writes; client GET/PUT conflict
+protection still requires the revision mechanism described below.
+
 ## Invalid Media Range Responses — Resolved
 
 `media_response` previously treated a rejected Range header like an absent header

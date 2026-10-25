@@ -1197,6 +1197,12 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         Ok(config) => config,
         Err(error) => return error_response(StatusCode(400), &format!("invalid JSON: {error}")),
     };
+    // Serialize persistence and runtime updates with other PUTs and tray writes.
+    // Saving before taking this lock can leave disk and shared state out of sync.
+    let mut current = match state.config.write() {
+        Ok(current) => current,
+        Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
+    };
     if let Err(error) = state.store.save(&config) {
         warn!(%error, "management API config update failed");
         return error_response(StatusCode(400), &error.to_string());
@@ -1208,10 +1214,7 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
             return error_response(StatusCode(500), &error.to_string());
         }
     };
-    match state.config.write() {
-        Ok(mut current) => *current = config.clone(),
-        Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
-    }
+    *current = config.clone();
     state.log_level.set(&config.general.log_level);
     // Compare against the running backend, not the previous saved config: a
     // second save must keep reporting a pending switch until the daemon restarts.
@@ -1220,6 +1223,7 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
     let configured_backend = select_backend(None, config.general.backend, state.detection.kind);
     let restart_required = configured_backend != state.backend;
     state.playback.request_reload();
+    drop(current);
     info!(
         running_backend = ?state.backend,
         ?configured_backend,
@@ -1286,6 +1290,26 @@ mod tests {
         wallpaper_engine_web_root, websocket_accept, write_websocket_text,
     };
     use better_wallpaper_core::{AppConfig, WallpaperType, config::OutputConfig};
+
+    fn config_test_state(directory: &std::path::Path) -> super::ApiState {
+        use super::*;
+        use better_wallpaper_core::desktop::DesktopKind;
+
+        ApiState::new(
+            Arc::new(RwLock::new(AppConfig::default())),
+            ConfigStore::new(directory.join("config.toml"), directory.into()),
+            DesktopDetection {
+                kind: DesktopKind::Niri,
+                evidence: "test desktop".into(),
+                candidates: vec!["niri".into()],
+            },
+            BackendKind::Niri,
+            PlaybackControl::default(),
+            directory.into(),
+            LogStore::new(10),
+            LogLevelController::new("info"),
+        )
+    }
 
     #[test]
     fn api_and_wallpaper_assets_work_without_management_html() {
@@ -1368,26 +1392,9 @@ mod tests {
     #[test]
     fn config_put_reports_pending_backend_switch_until_reverted() {
         use super::*;
-        use better_wallpaper_core::desktop::DesktopKind;
 
         let directory = tempfile::tempdir().unwrap();
-        let state = ApiState::new(
-            Arc::new(RwLock::new(AppConfig::default())),
-            ConfigStore::new(
-                directory.path().join("config.toml"),
-                directory.path().into(),
-            ),
-            DesktopDetection {
-                kind: DesktopKind::Niri,
-                evidence: "test desktop".into(),
-                candidates: vec!["niri".into()],
-            },
-            BackendKind::Niri,
-            PlaybackControl::default(),
-            directory.path().into(),
-            LogStore::new(10),
-            LogLevelController::new("info"),
-        );
+        let state = config_test_state(directory.path());
 
         let put = |body: &'static str, expected_backend, expected_restart| {
             let mut request = tiny_http::TestRequest::new()
@@ -1458,6 +1465,82 @@ mod tests {
         let result: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
         assert_eq!(result["restart_required"], true);
         assert_eq!(status_payload(&state).backend, BackendKind::Headless);
+    }
+
+    #[test]
+    fn config_put_does_not_save_when_shared_state_is_unavailable() {
+        use super::*;
+
+        let directory = tempfile::tempdir().unwrap();
+        let state = config_test_state(directory.path());
+        state.store.save(&AppConfig::default()).unwrap();
+        let original = fs::read(directory.path().join("config.toml")).unwrap();
+        let config = Arc::clone(&state.config);
+        assert!(
+            thread::spawn(move || {
+                let _guard = config.write().unwrap();
+                panic!("poison config lock to simulate an unavailable shared state");
+            })
+            .join()
+            .is_err()
+        );
+
+        let mut request = tiny_http::TestRequest::new()
+            .with_method(Method::Put)
+            .with_body(r#"{"wallpaper":{"fps_limit":30}}"#)
+            .into();
+        assert_eq!(
+            update_config(&mut request, &state).status_code(),
+            StatusCode(500)
+        );
+        assert_eq!(
+            fs::read(directory.path().join("config.toml")).unwrap(),
+            original
+        );
+        assert!(!state.playback.take_reload_request());
+    }
+
+    #[test]
+    fn concurrent_config_puts_and_tray_writes_keep_disk_and_runtime_in_sync() {
+        use super::*;
+        use std::sync::Barrier;
+
+        let directory = tempfile::tempdir().unwrap();
+        let state = config_test_state(directory.path());
+        state.store.save(&AppConfig::default()).unwrap();
+        *state.config.write().unwrap() = state.store.load_or_create().unwrap();
+        let barrier = Barrier::new(8);
+        thread::scope(|scope| {
+            for index in 0..8 {
+                let state = &state;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    for _ in 0..10 {
+                        if index % 2 == 0 {
+                            let mut request = tiny_http::TestRequest::new()
+                                .with_method(Method::Put)
+                                .with_body(r#"{"wallpaper":{"fps_limit":30},"general":{"log_level":"debug"}}"#)
+                                .into();
+                            assert_eq!(update_config(&mut request, state).status_code(), StatusCode(200));
+                        } else {
+                            // The tray holds this same write lock while persisting mute.
+                            let mut current = state.config.write().unwrap();
+                            current.wallpaper.muted = !current.wallpaper.muted;
+                            state.store.save(&current).unwrap();
+                            state.playback.request_reload();
+                        }
+                        let current = state.config.read().unwrap();
+                        assert_eq!(state.store.load_or_create().unwrap(), *current);
+                    }
+                });
+            }
+        });
+        assert_eq!(
+            state.store.load_or_create().unwrap(),
+            *state.config.read().unwrap()
+        );
+        assert!(state.playback.take_reload_request());
     }
 
     #[test]
