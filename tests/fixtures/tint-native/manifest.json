@@ -1,0 +1,49 @@
+{
+  "program": {
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0",
+    "fragment_sha256": "02b9397cec32de6f0d8caa2e1af7c07510752d474bd64048c9d78f55926973f1"
+  },
+  "sha256": {
+    "alpha/project.json": "94bf2535365133bea1909af7a7537443b6b7aa71a36535299aabbb2b5595ea32",
+    "alpha/scene.pkg": "abb11b26bff5afe2157e0e169c4f3112c6029a198c0dcbba35653bc19300b2e8",
+    "animated/project.json": "39d1a6db81f7d18727d18edbb306f6b1acec9dbd56c3584017d19ad5e9499ed5",
+    "animated/scene.pkg": "d8416de4f95615e1ef309577672f043ab2de6d73d5f9e4f0f9e94a0b90c1ece5",
+    "baseline/project.json": "fcc1590973a3a3c0dd2bc191ed318193a49e891bef8d99f29ae03a14ad26518c",
+    "baseline/scene.pkg": "0090dca616fc34645cd6790ff3a39e6f254539694f868d0975e669e5d68e894b",
+    "bypass/project.json": "d0176812e1b3c434f0157b9878adf64f979de8956c8dcbdf3a8ad3d20bedfeec",
+    "bypass/scene.pkg": "5f1ad6c8e907b584fab6614e8dbc88248d7c0c34fdc39d40e11be142d51674bf",
+    "disabled/project.json": "79b2531063d23e3c7585e975d5d4164842ddb1ebb2e5e6bcd3340aaf4b70ecde",
+    "disabled/scene.pkg": "00e264099884b4862da3d13775e2f5a05f8386203e0eab47036d6b5bdb86d3d9",
+    "mask/project.json": "a5f013cdb282798739659e7dad62168689d3fe36d9b33a920f8eb28c0f7ccf38",
+    "mask/scene.pkg": "9a3024e78743bd41583c42f335373ab85e25a1b3c532434dc3355e2f6326a1e2",
+    "mask-linear/project.json": "657422db865b895e79379b8772c5efd5ffabbe4bacb17a0050465e38105b40f1",
+    "mask-linear/scene.pkg": "1320f89882d9e640252a644c841c683c35760d4f8357cd480f16efa4bd893f20",
+    "multiply/project.json": "9ecf290f5b22d1ad567fdb8e29a4b8907ab8e3945cb4d1fefa7e038f8618d2e8",
+    "multiply/scene.pkg": "70101ae56f3b57dfcf6d3d353d0794a0cbbcabff4d78db0277cbc3366efcd595",
+    "normal/project.json": "1e99bea2bff80f92664905520e81e8c17d3b3b78ed9a4d2d375259f55b1401e0",
+    "normal/scene.pkg": "b3701a92b407c5ad7ddddc13cf2327a79d6c28507800c12e9a96f6f83964f0de",
+    "partial/project.json": "fcffad8a93f9b7839c51a77b1e677e45dbce7247c497eaae51f54bd3aa79c7e6",
+    "partial/scene.pkg": "6c501bb8dbe3f9794da82f2ca0a9747331598b4a556fb3821415678d19ba6f00",
+    "screen/project.json": "210613663cd93064833741c9d730431fde322c32fb0c32fdeda75d85fbcf3e4a",
+    "screen/scene.pkg": "0caa4d9b4d2b765d9c02848c5e22c1ac4bf1d9652d826d0e74c46486b5908157",
+    "tint/project.json": "be311696dc151950b6ebac1633793554df1f1303b5a197c0badf3eb99e026163",
+    "tint/scene.pkg": "ee078210453a687fa534adece57e7a19b514e53f913379296f622e444392c20f",
+    "captures/alpha.png": "a1d386a45efae249fa8f0ba2f5d03449c829916af376a02d1e371b32a14355e9",
+    "captures/animated.png": "7e18c065de938a037b18b323ee357d9a84b03c7574b9e3965d07b6a7426f546c",
+    "captures/baseline.png": "8065df39a29be4f9fa8cfb8298a97ed296b2d30527fc6231810672820a094da3",
+    "captures/bypass.png": "8065df39a29be4f9fa8cfb8298a97ed296b2d30527fc6231810672820a094da3",
+    "captures/disabled.png": "8065df39a29be4f9fa8cfb8298a97ed296b2d30527fc6231810672820a094da3",
+    "captures/mask-linear.png": "d0a147788f9920d37d6ec4237cfe6f21a7de0df203047eec27d2e5c681c6c985",
+    "captures/mask.png": "cce3e5c775edadad5ff3e926d9a7cd30bb3593e1c2a6ee0ad89e2b4ca420b730",
+    "captures/multiply.png": "a21d97f8408ba469cc16e4bc4ae50c23efdd79989ee6391a6700675b26390a9e",
+    "captures/normal.png": "576cb36b99844d79b8fe1a2cb35d41da0a529a59c586a1a6cfbc0dfa8a3d4c4c",
+    "captures/partial.png": "5336f4bbb6c27d94ace757fcd9585c00f4003d15158f52628a83961c19fba7a4",
+    "captures/screen.png": "280c8d42135c28c9b72905ea72f391f94d2abfb1144ef0c60be0e93ac1d4b13d",
+    "captures/tint.png": "6a6bb296b218fd9b344227c1139595edda7497fed2bda5e34f909092cf1116c1"
+  },
+  "comparison_gate": {
+    "ssim_min": 0.995,
+    "rgba_mse_max": 1,
+    "channel_error_max": 2
+  }
+}

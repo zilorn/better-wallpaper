@@ -88,6 +88,9 @@ impl SceneGpuRenderer {
                         .chain(&draw.additional_textures)
                         .collect::<Vec<_>>(),
                 )];
+                if let Some(mask) = draw.tint.as_ref().and_then(|tint| tint.mask.as_ref()) {
+                    pending.push((&mask.path, vec![&mask.image]));
+                }
                 for mask in draw.water_wave_masks.iter().flatten() {
                     pending.push((&mask.path, vec![&mask.texture]));
                 }
@@ -461,6 +464,15 @@ impl SceneGpuRenderer {
             let opacity_loc = self.gl.get_uniform_location(self.program, "u_opacity");
             let sampler_loc = self.gl.get_uniform_location(self.program, "u_texture");
             let lut_sampler = self.gl.get_uniform_location(self.program, "u_color_lut");
+            let tint_color = self.gl.get_uniform_location(self.program, "u_tint_color");
+            let tint_params = self.gl.get_uniform_location(self.program, "u_tint_params");
+            let tint_mask_uv = self.gl.get_uniform_location(self.program, "u_tint_mask_uv");
+            self.gl.uniform_1_i32(
+                self.gl
+                    .get_uniform_location(self.program, "u_tint_mask")
+                    .as_ref(),
+                1,
+            );
             let lut_size = self
                 .gl
                 .get_uniform_location(self.program, "u_color_lut_size");
@@ -1148,6 +1160,70 @@ impl SceneGpuRenderer {
                         has_pulse_mask_locs[index].as_ref(),
                         false,
                     );
+                }
+                if let Some(tint) = &draw.tint {
+                    self.gl.uniform_3_f32(
+                        tint_color.as_ref(),
+                        tint.color[0],
+                        tint.color[1],
+                        tint.color[2],
+                    );
+                    let amount = tint
+                        .amount_animation
+                        .as_ref()
+                        .map_or(tint.amount, |animation| animation.value_at(elapsed_seconds));
+                    self.gl.uniform_3_f32(
+                        tint_params.as_ref(),
+                        amount,
+                        tint.blend_mode as f32,
+                        if tint.mask.is_some() { 1.0 } else { 0.0 },
+                    );
+                    if let Some(mask) = &tint.mask {
+                        let state = self
+                            .textures
+                            .get(&mask.path)
+                            .and_then(|images| images.first())
+                            .ok_or_else(|| {
+                                format!("Required Tint mask was not uploaded: {}", mask.path)
+                            })?;
+                        self.gl.active_texture(glow::TEXTURE1);
+                        self.gl.bind_texture(glow::TEXTURE_2D, Some(state.texture));
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_MIN_FILTER,
+                            if mask.nearest {
+                                glow::NEAREST
+                            } else {
+                                glow::LINEAR
+                            } as i32,
+                        );
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_MAG_FILTER,
+                            if mask.nearest {
+                                glow::NEAREST
+                            } else {
+                                glow::LINEAR
+                            } as i32,
+                        );
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_WRAP_S,
+                            glow::CLAMP_TO_EDGE as i32,
+                        );
+                        self.gl.tex_parameter_i32(
+                            glow::TEXTURE_2D,
+                            glow::TEXTURE_WRAP_T,
+                            glow::CLAMP_TO_EDGE as i32,
+                        );
+                        self.gl.uniform_2_f32(
+                            tint_mask_uv.as_ref(),
+                            mask.uv_scale[0],
+                            mask.uv_scale[1],
+                        );
+                    }
+                } else {
+                    self.gl.uniform_3_f32(tint_params.as_ref(), -1., 30., 0.);
                 }
                 if let Some(lut) = &draw.color_lut {
                     self.gl.active_texture(glow::TEXTURE1);

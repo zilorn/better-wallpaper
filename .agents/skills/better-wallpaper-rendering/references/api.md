@@ -311,3 +311,19 @@ GPU cases; missing EGL fails an explicit GPU run. See
 Straight-alpha translucent draws now use separate color and alpha factors:
 source-over preserves alpha=1 on opaque backgrounds. Additive draws saturate
 color/alpha. The golden exposed the previous incorrect alpha multiplication.
+
+## Bounded A4 Tint operation
+
+`resolve_tint(package, effects, &mut TintMaskCache)` admits one visible Tint
+effect with one material/instance pass, verified stock shader identities, LDR
+RGB/alpha, modes 0/2/7/30 and autonomous linear alpha animation. Property-bound
+defaults/overrides pass through shared IR. Static point/clamp RGBA8 masks retain
+logical/storage UV scaling and use red, with 16 MiB per-image/32 MiB aggregate
+limits and path deduplication. `Scene2dDraw.tint` carries the admitted operation.
+Masks share the existing 256-image GPU budget and clear/drop context ownership.
+Missing required uploaded masks fail drawing. Mode 0 forces output alpha one;
+other modes preserve source alpha before layer composition. Unverified shaders,
+stacks/multiple passes, other modes, HDR, curves/scripts and linear masks retain
+concrete unsupported diagnostics; runtime preserves the base image. Package-aware
+compatibility adds Tint to supported features only after the shared check. Mixed
+scenes keep their limitations. See [A4 Tint acceptance](../../../../docs/validation/a4-tint.md).

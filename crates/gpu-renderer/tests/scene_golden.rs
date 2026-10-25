@@ -23,6 +23,9 @@ mod atlas_native;
 #[path = "support/lut_native.rs"]
 mod lut_native;
 
+#[path = "support/tint_native.rs"]
+mod tint_native;
+
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,
     display: egl::Display,

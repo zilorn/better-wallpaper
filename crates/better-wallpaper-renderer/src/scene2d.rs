@@ -237,6 +237,7 @@ pub struct Scene2dDraw {
     pub shake_maps: Vec<Option<Scene2dEffectTexture>>,
     pub pulse_masks: Vec<Option<Scene2dEffectTexture>>,
     pub color_lut: Option<Scene2dColorLut>,
+    pub tint: Option<better_wallpaper_scene_format::TintEffect>,
 }
 
 /// Immutable encoded media plus a CPU frame shared by every output/context.
@@ -372,6 +373,7 @@ pub fn resolve_scene_2d_assets(
     let mut lut_bytes = 0_u64;
     const MAX_SCENE_ATLAS_BYTES: u64 = 512 * 1024 * 1024;
     let mut draws = Vec::with_capacity(plan.quads.len());
+    let mut tint_masks = better_wallpaper_scene_format::TintMaskCache::default();
     let mut skipped_nodes = plan.skipped_nodes;
     let projection_size = plan.projection_size;
     let layout_viewport = plan.layout_viewport;
@@ -501,6 +503,7 @@ pub fn resolve_scene_2d_assets(
                     shake_maps: Vec::new(),
                     pulse_masks: Vec::new(),
                     color_lut: None,
+                    tint: None,
                 });
             }
             let model = model_by_path.get(quad.resource.as_str()).ok_or_else(|| {
@@ -742,6 +745,17 @@ pub fn resolve_scene_2d_assets(
                         .transpose()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            let tint = match better_wallpaper_scene_format::resolve_tint(
+                package,
+                &quad.effect_instances,
+                &mut tint_masks,
+            ) {
+                Ok(tint) => tint,
+                Err(error) => {
+                    warn!(node = %quad.node_id, %error, "Ignoring unsupported Tint effect; retaining base layer");
+                    None
+                }
+            };
             let color_lut =
                 better_wallpaper_scene_format::resolve_color_lut(package, &quad.effect_instances)
                     .map_err(Scene2dError::InvalidAssetManifest)?
@@ -776,6 +790,7 @@ pub fn resolve_scene_2d_assets(
                     .transpose()?;
             Ok(Scene2dDraw {
                 color_lut,
+                tint,
                 quad,
                 blend_mode: pass.blend_mode.clone(),
                 texture_path,
@@ -844,6 +859,7 @@ fn procedural_draw(
         shake_maps: Vec::new(),
         pulse_masks: Vec::new(),
         color_lut: None,
+        tint: None,
     }
 }
 

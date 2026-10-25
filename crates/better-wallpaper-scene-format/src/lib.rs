@@ -22,6 +22,7 @@ pub mod puppet;
 pub mod resource;
 pub mod scene;
 pub mod texture;
+pub mod tint;
 
 pub use atlas_animation::{SpriteAnimation, SpriteFrame, TextureUv};
 pub use color_lut::{ColorLut, ColorLutBinding, resolve_color_lut};
@@ -55,3 +56,4 @@ pub use texture::{
     TexEditorMetadata, TexFormat, TexTexture, TexVolume, TexVolumeMip, TextureAlphaMode,
     TextureColorSpace, TextureImage, TextureMipLevel,
 };
+pub use tint::{TintEffect, TintMask, TintMaskCache, resolve_tint};

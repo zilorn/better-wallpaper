@@ -200,3 +200,9 @@ Plasma retains the management asset route. MIME types include fonts and WASM.
 The wallpaper page offers explicit video/web selection and preserves type when
 editing a path. Web selection does not imply full Wallpaper Engine parity;
 default user properties are loaded, audio-spectrum/media callbacks remain stubs.
+
+A4 package analysis also validates the bounded Tint effect/material and masks
+before adding it to supported features. Unsupported variants retain concrete
+node-specific diagnostics while supported parts of mixed scenes remain visible
+in the existing GTK report. Property overrides affect runtime admission; library
+metadata still describes serialized defaults. See [Tint acceptance](../../../../docs/validation/a4-tint.md).

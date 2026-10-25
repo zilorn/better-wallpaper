@@ -417,6 +417,24 @@ vec3 colorLut(vec3 color) {
     return mix(color, graded, u_color_lut_params.x);
 }
 
+uniform vec3 u_tint_color;
+uniform vec3 u_tint_params; // amount (-1 disables), native blend mode, mask enabled
+uniform vec2 u_tint_mask_uv;
+uniform highp sampler2D u_tint_mask;
+
+vec4 applyTint(vec4 color) {
+    if (u_tint_params.x < 0.0) return color;
+    float amount = u_tint_params.x;
+    if (u_tint_params.z > 0.5) amount *= texture2D(u_tint_mask, v_effect_coord * u_tint_mask_uv).r;
+    vec3 blended = u_tint_color;
+    if (u_tint_params.y == 2.0) blended = color.rgb * u_tint_color;
+    if (u_tint_params.y == 7.0) blended = 1.0 - (1.0 - color.rgb) * (1.0 - u_tint_color);
+    if (u_tint_params.y == 30.0) blended = max(color.r, max(color.g, color.b)) * u_tint_color;
+    color.rgb = mix(color.rgb, blended, amount);
+    if (u_tint_params.y == 0.0) color.a = 1.0;
+    return color;
+}
+
 void main() {
     // Effects and their masks are authored against the logical image bounds,
     // not the padded dimensions used by the main TEX allocation.
@@ -432,6 +450,7 @@ void main() {
                            + displacement.y * u_texture_uv_basis.zw;
 
     vec4 color = texture2D(u_texture, uv);
+    color = applyTint(color);
     color.rgb = colorLut(color.rgb);
     color = applyPulses(color);
     color = applyShine(color);

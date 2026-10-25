@@ -1,0 +1,529 @@
+{
+  "selection": "sorted */scene.pkg in local workshop root, scene.json only",
+  "projects": [
+    {
+      "project": "1731973973",
+      "scene_sha256": "8618a15c7754d75ee09de061736195421cfe18eba74766ccce64be1f2b5314da",
+      "scene_offset": 28551,
+      "scene_bytes": 4953,
+      "effects": {
+        "effects/waterwaves/effect.json": 1,
+        "effects/shake/effect.json": 1,
+        "effects/godrays/effect.json": 1
+      }
+    },
+    {
+      "project": "2760105203",
+      "scene_sha256": "fb79a2796e78d0ee6410dd0a3b2b6023d423011e80b613862801515742c29dc6",
+      "scene_offset": 2017858,
+      "scene_bytes": 28449,
+      "effects": {
+        "effects/waterflow/effect.json": 1,
+        "effects/clouds/effect.json": 1,
+        "effects/waterripple/effect.json": 1,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 1,
+        "effects/waterwaves/effect.json": 3,
+        "effects/pulse/effect.json": 1,
+        "effects/shake/effect.json": 3,
+        "effects/foliagesway/effect.json": 1
+      }
+    },
+    {
+      "project": "2801215039",
+      "scene_sha256": "565075ebf57dad7ffca55fdf820cbf548568e8d9a16d24f9ca365053a8c916fa",
+      "scene_offset": 4233,
+      "scene_bytes": 14230,
+      "effects": {
+        "effects/blend/effect.json": 1,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 1,
+        "effects/shake/effect.json": 1,
+        "effects/foliagesway/effect.json": 1
+      }
+    },
+    {
+      "project": "2865822120",
+      "scene_sha256": "1b60abf1b38216254fcf2c2bef17591f2fbda1a5555357d80582caddbef233cb",
+      "scene_offset": 2049,
+      "scene_bytes": 8881,
+      "effects": {
+        "effects/blurprecise/effect.json": 1,
+        "effects/vhs/effect.json": 1
+      }
+    },
+    {
+      "project": "2877983034",
+      "scene_sha256": "546817e566e645bd20c71d397d260186992e9dc9af0e20c635e483b97ea295d2",
+      "scene_offset": 369,
+      "scene_bytes": 2935,
+      "effects": {}
+    },
+    {
+      "project": "2893073604",
+      "scene_sha256": "e920630b3b31409fda1fb5541ead342e40178741f590dea822f2029a15f30718",
+      "scene_offset": 516,
+      "scene_bytes": 4592,
+      "effects": {
+        "effects/chromaticaberration/effect.json": 1
+      }
+    },
+    {
+      "project": "2893997853",
+      "scene_sha256": "70faf644b0c00364470724650ca12b987c69d6d355968e33c7c753f4b9f904e4",
+      "scene_offset": 443,
+      "scene_bytes": 10285,
+      "effects": {}
+    },
+    {
+      "project": "2894623375",
+      "scene_sha256": "889c8dc3ebbc0a50d2174d5a77e7cf650ff1dfa5badd7350bd0f24b47fe8bdcc",
+      "scene_offset": 145160,
+      "scene_bytes": 86171,
+      "effects": {
+        "effects/waterflow/effect.json": 1,
+        "effects/shine/effect.json": 3,
+        "effects/workshop/2098390419/scroll/effect.json": 1,
+        "effects/blur/effect.json": 1,
+        "effects/perspective/effect.json": 1,
+        "effects/waterripple/effect.json": 1,
+        "effects/blurprecise/effect.json": 8,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 2,
+        "effects/pulse/effect.json": 8,
+        "effects/shake/effect.json": 8,
+        "effects/waterwaves/effect.json": 3,
+        "effects/spin/effect.json": 3,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 1,
+        "effects/vhs/effect.json": 3,
+        "effects/tint/effect.json": 1,
+        "effects/transform/effect.json": 9,
+        "effects/opacity/effect.json": 15,
+        "effects/blendgradient/effect.json": 1
+      }
+    },
+    {
+      "project": "2901582518",
+      "scene_sha256": "b6b69dce4e61ba3929f06bed24cbcf8fb15a5f945b2c5460c059929546dfee88",
+      "scene_offset": 10496,
+      "scene_bytes": 184789,
+      "effects": {
+        "effects/pulse/effect.json": 3,
+        "effects/blurprecise/effect.json": 5,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 2,
+        "effects/shake/effect.json": 6,
+        "effects/shine/effect.json": 1,
+        "effects/iris/effect.json": 1,
+        "effects/waterwaves/effect.json": 2,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 2,
+        "effects/blendgradient/effect.json": 1,
+        "effects/vhs/effect.json": 1,
+        "effects/transform/effect.json": 32,
+        "effects/opacity/effect.json": 21,
+        "effects/workshop/2981960200/blurprecise/effect.json": 12
+      }
+    },
+    {
+      "project": "2902406982",
+      "scene_sha256": "e99e93134fd7912465ddad9beb1bfdd217397a973af40d0697afb919015bd796",
+      "scene_offset": 6744,
+      "scene_bytes": 467236,
+      "effects": {
+        "effects/localcontrast/effect.json": 2,
+        "effects/waterwaves/effect.json": 2,
+        "effects/workshop/2423877731/chromatic_aberration/effect.json": 2,
+        "effects/tint/effect.json": 80,
+        "effects/blur/effect.json": 2,
+        "effects/workshop/2800594362/clipping_mask/effect.json": 8,
+        "effects/opacity/effect.json": 10,
+        "effects/workshop/2895435791/blendgradient/effect.json": 1,
+        "effects/workshop/2895435791/opacity/effect.json": 2,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 3,
+        "effects/workshop/2499516781/fisheye/effect.json": 1,
+        "effects/workshop/2555931144/opacity/effect.json": 1
+      }
+    },
+    {
+      "project": "2919051696",
+      "scene_sha256": "c90012a666a25eb8371567a2236dd5d93da7f91a24b8f4ca026b7392b0e6c913",
+      "scene_offset": 6996,
+      "scene_bytes": 56933,
+      "effects": {
+        "effects/waterripple/effect.json": 3,
+        "effects/waterflow/effect.json": 2,
+        "effects/workshop/2924967132/tint/effect.json": 1,
+        "effects/workshop/2924967132/procedural_noise/effect.json": 1,
+        "effects/waterwaves/effect.json": 9,
+        "effects/perspective/effect.json": 4,
+        "effects/workshop/2795521260/color_grading/effect.json": 2,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 1,
+        "effects/blur/effect.json": 1,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 1,
+        "effects/vhs/effect.json": 1
+      }
+    },
+    {
+      "project": "2927608774",
+      "scene_sha256": "e3f343a6eeaa3c35773e7f26cf41fdaf763f96ab81230ccbc8693a182e86abc1",
+      "scene_offset": 4733,
+      "scene_bytes": 5252,
+      "effects": {
+        "effects/foliagesway/effect.json": 1,
+        "effects/godrays/effect.json": 1,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 1,
+        "effects/workshop/2552475732/gradient_color/effect.json": 1
+      }
+    },
+    {
+      "project": "2932157836",
+      "scene_sha256": "3a1517e44fe803159299c552d4112e162cbcee92e087b69e273806742566b081",
+      "scene_offset": 6781,
+      "scene_bytes": 104582,
+      "effects": {
+        "effects/shake/effect.json": 6,
+        "effects/pulse/effect.json": 6,
+        "effects/waterwaves/effect.json": 15,
+        "effects/waterripple/effect.json": 7,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 4,
+        "effects/transform/effect.json": 4,
+        "effects/opacity/effect.json": 10,
+        "effects/chromaticaberration/effect.json": 4,
+        "effects/spin/effect.json": 2,
+        "effects/perspective/effect.json": 1,
+        "effects/twirl/effect.json": 2,
+        "effects/workshop/2865559209/shine/effect.json": 4,
+        "effects/workshop/2865559209/pulse/effect.json": 5,
+        "effects/blendgradient/effect.json": 1,
+        "effects/blurprecise/effect.json": 1,
+        "effects/tint/effect.json": 2
+      }
+    },
+    {
+      "project": "2935848508",
+      "scene_sha256": "cd3834095e82f5bf0b5c48fba459f4d5f8b1c18e29be4618e1a366b983305105",
+      "scene_offset": 1610,
+      "scene_bytes": 5985,
+      "effects": {
+        "effects/workshop/2552475732/gradient_color/effect.json": 1,
+        "effects/waterwaves/effect.json": 1
+      }
+    },
+    {
+      "project": "2939983770",
+      "scene_sha256": "a5b65994288cee7cd76fc4ad2027b379376636d3e5de61307c64924e687f84c9",
+      "scene_offset": 2447,
+      "scene_bytes": 12864,
+      "effects": {
+        "effects/shine/effect.json": 1,
+        "effects/iris/effect.json": 1,
+        "effects/foliagesway/effect.json": 2
+      }
+    },
+    {
+      "project": "2945887419",
+      "scene_sha256": "788854f3b7a33d8b5f346f501fdd620a9e53cfc767bb25da234032e89ba1b3f5",
+      "scene_offset": 6103871,
+      "scene_bytes": 5998,
+      "effects": {
+        "effects/waterripple/effect.json": 1,
+        "effects/waterflow/effect.json": 1
+      }
+    },
+    {
+      "project": "2977423343",
+      "scene_sha256": "c8ecc00d8945f2fda1856fb86992d824b2858bdd25e4a4c9154977bbcaae418b",
+      "scene_offset": 31733014,
+      "scene_bytes": 10250,
+      "effects": {
+        "effects/shake/effect.json": 6,
+        "effects/waterwaves/effect.json": 4,
+        "effects/xray/effect.json": 2
+      }
+    },
+    {
+      "project": "3001325980",
+      "scene_sha256": "5e4287e904fa0599ad61cd5fa98d1d07f1a3f707aa6b0443b875c15afc9d2381",
+      "scene_offset": 2067,
+      "scene_bytes": 15843,
+      "effects": {}
+    },
+    {
+      "project": "3098540596",
+      "scene_sha256": "4f9d29a8f355b3eb3f45176b9646d8bf732412bc8a849534ff3089fc7f179eb4",
+      "scene_offset": 1288827,
+      "scene_bytes": 55510,
+      "effects": {
+        "effects/waterripple/effect.json": 2,
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 2,
+        "effects/blurprecise/effect.json": 2,
+        "effects/blend/effect.json": 1,
+        "effects/waterwaves/effect.json": 4,
+        "effects/foliagesway/effect.json": 1,
+        "effects/iris/effect.json": 1,
+        "effects/shake/effect.json": 4,
+        "effects/scroll/effect.json": 1,
+        "effects/transform/effect.json": 1,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 1,
+        "effects/workshop/2981960200/blurprecise/effect.json": 3
+      }
+    },
+    {
+      "project": "3100052627",
+      "scene_sha256": "20a5b80c6119634579d986f128660118de4a9fbc3036996b91b4cf2583451ae6",
+      "scene_offset": 2076,
+      "scene_bytes": 8346,
+      "effects": {
+        "effects/waterwaves/effect.json": 1,
+        "effects/shake/effect.json": 2,
+        "effects/shine/effect.json": 1
+      }
+    },
+    {
+      "project": "3102766419",
+      "scene_sha256": "c0ee9ad1518a72ab2bac06fe4c7105ff271b26914477d105490d8770a83e34c6",
+      "scene_offset": 46934,
+      "scene_bytes": 17322,
+      "effects": {
+        "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 1,
+        "effects/godrays/effect.json": 1,
+        "effects/workshop/2798319181/bokeh_blur/effect.json": 1,
+        "effects/workshop/2822917890/bloom/effect.json": 1,
+        "effects/shake/effect.json": 1,
+        "effects/iris/effect.json": 2,
+        "effects/waterwaves/effect.json": 4,
+        "effects/workshop/2138904733/cutout_vignette/effect.json": 2
+      }
+    },
+    {
+      "project": "3104057965",
+      "scene_sha256": "e0297a588b66002151f46b83aa9388c296ebe10c4d63f1d1eee8c951b6552873",
+      "scene_offset": 56473,
+      "scene_bytes": 27644,
+      "effects": {
+        "effects/waterwaves/effect.json": 16,
+        "effects/waterripple/effect.json": 1,
+        "effects/shine/effect.json": 1,
+        "effects/shake/effect.json": 3,
+        "effects/workshop/2850707169/____________/effect.json": 1,
+        "effects/blur/effect.json": 1
+      }
+    },
+    {
+      "project": "3113897260",
+      "scene_sha256": "b48c00306e4362c315d0c77f62ab9e615dd66487e8096c692d3996cef0864a4b",
+      "scene_offset": 3120,
+      "scene_bytes": 15824,
+      "effects": {
+        "effects/blurprecise/effect.json": 1,
+        "effects/workshop/2844906964/test_shader/effect.json": 1,
+        "effects/workshop/2981960200/blurprecise/effect.json": 3
+      }
+    },
+    {
+      "project": "3121180038",
+      "scene_sha256": "8a5b9d8cbd1633b17c4aaa91f175afa81c398ec3b12246672f5ce148fbe7eb64",
+      "scene_offset": 6698,
+      "scene_bytes": 16101,
+      "effects": {
+        "effects/waterflow/effect.json": 1,
+        "effects/waterripple/effect.json": 1,
+        "effects/shake/effect.json": 8,
+        "effects/foliagesway/effect.json": 1,
+        "effects/pulse/effect.json": 2,
+        "effects/workshop/2655151285/waterflow/effect.json": 1,
+        "effects/workshop/2655151285/waterripple/effect.json": 1,
+        "effects/workshop/2655151285/perspective/effect.json": 1,
+        "effects/workshop/2655151285/opacity/effect.json": 1
+      }
+    },
+    {
+      "project": "3144546865",
+      "scene_sha256": "b3cbf7b04e721b00292ad2c3a97e4e1b9ec4237e5151451bfa8882d2678c98a4",
+      "scene_offset": 1585294,
+      "scene_bytes": 49925,
+      "effects": {
+        "effects/pulse/effect.json": 2,
+        "effects/shake/effect.json": 9,
+        "effects/scroll/effect.json": 3,
+        "effects/blurprecise/effect.json": 2,
+        "effects/workshop/2981960200/blurprecise/effect.json": 3,
+        "effects/foliagesway/effect.json": 16
+      }
+    },
+    {
+      "project": "3163060610",
+      "scene_sha256": "daecf612ed133041e1285033a86250209393188db980b2b31aa8aa0e571faa41",
+      "scene_offset": 3695904,
+      "scene_bytes": 390283,
+      "effects": {
+        "effects/time_switching/effect.json": 25,
+        "effects/waterripple/effect.json": 3,
+        "effects/waterflow/effect.json": 3,
+        "effects/opacity/effect.json": 2,
+        "effects/_________________________________/effect.json": 4,
+        "effects/workshop/3083593512/rounded_mask/effect.json": 4,
+        "effects/blurprecise/effect.json": 1,
+        "effects/workshop/3082978660/simple_audio_bars_modified/effect.json": 7,
+        "effects/test/effect.json": 10,
+        "effects/border_preprocessing/effect.json": 5,
+        "effects/tex_switch/effect.json": 1,
+        "effects/transform/effect.json": 1,
+        "effects/visible_area/effect.json": 10,
+        "effects/blend/effect.json": 1,
+        "effects/chromaticaberration/effect.json": 1,
+        "effects/spin/effect.json": 1,
+        "effects/aa/effect.json": 1,
+        "effects/_____________________/effect.json": 12,
+        "effects/waterwaves/effect.json": 4
+      }
+    },
+    {
+      "project": "3326873240",
+      "scene_sha256": "8b9921d5f39dc65dc7dfcdd6d3e72fe753b8b11a7d30e1c1dd3882ae54401eb7",
+      "scene_offset": 5939,
+      "scene_bytes": 189093,
+      "effects": {
+        "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json": 1,
+        "effects/workshop/3219510589/tint/effect.json": 2,
+        "effects/workshop/3219510589/opacity/effect.json": 2,
+        "effects/workshop/3219510589/blendgradient/effect.json": 1,
+        "effects/workshop/3082978660/simple_audio_bars_modified/effect.json": 1,
+        "effects/pulse/effect.json": 10,
+        "effects/workshop/2981960200/blurprecise/effect.json": 6
+      }
+    },
+    {
+      "project": "3448942543",
+      "scene_sha256": "8f4d5eb36512727dbb2d8d41637e4fe84f36394da5e5b351188a7df1752bb84f",
+      "scene_offset": 32670,
+      "scene_bytes": 12919,
+      "effects": {
+        "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json": 1,
+        "effects/pulse/effect.json": 1,
+        "effects/foliagesway/effect.json": 4,
+        "effects/shake/effect.json": 3,
+        "effects/lightshafts/effect.json": 1
+      }
+    },
+    {
+      "project": "3470764447",
+      "scene_sha256": "78f17dc1b0b0fef7f358cf9d64e91787afbd2f6bed3eac4ffd191a6d3afa8b66",
+      "scene_offset": 3710,
+      "scene_bytes": 128935,
+      "effects": {
+        "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json": 3,
+        "effects/skew/effect.json": 3,
+        "effects/workshop/3219510589/tint/effect.json": 1,
+        "effects/workshop/3082978660/simple_audio_bars_modified/effect.json": 1,
+        "effects/pulse/effect.json": 10,
+        "effects/workshop/2981960200/blurprecise/effect.json": 6
+      }
+    },
+    {
+      "project": "3492627662",
+      "scene_sha256": "dc4564c158462d5723de589a1883535455471d435a5c5ce7f9b6547e9770ce2d",
+      "scene_offset": 6796,
+      "scene_bytes": 650538,
+      "effects": {
+        "effects/foliagesway/effect.json": 10,
+        "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json": 1,
+        "effects/workshop/2846673187/____________/effect.json": 1,
+        "effects/workshop/3235948233/auto_sway/effect.json": 13,
+        "effects/opacity/effect.json": 2,
+        "effects/waterwaves/effect.json": 1,
+        "effects/workshop/3184554659/blurprecise/effect.json": 8,
+        "effects/workshop/2981960200/blurprecise/effect.json": 2,
+        "effects/workshop/2978738836/blurprecise/effect.json": 4,
+        "effects/workshop/2978738836/blend/effect.json": 4,
+        "effects/workshop/2978738836/blendgradient/effect.json": 4,
+        "effects/workshop/2978738836/spin/effect.json": 2
+      }
+    }
+  ],
+  "effects": {
+    "effects/waterwaves/effect.json": 70,
+    "effects/shake/effect.json": 61,
+    "effects/godrays/effect.json": 3,
+    "effects/waterflow/effect.json": 9,
+    "effects/clouds/effect.json": 1,
+    "effects/waterripple/effect.json": 20,
+    "effects/workshop/2084198056/Simple_Audio_Bars/effect.json": 17,
+    "effects/pulse/effect.json": 43,
+    "effects/foliagesway/effect.json": 37,
+    "effects/blend/effect.json": 3,
+    "effects/blurprecise/effect.json": 21,
+    "effects/vhs/effect.json": 6,
+    "effects/chromaticaberration/effect.json": 6,
+    "effects/shine/effect.json": 7,
+    "effects/workshop/2098390419/scroll/effect.json": 1,
+    "effects/blur/effect.json": 5,
+    "effects/perspective/effect.json": 6,
+    "effects/spin/effect.json": 6,
+    "effects/workshop/2798319181/bokeh_blur/effect.json": 7,
+    "effects/tint/effect.json": 83,
+    "effects/transform/effect.json": 47,
+    "effects/opacity/effect.json": 60,
+    "effects/blendgradient/effect.json": 3,
+    "effects/iris/effect.json": 5,
+    "effects/workshop/2981960200/blurprecise/effect.json": 35,
+    "effects/localcontrast/effect.json": 2,
+    "effects/workshop/2423877731/chromatic_aberration/effect.json": 2,
+    "effects/workshop/2800594362/clipping_mask/effect.json": 8,
+    "effects/workshop/2895435791/blendgradient/effect.json": 1,
+    "effects/workshop/2895435791/opacity/effect.json": 2,
+    "effects/workshop/2499516781/fisheye/effect.json": 1,
+    "effects/workshop/2555931144/opacity/effect.json": 1,
+    "effects/workshop/2924967132/tint/effect.json": 1,
+    "effects/workshop/2924967132/procedural_noise/effect.json": 1,
+    "effects/workshop/2795521260/color_grading/effect.json": 2,
+    "effects/workshop/2552475732/gradient_color/effect.json": 2,
+    "effects/twirl/effect.json": 2,
+    "effects/workshop/2865559209/shine/effect.json": 4,
+    "effects/workshop/2865559209/pulse/effect.json": 5,
+    "effects/xray/effect.json": 2,
+    "effects/scroll/effect.json": 4,
+    "effects/workshop/2822917890/bloom/effect.json": 1,
+    "effects/workshop/2138904733/cutout_vignette/effect.json": 2,
+    "effects/workshop/2850707169/____________/effect.json": 1,
+    "effects/workshop/2844906964/test_shader/effect.json": 1,
+    "effects/workshop/2655151285/waterflow/effect.json": 1,
+    "effects/workshop/2655151285/waterripple/effect.json": 1,
+    "effects/workshop/2655151285/perspective/effect.json": 1,
+    "effects/workshop/2655151285/opacity/effect.json": 1,
+    "effects/time_switching/effect.json": 25,
+    "effects/_________________________________/effect.json": 4,
+    "effects/workshop/3083593512/rounded_mask/effect.json": 4,
+    "effects/workshop/3082978660/simple_audio_bars_modified/effect.json": 9,
+    "effects/test/effect.json": 10,
+    "effects/border_preprocessing/effect.json": 5,
+    "effects/tex_switch/effect.json": 1,
+    "effects/visible_area/effect.json": 10,
+    "effects/aa/effect.json": 1,
+    "effects/_____________________/effect.json": 12,
+    "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json": 6,
+    "effects/workshop/3219510589/tint/effect.json": 3,
+    "effects/workshop/3219510589/opacity/effect.json": 2,
+    "effects/workshop/3219510589/blendgradient/effect.json": 1,
+    "effects/lightshafts/effect.json": 1,
+    "effects/skew/effect.json": 3,
+    "effects/workshop/2846673187/____________/effect.json": 1,
+    "effects/workshop/3235948233/auto_sway/effect.json": 13,
+    "effects/workshop/3184554659/blurprecise/effect.json": 8,
+    "effects/workshop/2978738836/blurprecise/effect.json": 4,
+    "effects/workshop/2978738836/blend/effect.json": 4,
+    "effects/workshop/2978738836/blendgradient/effect.json": 4,
+    "effects/workshop/2978738836/spin/effect.json": 2
+  },
+  "transform_animations": {
+    "alpha": 5,
+    "origin": 5,
+    "scale": 2
+  },
+  "tint_detail": {
+    "instances": 83,
+    "unmasked": 83,
+    "blend_modes": {
+      "30": 82,
+      "20": 1
+    },
+    "meaning": "Authored occurrences, not observed playback/visual failure rates. Existing runtime has no Tint implementation, so each is a known skipped operation. Other effect occurrences are not all failures."
+  },
+  "transform_detail": "All seven observed origin/scale timelines occur in project 3163060610 and include scripts, Bezier handles or script scheduling. They remain outside the bounded autonomous linear motion subset."
+}

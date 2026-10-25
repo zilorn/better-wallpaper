@@ -921,7 +921,7 @@ fn parse_scene_text(
     })
 }
 
-fn parse_scalar_animation(
+pub(crate) fn parse_scalar_animation(
     value: &Value,
     path: &str,
 ) -> Result<Option<ScalarAnimation>, SceneParseError> {
@@ -995,6 +995,83 @@ fn parse_scalar_animation(
         length_frames,
         mode,
     }))
+}
+
+/// New motion/effect paths admit linear channels only. Legacy scalar paths keep
+/// their established interpretation until separately calibrated.
+pub(crate) fn validate_linear_animation(
+    value: &Value,
+    path: &str,
+    channels: usize,
+) -> Result<(), SceneParseError> {
+    let invalid = |detail: &str| SceneParseError::InvalidValue {
+        field: path.into(),
+        detail: detail.into(),
+    };
+    if value.get("script").is_some() {
+        return Err(invalid("script-controlled animation is unsupported"));
+    }
+    let Some(animation) = value.get("animation") else {
+        return Ok(());
+    };
+    let animation = animation
+        .as_object()
+        .ok_or_else(|| invalid("expected an animation object"))?;
+    for key in animation.keys() {
+        if key != "options"
+            && key != "relative"
+            && !(0..channels).any(|axis| *key == format!("c{axis}"))
+        {
+            return Err(invalid("unsupported animation channel or field"));
+        }
+    }
+    if animation.get("relative").is_some_and(|v| !v.is_boolean()) {
+        return Err(invalid("relative must be boolean"));
+    }
+    let options = animation
+        .get("options")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("animation options are missing"))?;
+    if options
+        .keys()
+        .any(|k| !["fps", "length", "mode", "wraploop"].contains(&k.as_str()))
+        || options
+            .get("wraploop")
+            .is_some_and(|v| v != false && !v.is_null())
+    {
+        return Err(invalid(
+            "animation events, script controls and wraploop are unsupported",
+        ));
+    }
+    for axis in 0..channels {
+        let Some(keys) = animation.get(&format!("c{axis}")) else {
+            continue;
+        };
+        let keys = keys
+            .as_array()
+            .ok_or_else(|| invalid("expected a keyframe array"))?;
+        for key in keys {
+            let key = key
+                .as_object()
+                .ok_or_else(|| invalid("expected a keyframe object"))?;
+            if key.keys().any(|k| {
+                !["frame", "value", "front", "back", "lockangle", "locklength"]
+                    .contains(&k.as_str())
+            }) {
+                return Err(invalid("unsupported interpolation field"));
+            }
+            for handle in ["front", "back"] {
+                if let Some(handle) = key.get(handle)
+                    && handle.get("enabled").and_then(Value::as_bool) != Some(false)
+                {
+                    return Err(invalid(
+                        "Bezier interpolation is unsupported; only disabled handles are admitted",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_backdrop_fade(
@@ -1802,7 +1879,7 @@ fn optional_vec2(
         .transpose()
 }
 
-fn parse_vec3(field: &str, value: &Value) -> Result<Vec3, SceneParseError> {
+pub(crate) fn parse_vec3(field: &str, value: &Value) -> Result<Vec3, SceneParseError> {
     let value = unwrap_script_value(value);
     let values = vector_values(field, value, 3)?;
     Ok(Vec3 {
@@ -1839,7 +1916,7 @@ fn parse_vec2(field: &str, value: &Value) -> Result<Vec2, SceneParseError> {
 /// Unwrap a script-driven or property-bound value.
 /// Handles: `{"script": "...","value":"x y z"}`, `{"user":"prop","value":1.0}`, etc.
 /// Falls back to the original value if not an object with a `.value` field.
-fn unwrap_script_value(value: &Value) -> &Value {
+pub(crate) fn unwrap_script_value(value: &Value) -> &Value {
     if let Some(inner) = value.as_object().and_then(|obj| obj.get("value")) {
         inner
     } else {
@@ -1879,7 +1956,7 @@ fn number_field(
     number_value(&format!("{path}.{field}"), value)
 }
 
-fn number_value(field: &str, value: &Value) -> Result<f32, SceneParseError> {
+pub(crate) fn number_value(field: &str, value: &Value) -> Result<f32, SceneParseError> {
     let number = value
         .as_f64()
         .map(|number| number as f32)

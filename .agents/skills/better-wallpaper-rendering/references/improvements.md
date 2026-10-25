@@ -225,3 +225,15 @@ Remaining extensions require their own samples/consumer: conditional editor mip
 selection, volume metadata, larger media budgets, native video screenshot/clock
 equivalence, video-texture audio, Plasma scene playback and A9 desktop/soak gates.
 No arbitrary editor/property/script execution is implied by retaining metadata.
+
+## A4 Tint — Bounded Native Operation Validated
+
+The selected 30-package occurrence survey finds 83 authored Tint instances
+(31 default-enabled after bound visibility), all unmasked. One visible
+package-verified LDR pass now supports modes 0/2/7/30, properties, linear alpha
+animation and bounded point/clamp red masks. Twelve owned original-program
+captures repeat exactly; 176 llvmpipe comparisons pass with max error one.
+Linear-mask edges differ by up to five bytes and remain explicitly rejected;
+no threshold was relaxed. Other blend modes, stacks, HDR, curves/scripts and
+resampling/minification need separate evidence. See [A4 Tint](../../../../docs/validation/a4-tint.md);
+this does not imply complete effect fidelity, Plasma scenes or an A9 soak.

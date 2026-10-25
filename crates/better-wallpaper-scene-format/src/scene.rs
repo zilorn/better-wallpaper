@@ -422,11 +422,25 @@ pub fn analyse_scene_with_package(
     };
     let mut color_luts = std::collections::BTreeMap::<String, Result<(), String>>::new();
     let mut color_lut_bytes = 0_u64;
+    let mut tint_masks = crate::TintMaskCache::default();
     for node in &graph.nodes {
         if !matches!(&node.kind, crate::SceneNodeKind::Image(path) if path != "models/util/solidlayer.json")
             || node.texture_override.is_some()
         {
             continue;
+        }
+        match crate::resolve_tint(package, &node.effect_instances, &mut tint_masks) {
+            Ok(Some(_)) => {
+                let file = "effects/tint/effect.json";
+                meta.unsupported_effects.retain(|effect| effect != file);
+                if !meta.supported_effects.iter().any(|effect| effect == file) {
+                    meta.supported_effects.push(file.into());
+                }
+            }
+            Err(error) => meta
+                .unsupported_textures
+                .push(format!("Tint node {}: {error}", node.id)),
+            Ok(None) => {}
         }
         match crate::resolve_color_lut(package, &node.effect_instances) {
             Ok(Some(binding)) => {
