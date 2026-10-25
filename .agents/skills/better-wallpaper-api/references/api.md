@@ -128,6 +128,8 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
   data. `scene.script_enabled` does not execute scripts.
 - Config paths expand `~` and `~/`; relative paths resolve against user home.
   Library paths are normalized, sorted, and deduplicated.
+- The `--config` file location resolves against the process working directory;
+  bare relative filenames such as `config.toml` support atomic saves and reloads.
 - Version 1 migrates to version 2; legacy `engine_mode` is cleared during migration.
 
 ## Library and Assets

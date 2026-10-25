@@ -1,5 +1,14 @@
 # Management API Improvements
 
+## Relative Configuration File Saves — Resolved
+
+`ConfigStore::save` previously treated the empty parent of a bare filename as a
+directory path. Saving `--config config.toml` could replace the file and then fail
+when opening the empty path for directory synchronization. It now uses `.` for
+that parent, preserving atomic replacement and synchronization. A regression
+test saves and reloads a bare relative filename twice without changing the
+process working directory.
+
 ## Native GTK Desktop and Property Editors — Implemented
 
 `better-wallpaper-gtk` provides the installed desktop command with native widgets;

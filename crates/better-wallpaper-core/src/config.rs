@@ -363,7 +363,11 @@ impl ConfigStore {
     pub fn save(&self, config: &AppConfig) -> Result<(), ConfigError> {
         let mut normalized = config.clone();
         normalized.validate_and_normalize(&self.home)?;
-        let parent = self.path.parent().unwrap_or(Path::new("."));
+        let parent = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         fs::create_dir_all(parent).map_err(|source| ConfigError::Write {
             path: self.path.clone(),
             source,
@@ -443,6 +447,25 @@ mod tests {
             store.load_or_create().unwrap().general.backend,
             BackendKind::Headless
         );
+    }
+
+    #[test]
+    fn saves_config_with_a_bare_relative_filename() {
+        // Keep cleanup tied to the temporary file without changing the process CWD.
+        let file = NamedTempFile::new_in(".").unwrap();
+        let path = PathBuf::from(file.path().file_name().unwrap());
+        let home = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(path, home.path().into());
+        let mut config = AppConfig::default();
+        config.general.backend = BackendKind::Headless;
+        store.save(&config).unwrap();
+        assert_eq!(
+            store.load_or_create().unwrap().general.backend,
+            BackendKind::Headless
+        );
+        config.wallpaper.fps_limit = 30;
+        store.save(&config).unwrap();
+        assert_eq!(store.load_or_create().unwrap().wallpaper.fps_limit, 30);
     }
 
     #[test]
