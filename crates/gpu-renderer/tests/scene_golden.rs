@@ -29,6 +29,9 @@ mod tint_native;
 #[path = "support/motion_native.rs"]
 mod motion_native;
 
+#[path = "support/scenescript_native.rs"]
+mod scenescript_native;
+
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,
     display: egl::Display,

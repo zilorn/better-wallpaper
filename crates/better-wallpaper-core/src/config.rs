@@ -88,6 +88,7 @@ pub struct SceneConfig {
     pub audio_processing: bool,
     /// Reserved for particle rendering; validated and persisted but not enforced.
     pub particle_limit: u32,
+    /// Opt in to bounded arithmetic SceneScript updates; no general JavaScript.
     pub script_enabled: bool,
     pub properties: BTreeMap<String, String>,
 }

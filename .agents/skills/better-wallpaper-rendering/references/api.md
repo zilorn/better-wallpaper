@@ -61,6 +61,48 @@ The native GTK client also exposes mouse/parallax/audio settings and preserves
 library compatibility details; it omits the reserved particle/script controls.
 Its scene property editor changes configuration overrides, not renderer support.
 
+## Restricted SceneScript (A7)
+
+`parse_scene_graph_with_scripts(scene_json, overrides, numeric_script_properties,
+enabled)` adds opt-in programs to `SceneTransform.scripts`. Existing parsing
+entry points leave execution disabled. The separate numeric map contains declared
+slider defaults plus overrides, not numeric-looking text/combo values. Library
+metadata analyses the subset without project defaults and preserves unresolved
+property/capability limitations; `bounded_script_count` is admission metadata,
+not whole-project playback proof. No script raises the L0–L3 tier to L4.
+
+The grammar consumes one complete `export function update(value)` with explicit
+semicolons, scalar let/const locals, absolute assignments, + - * / %, selected
+Math sin/cos/abs/floor/ceil/round/min/max/PI and three-argument Vec3 results.
+Only alpha and ordinary XY origin/scale are consumers; container transforms can
+affect descendants, but container alpha, mesh motion, effect/text/particle/input
+scripts and combined script/timelines are excluded. `engine.runtime` is scene
+time. Static own-layer origin/scale/size/alpha and literal-name `getLayer` numeric
+members are read-only; ambiguous names and scripted/animated source layers fail.
+Returning value can preserve untouched components, but previous-value reads in
+expressions fail unless that component was assigned absolutely first. Native
+probes confirm that unrestricted previous-value updates accumulate each frame.
+
+Admission caps 64 wrappers/64 KiB source per scene, 8 KiB/512 tokens per binding,
+32 expression levels/statements, 16 locals and 256 total numeric instructions.
+The finite evaluator has a fixed stack/register set, no loops, recursion, heap
+objects, host I/O, dynamic code, timers or callbacks. Results must be finite with
+magnitude <=1e6 and unchanged transform Z. Errors disable only that binding,
+log its identity once and retain the authored value until a fresh plan reload.
+Clone-shared fault flags and nonblocking per-clock caches serve descendants and
+outputs; rewind is deterministic and frozen scene time freezes script motion.
+There are no script threads, native handles or GPU resources to leak.
+
+`Scene2dQuad.opacity_script` and shared motion transforms feed the actual GPU
+consumer. Daemon `scene.script_enabled` defaults false; true enables this subset
+on niri. Plasma still has no scene consumer. Numeric project defaults are loaded
+through a bounded 1 MiB descriptor within the canonical project root, at most
+256 properties. Existing configuration save/reload performs property changes.
+See [A7 acceptance](../../../../docs/validation/a7-scenescript.md) and
+[scope/evidence](../../../../docs/validation/a7-scenescript-scope.md).
+
+## Texture and resource contracts
+
 TEX container contracts are verified against local Wallpaper Engine 2.8.42
 native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md`.
 TEXB1–4 store image count first; TEXB3/4 then store the FreeImage codec.

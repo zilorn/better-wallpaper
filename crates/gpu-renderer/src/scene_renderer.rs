@@ -676,7 +676,12 @@ impl SceneGpuRenderer {
                     .as_ref()
                     .map_or(draw.quad.opacity, |animation| {
                         animation.value_at(elapsed_seconds)
-                    })
+                    });
+                let opacity = draw
+                    .quad
+                    .opacity_script
+                    .as_ref()
+                    .map_or(opacity, |script| script.value_at(elapsed_seconds)[0])
                     .clamp(0.0, 1.0);
                 if opacity <= f32::EPSILON {
                     continue;

@@ -1,5 +1,15 @@
 # Management API Improvements
 
+## Restricted SceneScript Configuration — Connected
+
+`scene.script_enabled` now gates a finite arithmetic runtime on niri, defaulting
+false. Existing config persistence/reload updates declared numeric slider values
+and rebuilds programs, with bounded canonical descriptor loading and regressions
+for defaults, overrides, disabled execution, text/numeric type separation,
+oversized descriptors and escaping symlinks. Unsupported APIs remain explicit;
+there is no new route, script-owned persistence, GTK toggle, L4 or Plasma scene
+consumer. See [A7 acceptance](../../../../docs/validation/a7-scenescript.md).
+
 ## Configuration Write Ordering — Resolved
 
 `update_config` used to save and reload the file before acquiring the shared

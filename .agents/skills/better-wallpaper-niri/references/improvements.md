@@ -1,5 +1,16 @@
 # niri Improvements
 
+## A7 Restricted SceneScript — Single-Output Presentation Verified
+
+The shared finite numeric runtime is gated by `scene.script_enabled`. Its live
+`scenescript_niri` probe completed 90 submissions across five layouts with
+paused/rewound time, isolated arithmetic failure, fresh-plan reload and five
+backend/context replacements on DP-1 (1920x1080). Native pixel comparisons and
+clock/fault regressions run separately on NVIDIA and llvmpipe. Broader physical
+outputs, hotplug/restart, native clock equivalence and A9 soak remain pending;
+no arbitrary mouse scripts or Plasma scene consumer is implied. See
+[A7 acceptance](../../../../docs/validation/a7-scenescript.md).
+
 ## Decoder Storage and Height Limit — Baseline Verified
 
 `better-wallpaper-ffmpeg/tests/fixture_decode.rs` distinguishes CPU RGBA from CUDA

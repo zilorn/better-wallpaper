@@ -266,3 +266,21 @@ previous-value expressions accumulate; stateful updates need a separate shared
 scheduler and remain excluded. See [scope](../../../../docs/validation/a7-scenescript-scope.md).
 This scope record does not enable execution, L4, arbitrary JavaScript or Plasma
 scene playback; implementation/acceptance must be recorded separately.
+
+## A7 SceneScript — Restricted Arithmetic Runtime Delivered
+
+The follow-up implementation now executes the finite absolute-update subset on
+niri when `scene.script_enabled` is true. Alpha/XY transforms, numeric sliders,
+scene time and static object reads are shared with the GPU consumer; full-source
+admission, source/instruction/storage budgets and per-binding fault isolation
+are active. Previous-value state, other lifecycle exports, shared mutation,
+timers/input/audio/media host APIs, dynamic object access and arbitrary JS remain
+excluded with concrete diagnostics. No L4 or Plasma scene support is awarded.
+
+Eight native captures repeat identically; seven are positive pixel references,
+and the stateful eighth is explicit negative evidence. NVIDIA and llvmpipe each
+pass 184 A7 comparisons plus the existing explicit GPU suites. The niri probe
+passes 90 submissions and five context replacements on DP-1. See
+[acceptance](../../../../docs/validation/a7-scenescript.md). Exact native fractional
+clock alignment, stateful scheduling, broader objects/events, multi-output
+desktop lifecycle and A9 soak/fuzz work retain separate completion criteria.

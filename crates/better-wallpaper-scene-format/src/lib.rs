@@ -21,6 +21,7 @@ pub mod pkg;
 pub mod puppet;
 pub mod resource;
 pub mod scene;
+pub mod script;
 pub mod texture;
 pub mod tint;
 
@@ -33,6 +34,7 @@ pub use ir::{
     SceneNodeKind, SceneParallax, SceneSound, SceneText, SceneTransform, ScrollEffect, ShakeEffect,
     ShineEffect, SoundPlaybackMode, SpinEffect, UnsupportedFeature, Vec2, Vec3, VectorAnimation,
     WaterFlowEffect, WaterWaveEffect, parse_scene_graph, parse_scene_graph_with_properties,
+    parse_scene_graph_with_scripts,
 };
 pub use material::{BlendMode, MaterialDefinition, MaterialPass, parse_material_definition};
 pub use model::{ModelDefinition, parse_model_definition};

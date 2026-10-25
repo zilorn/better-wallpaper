@@ -1,5 +1,16 @@
 # niri Backend Interfaces
 
+The A7 shared scene consumer evaluates the restricted arithmetic script subset
+only with `scene.script_enabled = true` (default false). Alpha/XY motion use the
+same daemon scene clock as textures/video; paused or all-absent outputs freeze
+time. Programs and per-binding fault flags are shared across output clones,
+and new plans on config reload reset failures. Context replacement reuses CPU
+programs/assets without creating script threads or callbacks. The opt-in
+`scenescript_niri` probe verified 90 submissions and five context replacements
+on DP-1. This establishes single-output submission/lifecycle, not compositor
+pixel readback, native clock synchronization, multiple-output hotplug, general
+SceneScript or Plasma support. See [A7 acceptance](../../../../docs/validation/a7-scenescript.md).
+
 Source: `crates/better-wallpaper-wayland/src/niri.rs` and `egl.rs`; public export:
 `crates/better-wallpaper-wayland/src/lib.rs`. Daemon setup and backend selection
 live in `crates/better-wallpaper-daemon/src/main.rs`.

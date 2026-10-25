@@ -1,0 +1,56 @@
+{
+  "program": {
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0",
+    "version": "2.8.42",
+    "steam_build": 23967692
+  },
+  "pointer": {},
+  "native_cases": [
+    "origin",
+    "base-value",
+    "scale",
+    "alpha",
+    "layer",
+    "scene-layer",
+    "property",
+    "clock"
+  ],
+  "sha256": {
+    "alpha/project.json": "7b1751c31da8b4fbff0c84d3c84601633b77ad121cddf92aaf94f9c3335daa7d",
+    "alpha/scene.pkg": "c17a24378dde3d771c2016bda2fe7317968d273f07e61a28dce6b1a726712690",
+    "base-value/project.json": "bea5f68e3f7a96dca6958c53548e9b2e5d05fe8fdbeb9acb9395c59e4350c64c",
+    "base-value/scene.pkg": "8d56dccbd889fb3ceb0c1c6571fd1996980f443f05a5d0071148109daf0d9231",
+    "clock/project.json": "0e913a5d2b73001e6f46f5d04a6fdaabc9f4c98f670f342689d88535fc58b416",
+    "clock/scene.pkg": "ebf00ed0fec39b7a9e8d757bea307c9a5c0ac1e65cc9d5cf4db6cfadc3e00adb",
+    "fault/project.json": "fbaa1799b7c92eb27ae386143c21b934168292ac494d3b5c1976bfe5109a851b",
+    "fault/scene.pkg": "4ba170203117c26dec05d845e41c3d57578929089deddff164e0cde8cbb2890e",
+    "layer/project.json": "fc6f110bd37955515c56e10aaff89d35ea5b55ddaf6b315d5e5235acb70495a4",
+    "layer/scene.pkg": "9aa69a6594078da81f2bd6a0a9272cc094840b3daa9ee1b7513928e06a190120",
+    "motion/project.json": "0b63916e2923f25898fff40ac520ece95ada4b5bf937bdba95a64d2162a5b6ab",
+    "motion/scene.pkg": "0d1b2be027180fb352160cb56dd54a4d9bdf5f505721da0ce7794931044ac5fb",
+    "origin/project.json": "88899e5bdfb3586c122aa59b05d353e5ecdf7d330ec0c44a8aeec8d2410a3752",
+    "origin/scene.pkg": "fbe45fa45395f88cd8d92ba43b916d4d07e292c145d9160fc6c9d04687986a5c",
+    "property/project.json": "d71839bbd6bcda894e4c93d5d9b39a1a4dbc676290e9f568d34142b3f7673e0b",
+    "property/scene.pkg": "c2b8f4ba789c0d0dabd198aff0fc75f01be6dac63b0cb5378b6f8e9b5e52bbe8",
+    "scale/project.json": "d39160876853ce93539c1feaf7f20b71f17d22032174810be022ace1849dc2c4",
+    "scale/scene.pkg": "9a8f829de67c3f915b4655d48e37663297bf13c9000d933aa1c37fa1f413eae4",
+    "scene-layer/project.json": "c3c64dcd6d07a174f561b98032dbe60a90771b3dcacaf39451c76a52d7bdb6b0",
+    "scene-layer/scene.pkg": "304e3db98ea93d43a8b8fab5d81921779af50ce5a3b390ced7173f101cb68726",
+    "captures/origin.png": "47ff1ed59eacd796d851c1127ec64e64f74f87ec5ae640527cbd22269801a1ed",
+    "captures/base-value.png": "dd98c29283bc1021bdb317f367281db75a6cf180fe3e0bf4996cfa998bc13e4d",
+    "captures/scale.png": "a438bec611681ca1a4bc2d9668402a8be9dec95491f8da8911a3ffc6e078ab6a",
+    "captures/alpha.png": "733877a50d5e743cce69326aa8ade271d998e98419e37bce75b4ad5e5ac68f4f",
+    "captures/layer.png": "733877a50d5e743cce69326aa8ade271d998e98419e37bce75b4ad5e5ac68f4f",
+    "captures/scene-layer.png": "733877a50d5e743cce69326aa8ade271d998e98419e37bce75b4ad5e5ac68f4f",
+    "captures/property.png": "733877a50d5e743cce69326aa8ade271d998e98419e37bce75b4ad5e5ac68f4f",
+    "captures/clock.png": "b8f74d44aeaac9b3f9305599126ad02ca61d0cda10899c93fc9b1758779273d7"
+  },
+  "negative_cases": {
+    "base-value": "Native accumulates previous value and leaves the canvas; rejected as stateful. Never used as a positive rendering reference."
+  },
+  "gates": {
+    "ssim_min": 0.995,
+    "rgba_mse_max": 1,
+    "channel_error_max": 2
+  }
+}

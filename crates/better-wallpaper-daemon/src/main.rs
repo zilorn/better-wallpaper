@@ -660,11 +660,66 @@ fn prepare_scene(
     let scene_json = package
         .read_entry_string(scene_entry)
         .context("failed to read scene.json")?;
-    let graph = better_wallpaper_scene_format::parse_scene_graph_with_properties(
+    let mut properties = scene_config.properties.clone();
+    let mut numeric_script_properties = std::collections::BTreeMap::new();
+    if scene_config.script_enabled {
+        // Only a bounded descriptor inside this project can supply defaults.
+        let descriptor = project_dir.join("project.json");
+        if descriptor.exists() {
+            let canonical_root = project_dir.canonicalize()?;
+            let canonical = descriptor.canonicalize()?;
+            if !canonical.starts_with(&canonical_root) {
+                anyhow::bail!("scene project descriptor escapes its project directory");
+            }
+            use std::io::Read;
+            let mut data = String::new();
+            std::fs::File::open(canonical)?
+                .take(1_048_577)
+                .read_to_string(&mut data)?;
+            if data.len() > 1_048_576 {
+                anyhow::bail!("scene project descriptor exceeds 1 MiB");
+            }
+            let defaults = better_wallpaper_scene_format::parse_project_properties(&data)?;
+            if defaults.len() > 256 {
+                anyhow::bail!("scene project properties exceed 256 entries");
+            }
+            for (key, property) in defaults {
+                if matches!(
+                    property.prop_type,
+                    better_wallpaper_scene_format::PropertyType::Slider { .. }
+                ) && let better_wallpaper_scene_format::PropertyValue::Number(n) = property.value
+                {
+                    let value = properties
+                        .entry(key.clone())
+                        .or_insert_with(|| n.to_string());
+                    numeric_script_properties.insert(key, value.clone());
+                }
+            }
+        }
+    }
+    let graph = better_wallpaper_scene_format::parse_scene_graph_with_scripts(
         &scene_json,
-        &scene_config.properties,
+        &properties,
+        &numeric_script_properties,
+        scene_config.script_enabled,
     )
     .context("failed to parse scene graph")?;
+    let script_bindings: usize = graph
+        .nodes
+        .iter()
+        .map(|node| node.transform.scripts.len())
+        .sum();
+    info!(
+        enabled = scene_config.script_enabled,
+        script_bindings, "restricted scene script configuration applied"
+    );
+    for limitation in graph
+        .unsupported_features
+        .iter()
+        .filter(|feature| feature.feature.contains("SceneScript"))
+    {
+        warn!(path = %limitation.path, reason = %limitation.feature, "SceneScript capability unavailable; retaining authored value");
+    }
     let audio = PreparedSceneAudio::prepare(&package, &graph);
     let plan = build_scene_2d_plan(
         &graph,
@@ -690,6 +745,70 @@ fn prepare_scene(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restricted_script_config_uses_numeric_defaults_overrides_and_project_boundaries() {
+        use better_wallpaper_core::SceneConfig;
+        let root = tempfile::tempdir().unwrap();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/scenescript-native/property");
+        for name in ["scene.pkg", "project.json"] {
+            std::fs::copy(fixture.join(name), root.path().join(name)).unwrap();
+        }
+        let mut config = SceneConfig {
+            script_enabled: true,
+            ..Default::default()
+        };
+        let alpha = |config: &SceneConfig| {
+            super::prepare_scene(root.path(), config)
+                .unwrap()
+                .assets
+                .unwrap()
+                .draws[0]
+                .quad
+                .opacity_script
+                .as_ref()
+                .unwrap()
+                .value_at(0.)[0]
+        };
+        assert_eq!(alpha(&config), 0.5);
+        config.properties.insert("opacity".into(), "0.25".into());
+        assert_eq!(alpha(&config), 0.25);
+        config.script_enabled = false;
+        assert!(
+            super::prepare_scene(root.path(), &config)
+                .unwrap()
+                .assets
+                .unwrap()
+                .draws[0]
+                .quad
+                .opacity_script
+                .is_none()
+        );
+        config.script_enabled = true;
+        let descriptor = root.path().join("project.json");
+        std::fs::write(
+            &descriptor,
+            r#"{"general":{"properties":{"opacity":{"type":"textinput","value":"0.5"}}}}"#,
+        )
+        .unwrap();
+        assert!(
+            super::prepare_scene(root.path(), &config)
+                .unwrap()
+                .assets
+                .unwrap()
+                .draws[0]
+                .quad
+                .opacity_script
+                .is_none()
+        );
+        std::fs::write(&descriptor, " ".repeat(1_048_577)).unwrap();
+        assert!(super::prepare_scene(root.path(), &config).is_err());
+        std::fs::remove_file(&descriptor).unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), &descriptor).unwrap();
+        assert!(super::prepare_scene(root.path(), &config).is_err());
+    }
+
     #[test]
     fn niri_failure_retries_without_reload_in_no_ui_mode() {
         let config = std::sync::Arc::new(std::sync::RwLock::new(

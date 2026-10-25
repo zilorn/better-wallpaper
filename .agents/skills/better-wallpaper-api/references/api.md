@@ -128,7 +128,16 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
   it, but the runtime ignores it and the GTK UI does not offer an editor for it.
 - `scene.audio_processing` enables niri desktop spectrum capture for supported
   audio-response draws; capture failures fall back to rendering without spectrum
-  data. `scene.script_enabled` does not execute scripts.
+  data. `scene.script_enabled` defaults false; true opts into the restricted
+  arithmetic SceneScript subset on niri: alpha/XY transforms, scene time, declared
+  numeric sliders and static object reads. It does not enable general JavaScript
+  or L4; unsupported bindings retain authored values and report their reason.
+  Numeric slider defaults come from the canonical project descriptor (1 MiB,
+  256 properties); validated string overrides take precedence. Numeric-looking
+  text/combo values are excluded from script properties. Property/config changes
+  use the existing atomic save and scene rebuild path, resetting script faults.
+  GTK preserves this field but still has no script toggle. Plasma has no scene
+  consumer. See [A7 acceptance](../../../../docs/validation/a7-scenescript.md).
 - Config paths expand `~` and `~/`; relative paths resolve against user home.
   Library paths are normalized, sorted, and deduplicated.
 - The `--config` file location resolves against the process working directory;

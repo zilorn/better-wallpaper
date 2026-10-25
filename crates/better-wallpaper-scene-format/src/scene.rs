@@ -66,6 +66,7 @@ pub struct SceneMetadata {
     pub has_3d_materials: bool,
     pub has_custom_shaders: bool,
     pub has_scene_script: bool,
+    pub bounded_script_count: usize,
     pub has_effects: bool,
     pub has_timeline_animation: bool,
     pub has_sprite_animation: bool,
@@ -289,8 +290,18 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
         }
     }
 
-    let graph = parse_scene_graph(scene_json);
+    let graph = crate::parse_scene_graph_with_scripts(
+        scene_json,
+        &Default::default(),
+        &Default::default(),
+        true,
+    );
     if let Ok(graph) = &graph {
+        meta.bounded_script_count = graph
+            .nodes
+            .iter()
+            .map(|node| node.transform.scripts.len())
+            .sum();
         meta.has_basic_parallax = graph.camera.parallax.is_some()
             && graph.nodes.iter().any(|node| {
                 node.parallax_depth
@@ -399,7 +410,9 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
         meta.unsupported_scene_features = graph
             .unsupported_features
             .iter()
-            .filter(|feature| feature.feature.contains("timeline"))
+            .filter(|feature| {
+                feature.feature.contains("timeline") || feature.feature.contains("SceneScript")
+            })
             .map(|feature| format!("{}: {}", feature.path, feature.feature))
             .collect();
         meta.has_timeline_animation = graph.camera.zoom_animation.is_some()
@@ -671,7 +684,18 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         unsupported.push("Particle systems (planned for L3)".into());
     }
     if meta.has_scene_script {
-        unsupported.push("SceneScript (planned for L4)".into());
+        if meta.bounded_script_count > 0 {
+            supported.push(format!("Restricted SceneScript arithmetic updates: {} (requires scene.script_enabled; niri only)",meta.bounded_script_count));
+            warnings.push("SceneScript object reads require static numeric layers; properties are resolved on reload. This is not full SceneScript or L4 compatibility".into());
+        }
+        if meta.bounded_script_count == 0
+            || meta
+                .unsupported_scene_features
+                .iter()
+                .any(|feature| feature.contains("SceneScript"))
+        {
+            unsupported.push("SceneScript outside the restricted arithmetic update subset".into());
+        }
     }
     if meta.has_custom_shaders {
         unsupported.push("Custom shaders (planned for L4)".into());

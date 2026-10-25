@@ -2,8 +2,8 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        Arc, RwLock,
-        atomic::{AtomicU32, Ordering},
+        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -84,13 +84,132 @@ pub struct Scene2dMotion {
     view: Mat3,
     size: [f32; 2],
     /// Root to leaf, shared once per authored node; at most 64 ancestors.
-    transforms: Vec<Arc<better_wallpaper_scene_format::SceneTransform>>,
+    transforms: Vec<Arc<SceneMotionTransform>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SceneMotionTransform {
+    transform: better_wallpaper_scene_format::SceneTransform,
+    origin_script: Option<SceneScriptState>,
+    scale_script: Option<SceneScriptState>,
+}
+
+/// Clones share a fault latch across child draws and outputs. The first runtime
+/// error disables just this binding until a fresh plan is built on reload.
+#[derive(Debug, Clone)]
+pub struct SceneScriptState {
+    program: better_wallpaper_scene_format::script::ScriptProgram,
+    base: [f32; 3],
+    vector: bool,
+    binding: String,
+    faulted: Arc<AtomicBool>,
+    cached: Arc<Mutex<SceneScriptCache>>,
+}
+
+#[derive(Debug, Default)]
+struct SceneScriptCache {
+    last: Option<(u64, [f32; 3])>,
+}
+
+impl PartialEq for SceneScriptState {
+    fn eq(&self, other: &Self) -> bool {
+        self.program == other.program && self.base == other.base && self.vector == other.vector
+    }
+}
+
+impl SceneScriptState {
+    fn new(
+        program: &better_wallpaper_scene_format::script::ScriptProgram,
+        base: [f32; 3],
+        vector: bool,
+    ) -> Self {
+        Self {
+            program: program.clone(),
+            base,
+            vector,
+            binding: "<anonymous>".into(),
+            faulted: Arc::new(AtomicBool::new(false)),
+            cached: Arc::new(Mutex::new(SceneScriptCache::default())),
+        }
+    }
+
+    fn named(mut self, binding: String) -> Self {
+        self.binding = binding;
+        self
+    }
+
+    fn disable(&self, error: &str) {
+        if !self.faulted.swap(true, Ordering::Relaxed) {
+            warn!(binding = %self.binding, %error, "SceneScript binding disabled until reload; retaining authored value");
+        }
+    }
+
+    pub fn value_at(&self, time: f64) -> [f32; 3] {
+        if self.faulted.load(Ordering::Relaxed) {
+            return self.base;
+        }
+        if let Ok(cache) = self.cached.try_lock()
+            && let Some((clock, value)) = cache.last
+            && clock == time.to_bits()
+        {
+            return value;
+        }
+        let value = self.program.evaluate(self.base, time).and_then(|result| {
+            if self.vector && result[2] != self.base[2] {
+                Err("only XY script transforms are supported".into())
+            } else {
+                Ok(result)
+            }
+        });
+        match value {
+            Ok(value) => {
+                if let Ok(mut cache) = self.cached.try_lock() {
+                    cache.last = Some((time.to_bits(), value));
+                }
+                value
+            }
+            Err(error) => {
+                self.disable(&error);
+                self.base
+            }
+        }
+    }
 }
 
 impl Scene2dMotion {
     pub fn vertices_at(&self, elapsed_seconds: f64) -> Result<[[f32; 2]; 4], Scene2dError> {
+        let result = self.vertices_with_scripts(elapsed_seconds, true);
+        if result.is_err()
+            && self
+                .transforms
+                .iter()
+                .any(|motion| motion.origin_script.is_some() || motion.scale_script.is_some())
+        {
+            // A finite script result can still overflow a composed hierarchy.
+            // Preserve ordinary authored-motion errors, but isolate scripts if
+            // the same hierarchy is valid with its authored transforms.
+            let fallback = self.vertices_with_scripts(elapsed_seconds, false)?;
+            for motion in &self.transforms {
+                for script in [&motion.origin_script, &motion.scale_script]
+                    .into_iter()
+                    .flatten()
+                {
+                    script.disable("scripted hierarchy produced non-finite vertices");
+                }
+            }
+            return Ok(fallback);
+        }
+        result
+    }
+
+    fn vertices_with_scripts(
+        &self,
+        elapsed_seconds: f64,
+        scripts: bool,
+    ) -> Result<[[f32; 2]; 4], Scene2dError> {
         let mut world = Mat3::IDENTITY;
-        for transform in &self.transforms {
+        for motion in &self.transforms {
+            let transform = &motion.transform;
             let origin = transform
                 .origin
                 .unwrap_or(better_wallpaper_scene_format::Vec3 {
@@ -117,6 +236,15 @@ impl Scene2dMotion {
                 .map_or(scale, |animation| {
                     animation.value_at(scale, elapsed_seconds)
                 });
+            let scripted = |script: &Option<SceneScriptState>,
+                            value: better_wallpaper_scene_format::Vec3| {
+                script.as_ref().filter(|_| scripts).map_or(value, |script| {
+                    let [x, y, z] = script.value_at(elapsed_seconds);
+                    better_wallpaper_scene_format::Vec3 { x, y, z }
+                })
+            };
+            let origin = scripted(&motion.origin_script, origin);
+            let scale = scripted(&motion.scale_script, scale);
             world = world
                 * Mat3::translation(origin.x, origin.y)
                 * Mat3::rotation(transform.angles.map_or(0., |angles| angles.z))
@@ -147,6 +275,7 @@ pub struct Scene2dQuad {
     pub motion: Option<Scene2dMotion>,
     pub opacity: f32,
     pub opacity_animation: Option<ScalarAnimation>,
+    pub opacity_script: Option<SceneScriptState>,
     pub texture_override: Option<String>,
     pub backdrop_fade: bool,
     pub scroll: Option<better_wallpaper_scene_format::ScrollEffect>,
@@ -1422,7 +1551,22 @@ pub fn build_scene_2d_plan(
     let transforms: Vec<_> = graph
         .nodes
         .iter()
-        .map(|node| Arc::new(node.transform.clone()))
+        .map(|node| {
+            let vector = |value: Option<better_wallpaper_scene_format::Vec3>, default: f32| {
+                value.map_or([default; 3], |v| [v.x, v.y, v.z])
+            };
+            Arc::new(SceneMotionTransform {
+                origin_script: node.transform.scripts.get("origin").map(|p| {
+                    SceneScriptState::new(p, vector(node.transform.origin, 0.), true)
+                        .named(format!("{}.origin", node.id))
+                }),
+                scale_script: node.transform.scripts.get("scale").map(|p| {
+                    SceneScriptState::new(p, vector(node.transform.scale, 1.), true)
+                        .named(format!("{}.scale", node.id))
+                }),
+                transform: node.transform.clone(),
+            })
+        })
         .collect();
     let mut worlds = vec![None; graph.nodes.len()];
     let mut visible = vec![None; graph.nodes.len()];
@@ -1528,6 +1672,7 @@ pub fn build_scene_2d_plan(
                     motion: None,
                     opacity,
                     opacity_animation: node.transform.opacity_animation.clone(),
+                    opacity_script: None,
                     texture_override: node.texture_override.clone(),
                     backdrop_fade: node.backdrop_fade.is_some(),
                     scroll: node.scroll,
@@ -1587,6 +1732,9 @@ pub fn build_scene_2d_plan(
                 .backdrop_fade
                 .clone()
                 .or_else(|| node.transform.opacity_animation.clone()),
+            opacity_script: node.transform.scripts.get("alpha").map(|p| {
+                SceneScriptState::new(p, [opacity; 3], false).named(format!("{}.alpha", node.id))
+            }),
             texture_override: node.texture_override.clone(),
             backdrop_fade: node.backdrop_fade.is_some(),
             scroll: node.scroll,
@@ -1674,6 +1822,8 @@ fn resolve_node(
     };
     animated[index] = node.transform.origin_animation.is_some()
         || node.transform.scale_animation.is_some()
+        || node.transform.scripts.contains_key("origin")
+        || node.transform.scripts.contains_key("scale")
         || node
             .parent
             .as_deref()
@@ -1688,6 +1838,108 @@ fn resolve_node(
 mod tests {
     use super::*;
     use better_wallpaper_scene_format::parse_scene_graph;
+
+    #[test]
+    fn script_motion_uses_scene_clock_and_parent_order_without_output_state() {
+        let graph = better_wallpaper_scene_format::parse_scene_graph_with_scripts(
+            r#"{"general":{"orthogonalprojection":{"width":100,"height":100}},"objects":[
+              {"id":1,"container":true,"origin":{"value":"50 50 0","script":"export function update(value) { value.x = 50 + engine.runtime * 10; return value; }"}},
+              {"id":2,"parent":1,"image":"a","size":"10 10","origin":"0 0 0","scale":{"value":"1 1 1","script":"export function update(value) { value.x = 2; return value; }"}}
+            ]}"#, &Default::default(), &Default::default(), true).unwrap();
+        let build = || {
+            build_scene_2d_plan(
+                &graph,
+                Scene2dOptions {
+                    viewport_width: 100,
+                    viewport_height: 100,
+                },
+            )
+            .unwrap()
+        };
+        let plan = build();
+        let motion = plan.quads[0].motion.as_ref().unwrap();
+        for time in [0., 0.5, 1., 1., 0., 1000.] {
+            let vertices = motion.vertices_at(time).unwrap();
+            assert!((vertices[0][0] - (time as f32 * 0.2 - 0.2)).abs() < 0.0001);
+            assert_eq!(vertices, motion.clone().vertices_at(time).unwrap());
+            assert_eq!(
+                vertices,
+                build().quads[0]
+                    .motion
+                    .as_ref()
+                    .unwrap()
+                    .vertices_at(time)
+                    .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn script_fault_latch_is_shared_and_reload_recovers() {
+        let program = better_wallpaper_scene_format::script::ScriptProgram::compile(
+            "export function update(value) { return 1 / (engine.runtime - 1); }",
+            false,
+            &Default::default(),
+        )
+        .unwrap();
+        let state = SceneScriptState::new(&program, [0.5; 3], false);
+        let other_output = state.clone();
+        assert_eq!(state.value_at(0.), [-1.; 3]);
+        assert_eq!(state.value_at(1.), [0.5; 3]);
+        assert_eq!(other_output.value_at(2.), [0.5; 3]);
+        assert_eq!(
+            SceneScriptState::new(&program, [0.5; 3], false).value_at(2.),
+            [1.; 3]
+        );
+        let vector = better_wallpaper_scene_format::script::ScriptProgram::compile(
+            "export function update(value) { return new Vec3(1,2,3); }",
+            true,
+            &Default::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            SceneScriptState::new(&vector, [0.; 3], true).value_at(0.),
+            [0.; 3]
+        );
+    }
+
+    #[test]
+    fn finite_script_outputs_cannot_overflow_and_stop_a_valid_authored_hierarchy() {
+        let graph = better_wallpaper_scene_format::parse_scene_graph_with_scripts(
+            r#"{"general":{"orthogonalprojection":{"width":100,"height":100}},"objects":[
+              {"id":1,"container":true,"scale":"1e30 1e30 1"},
+              {"id":2,"parent":1,"image":"a","size":"100000 100000","scale":{"value":"1 1 1","script":"export function update(value) { value.x = 1000000; return value; }"}}
+            ]}"#, &Default::default(), &Default::default(), true).unwrap();
+        let plan = build_scene_2d_plan(
+            &graph,
+            Scene2dOptions {
+                viewport_width: 100,
+                viewport_height: 100,
+            },
+        )
+        .unwrap();
+        let motion = plan.quads[0].motion.as_ref().unwrap();
+        assert!(
+            motion
+                .vertices_at(0.)
+                .unwrap()
+                .iter()
+                .flatten()
+                .all(|v| v.is_finite())
+        );
+        assert!(
+            motion.transforms[1]
+                .scale_script
+                .as_ref()
+                .unwrap()
+                .faulted
+                .load(Ordering::Relaxed)
+        );
+        assert_eq!(
+            motion.vertices_at(1.).unwrap(),
+            motion.vertices_at(0.).unwrap()
+        );
+    }
 
     fn moving_scene() -> String {
         serde_json::json!({"general":{"orthogonalprojection":{"width":128,"height":128}},"objects":[
@@ -1755,12 +2007,12 @@ mod tests {
             .clone()
             .unwrap();
         let mut transform = (*motion.transforms[0]).clone();
-        transform.scale = Some(better_wallpaper_scene_format::Vec3 {
+        transform.transform.scale = Some(better_wallpaper_scene_format::Vec3 {
             x: 1e30,
             y: 1e30,
             z: 1.,
         });
-        transform.scale_animation = None;
+        transform.transform.scale_animation = None;
         let shared = Arc::new(transform);
         motion.transforms = vec![shared; 4];
         assert!(matches!(

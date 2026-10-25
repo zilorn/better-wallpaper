@@ -360,6 +360,8 @@ pub enum DynamicScaleKind {
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SceneTransform {
+    #[serde(default)]
+    pub scripts: BTreeMap<String, crate::script::ScriptProgram>,
     pub origin: Option<Vec3>,
     pub size: Option<Vec2>,
     pub scale: Option<Vec3>,
@@ -386,6 +388,17 @@ pub fn parse_scene_graph(scene_json: &str) -> Result<SceneGraph, SceneParseError
 pub fn parse_scene_graph_with_properties(
     scene_json: &str,
     properties: &BTreeMap<String, String>,
+) -> Result<SceneGraph, SceneParseError> {
+    parse_scene_graph_with_scripts(scene_json, properties, &BTreeMap::new(), false)
+}
+
+/// Script execution is opt-in. Property values are the effective project
+/// defaults plus validated configuration overrides, captured at scene reload.
+pub fn parse_scene_graph_with_scripts(
+    scene_json: &str,
+    properties: &BTreeMap<String, String>,
+    numeric_script_properties: &BTreeMap<String, String>,
+    script_enabled: bool,
 ) -> Result<SceneGraph, SceneParseError> {
     let mut root: Value = serde_json::from_str(scene_json)?;
     apply_property_overrides(&mut root, properties, 0)?;
@@ -426,11 +439,15 @@ pub fn parse_scene_graph_with_properties(
         nodes.push(parse_node(index, object, &mut unsupported)?);
     }
 
-    Ok(SceneGraph {
+    let mut graph = SceneGraph {
         camera,
         nodes,
         unsupported_features: unsupported.into_iter().collect(),
-    })
+    };
+    if script_enabled {
+        crate::script::attach_scripts(&mut graph, scene_json, numeric_script_properties)?;
+    }
+    Ok(graph)
 }
 
 fn apply_property_overrides(
@@ -801,6 +818,7 @@ fn parse_node(
             .unwrap_or(true),
         kind,
         transform: SceneTransform {
+            scripts: BTreeMap::new(),
             origin_animation: transform_animation(
                 object.get("origin"),
                 &format!("{path}.origin"),
