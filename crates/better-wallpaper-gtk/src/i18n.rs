@@ -105,6 +105,12 @@ fn translate(source: &str, chinese: bool) -> &str {
         "Frame rate limit" => "帧率上限",
         "Loop playback" => "循环播放",
         "Mute sound" => "静音",
+        "Web settings" => "网页设置",
+        "Desktop audio spectrum" => "桌面音频频谱",
+        "Media information (MPRIS)" => "媒体信息（MPRIS）",
+        "Web properties are saved per project. File properties must stay inside the project folder. Desktop audio and media information are shared with the wallpaper only when enabled." => {
+            "网页属性按项目保存。文件属性必须位于项目文件夹内。仅在启用后，才会向壁纸提供桌面音频和媒体信息。"
+        }
         "Scene settings" => "场景设置",
         "Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented." => {
             "场景支持情况取决于播放后端。niri 支持鼠标位于桌面背景时的基础视差；粒子数量限制和脚本执行尚未实现。"

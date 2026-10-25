@@ -78,6 +78,8 @@ pub struct Entry {
     pub scene_compatibility: Option<Value>,
     #[serde(default)]
     pub scene_properties: Vec<Value>,
+    #[serde(default)]
+    pub web_properties: Vec<Value>,
 }
 
 pub struct Saved {

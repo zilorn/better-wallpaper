@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-25",
+  "input_manifest_sha256": "4d8db41aee258863626980f24cbeab812b67501a5c483b9ac63912c6f8732d54",
+  "environment": {
+    "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "qt": "6.12.0",
+    "session": "niri",
+    "output": "DP-1",
+    "plasma_consumer": "actual main.qml in isolated Qt layer window; no full plasmashell containment",
+    "output_geometry": {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.0,
+      "transform": "Normal"
+    }
+  },
+  "workspace": {
+    "passed": 302,
+    "failed": 0,
+    "default_ignored": 16
+  },
+  "gtk_display": {
+    "english": "pass",
+    "zh-CN": "pass"
+  },
+  "live_consumers": [
+    {
+      "backend": "niri",
+      "audio_reports": 2,
+      "stereo": {
+        "count": 15,
+        "length": 128,
+        "left": 0.24315083026885986,
+        "right": 0.1592966616153717,
+        "leftPeak": 24,
+        "rightPeak": 40
+      },
+      "media_updates": 7,
+      "events": 48,
+      "result": "pass"
+    },
+    {
+      "backend": "plasma-qml",
+      "audio_reports": 3,
+      "stereo": {
+        "count": 15,
+        "length": 128,
+        "left": 0.2431507259607315,
+        "right": 0.15929637849330902,
+        "leftPeak": 24,
+        "rightPeak": 40
+      },
+      "media_updates": 6,
+      "events": 46,
+      "result": "pass"
+    }
+  ],
+  "checks": {
+    "required_clippy": "pass",
+    "strict_all_target_clippy": "pass",
+    "rustfmt": "pass",
+    "javascript_bridge": "pass",
+    "qml_lint": "pass",
+    "cmake_helper": "pass",
+    "staged_packaging": "pass",
+    "input_hashes": "pass",
+    "relative_document_links": "pass"
+  },
+  "scope": {
+    "original_program_web_capture": false,
+    "full_plasma_session": false,
+    "physical_hotplug": false,
+    "native_fft_numerical_parity": false,
+    "artwork_extraction": false,
+    "directory_import": false
+  },
+  "implementation_commit": "50e0e75"
+}

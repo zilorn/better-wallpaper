@@ -1,0 +1,11 @@
+{
+  "type": "web", "file": "pages/index.html", "title": "Owned A5 protocol probe",
+  "general": {"properties": {
+    "enabled": {"type":"bool","text":"Enable animation","value":true,"order":0},
+    "speed": {"type":"slider","text":"Animation speed","value":2,"min":0,"max":10,"fraction":true,"step":0.25,"order":1},
+    "mode": {"type":"combo","text":"Mode","value":"slow","options":[{"label":"Slow","value":"slow"},{"label":"Fast","value":"fast"}],"order":2},
+    "tint": {"type":"color","text":"Tint","value":"1 0 0","order":3},
+    "caption": {"type":"textinput","text":"Caption","value":"Default caption","order":4},
+    "image": {"type":"file","text":"Project image","value":"pages/probe.svg","order":5}
+  }}
+}

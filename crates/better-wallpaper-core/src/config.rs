@@ -124,6 +124,7 @@ pub struct AppConfig {
     pub wallpaper: WallpaperConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scene: Option<SceneConfig>,
+    pub web: WebConfig,
     pub library: LibraryConfig,
     pub decode: DecodeConfig,
     pub outputs: Vec<OutputConfig>,
@@ -136,11 +137,22 @@ impl Default for AppConfig {
             general: GeneralConfig::default(),
             wallpaper: WallpaperConfig::default(),
             scene: Some(SceneConfig::default()),
+            web: WebConfig::default(),
             library: LibraryConfig::default(),
             decode: DecodeConfig::default(),
             outputs: Vec::new(),
         }
     }
+}
+
+/// Web overrides are keyed by the configured absolute project/entry path.
+/// An absent property uses its authored default; an empty map restores defaults.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct WebConfig {
+    pub properties: BTreeMap<String, BTreeMap<String, String>>,
+    pub audio_processing: bool,
+    pub media_integration: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -266,6 +278,33 @@ impl AppConfig {
                     ));
                 }
             }
+        }
+        if self.web.properties.len() > 32 {
+            return Err(ConfigError::Validation(
+                "web.properties supports at most 32 projects".into(),
+            ));
+        }
+        let mut count = 0;
+        for (project, properties) in &self.web.properties {
+            if project.len() > 4096 || !Path::new(project).is_absolute() {
+                return Err(ConfigError::Validation(
+                    "web project keys must be absolute paths of at most 4096 bytes".into(),
+                ));
+            }
+            count += properties.len();
+            for (key, value) in properties {
+                if key.is_empty() || key.len() > 128 || value.len() > 4096 {
+                    return Err(ConfigError::Validation(
+                        "web property names must be 1..=128 bytes and values at most 4096 bytes"
+                            .into(),
+                    ));
+                }
+            }
+        }
+        if count > 256 {
+            return Err(ConfigError::Validation(
+                "web.properties supports at most 256 overrides in total".into(),
+            ));
         }
         if let Some(path) = &self.wallpaper.path {
             self.wallpaper.path = Some(expand_path(path, home));
@@ -402,6 +441,45 @@ impl ConfigStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_overrides_round_trip_and_enforce_budgets() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.toml"), dir.path().into());
+        let mut config = AppConfig::default();
+        config.web.audio_processing = true;
+        config.web.media_integration = true;
+        config.web.properties.insert(
+            "/project/index.html".into(),
+            BTreeMap::from([
+                ("enabled".into(), "false".into()),
+                ("speed".into(), "0.25".into()),
+                ("file".into(), "assets/image.png".into()),
+                ("empty".into(), "".into()),
+            ]),
+        );
+        store.save(&config).unwrap();
+        assert_eq!(store.load_or_create().unwrap().web, config.web);
+        config
+            .web
+            .properties
+            .insert("relative".into(), BTreeMap::new());
+        assert!(store.save(&config).is_err());
+        config.web.properties.remove("relative");
+        config
+            .web
+            .properties
+            .get_mut("/project/index.html")
+            .unwrap()
+            .insert("huge".into(), "x".repeat(4097));
+        assert!(store.save(&config).is_err());
+        assert_eq!(store.load_or_create().unwrap().web.properties.len(), 1);
+        config.web.properties = BTreeMap::from([(
+            "/project".into(),
+            (0..257).map(|i| (format!("p{i}"), "0".into())).collect(),
+        )]);
+        assert!(store.save(&config).is_err());
+    }
 
     #[test]
     fn expands_only_supported_paths_and_validates() {

@@ -48,6 +48,7 @@ pub struct ApiState {
     plasma_instances: Arc<Mutex<HashMap<String, Instant>>>,
     thumbnail_generation: Arc<Mutex<()>>,
     library_index: Arc<Mutex<LibraryIndex>>,
+    web_session: Arc<Mutex<Option<PlasmaWebSession>>>,
     pub log_store: LogStore,
     log_level: LogLevelController,
 }
@@ -98,6 +99,7 @@ impl ApiState {
             plasma_instances: Arc::new(Mutex::new(HashMap::new())),
             thumbnail_generation: Arc::new(Mutex::new(())),
             library_index: Arc::new(Mutex::new(LibraryIndex::new())),
+            web_session: Arc::new(Mutex::new(None)),
             log_store,
             log_level,
         }
@@ -161,6 +163,19 @@ fn write_endpoint_file(home: &Path, ui_url: &str) -> Result<()> {
 }
 
 fn handle_request(mut request: Request, state: &ApiState) {
+    // Only native clients manage the daemon. A wallpaper browser must not use
+    // simple cross-origin POSTs to bypass the private-origin separation.
+    if request
+        .headers()
+        .iter()
+        .any(|header| header.field.equiv("Origin") || header.field.equiv("Sec-Fetch-Mode"))
+    {
+        let _ = request.respond(error_response(
+            StatusCode(403),
+            "browser access to management is forbidden",
+        ));
+        return;
+    }
     let method = request.method().clone();
     let request_url = request.url().to_owned();
     let url = request_url.split('?').next().unwrap_or("/").to_owned();
@@ -311,6 +326,13 @@ fn active_plasma_instances(state: &ApiState) -> Vec<PlasmaInstancePayload> {
     payload
 }
 
+struct PlasmaWebSession {
+    revision: u64,
+    assets: crate::web_wallpaper::AssetServer,
+    url: String,
+    properties: serde_json::Value,
+}
+
 #[derive(Serialize)]
 struct PlasmaConfigPayload {
     api_version: u8,
@@ -321,6 +343,8 @@ struct PlasmaConfigPayload {
     wallpaper_type: WallpaperType,
     web_url: Option<String>,
     web_properties: serde_json::Value,
+    web_protocol_url: Option<String>,
+    fps_limit: u16,
     fill_mode: FillMode,
     muted: bool,
     paused: bool,
@@ -341,15 +365,49 @@ fn plasma_config_response(
         Err(_) => return error_response(StatusCode(500), "config lock poisoned"),
     };
     let enabled = output_enabled(&config, &output);
-    let web_project = (config.wallpaper.wallpaper_type == WallpaperType::Web)
-        .then(|| {
-            config
-                .wallpaper
-                .path
-                .as_deref()
-                .and_then(|path| crate::web_wallpaper::WebProject::load(path).ok())
-        })
-        .flatten();
+    let revision = config_revision(&config);
+    let mut session = match state.web_session.lock() {
+        Ok(session) => session,
+        Err(_) => return error_response(StatusCode(500), "web session lock poisoned"),
+    };
+    if config.wallpaper.wallpaper_type != WallpaperType::Web || !config.general.restore_on_start {
+        session.take();
+    } else if enabled
+        && !session
+            .as_ref()
+            .is_some_and(|session| session.revision == revision)
+    {
+        session.take();
+        let create = || -> Result<PlasmaWebSession> {
+            let project = crate::web_wallpaper::WebProject::load(
+                config
+                    .wallpaper
+                    .path
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("web path unavailable"))?,
+            )?;
+            let assets = crate::web_wallpaper::AssetServer::start_with_options(
+                project.clone(),
+                (&config.web).into(),
+            )?;
+            let properties =
+                project.configured_properties(&config, &format!("{}/", assets.origin))?;
+            let url = format!("{}{}", assets.origin, project.entry_url("/"));
+            Ok(PlasmaWebSession {
+                revision,
+                assets,
+                url,
+                properties,
+            })
+        };
+        match create() {
+            Ok(value) => *session = Some(value),
+            Err(error) => {
+                warn!(%error, "Plasma web session unavailable");
+                return error_response(StatusCode(422), &error.to_string());
+            }
+        }
+    }
     json_response(
         StatusCode(200),
         &PlasmaConfigPayload {
@@ -359,17 +417,20 @@ fn plasma_config_response(
             media_url: "/api/v1/wallpaper/media",
             media_path: config.wallpaper.path.clone(),
             wallpaper_type: config.wallpaper.wallpaper_type,
-            web_url: web_project
+            web_url: session.as_ref().map(|session| session.url.clone()),
+            web_properties: session
                 .as_ref()
-                .map(|project| project.entry_url("/api/v1/wallpaper/web/")),
-            web_properties: web_project
-                .map(|project| project.properties)
+                .map(|session| session.properties.clone())
                 .unwrap_or_else(|| serde_json::json!({})),
+            web_protocol_url: session
+                .as_ref()
+                .map(|session| session.assets.protocol_url.clone()),
+            fps_limit: config.wallpaper.fps_limit,
             fill_mode: config.wallpaper.fill_mode,
             muted: config.wallpaper.muted,
             paused: state.playback.is_paused(),
             loop_playback: config.wallpaper.loop_playback,
-            revision: config_revision(&config),
+            revision,
             scene_rendering_available: false,
         },
     )
@@ -409,6 +470,8 @@ struct LibraryEntry {
     scene_compatibility: Option<CompatibilityPayload>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     scene_properties: Vec<UserProperty>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    web_properties: Vec<UserProperty>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -900,6 +963,23 @@ fn scan_wallpaper_engine_project(project_directory: &Path) -> Option<LibraryEntr
             .then_with(|| left.key.cmp(&right.key))
     });
 
+    let mut web_properties = if wallpaper_type == WallpaperType::Web {
+        match crate::web_wallpaper::editable_properties(&descriptor_json) {
+            Ok(properties) => properties,
+            Err(error) => {
+                warn!(%error, "failed to parse web property editors");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    web_properties.sort_by(|left, right| {
+        left.order
+            .unwrap_or(u32::MAX)
+            .cmp(&right.order.unwrap_or(u32::MAX))
+            .then_with(|| left.key.cmp(&right.key))
+    });
     let (media_path, preview_path, scene_compatibility) = match wallpaper_type {
         WallpaperType::Scene => {
             // Scene wallpapers: the entry path is the project directory itself.
@@ -990,6 +1070,7 @@ fn scan_wallpaper_engine_project(project_directory: &Path) -> Option<LibraryEntr
             .map(|duration| duration.as_secs()),
         scene_compatibility,
         scene_properties,
+        web_properties,
     })
 }
 
@@ -1193,10 +1274,29 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
     if body.len() > MAX_REQUEST_BYTES {
         return error_response(StatusCode(413), "request body too large");
     }
-    let config: AppConfig = match serde_json::from_slice(&body) {
+    let mut config: AppConfig = match serde_json::from_slice(&body) {
         Ok(config) => config,
         Err(error) => return error_response(StatusCode(400), &format!("invalid JSON: {error}")),
     };
+    if let Err(error) = config.validate_and_normalize(&state.home) {
+        return error_response(StatusCode(400), &error.to_string());
+    }
+    if config.wallpaper.wallpaper_type == WallpaperType::Web
+        && let Some(path) = config.wallpaper.path.as_deref()
+        && config
+            .web
+            .properties
+            .get(path.to_string_lossy().as_ref())
+            .is_some_and(|properties| !properties.is_empty())
+    {
+        let validate = || -> Result<()> {
+            crate::web_wallpaper::WebProject::load(path)?.configured_properties(&config, "/")?;
+            Ok(())
+        };
+        if let Err(error) = validate() {
+            return error_response(StatusCode(400), &error.to_string());
+        }
+    }
     // Serialize persistence and runtime updates with other PUTs and tray writes.
     // Saving before taking this lock can leave disk and shared state out of sync.
     let mut current = match state.config.write() {
@@ -1215,6 +1315,9 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
         }
     };
     *current = config.clone();
+    if let Ok(mut session) = state.web_session.lock() {
+        session.take();
+    }
     state.log_level.set(&config.general.log_level);
     // Compare against the running backend, not the previous saved config: a
     // second save must keep reporting a pending switch until the daemon restarts.
@@ -1241,7 +1344,7 @@ fn update_config(request: &mut Request, state: &ApiState) -> Response<std::io::C
     )
 }
 
-fn json_response<T: Serialize>(
+pub(crate) fn json_response<T: Serialize>(
     status: StatusCode,
     value: &T,
 ) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -1309,6 +1412,99 @@ mod tests {
             LogStore::new(10),
             LogLevelController::new("info"),
         )
+    }
+
+    #[test]
+    fn web_api_saves_reload_overrides_reject_invalid_edits_and_retire_private_origins() {
+        use super::*;
+        let directory = tempfile::tempdir().unwrap();
+        let state = config_test_state(directory.path());
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/web-protocol")
+            .canonicalize()
+            .unwrap();
+        let entry = fixture.join("pages/index.html");
+        let key = entry.to_string_lossy().into_owned();
+        let mut config = AppConfig::default();
+        config.wallpaper.wallpaper_type = WallpaperType::Web;
+        config.wallpaper.path = Some(entry);
+        config.web.properties.insert(
+            key.clone(),
+            std::collections::BTreeMap::from([("speed".into(), "0.25".into())]),
+        );
+        let save = |config: &AppConfig| {
+            let mut request = tiny_http::TestRequest::new()
+                .with_body(Box::leak(
+                    serde_json::to_string(config).unwrap().into_boxed_str(),
+                ))
+                .into();
+            update_config(&mut request, &state)
+        };
+        assert_eq!(save(&config).status_code(), StatusCode(200));
+        assert!(state.playback.take_reload_request());
+        assert_eq!(state.store.load_or_create().unwrap().web, config.web);
+        let response = plasma_config_response("?output=DP-1", &state);
+        let first: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
+        assert_eq!(first["web_properties"]["speed"]["value"], 0.25);
+        assert!(state.web_session.lock().unwrap().is_some());
+        let saved = fs::read(directory.path().join("config.toml")).unwrap();
+        config
+            .web
+            .properties
+            .get_mut(&key)
+            .unwrap()
+            .insert("speed".into(), "NaN".into());
+        assert_eq!(save(&config).status_code(), StatusCode(400));
+        assert_eq!(
+            fs::read(directory.path().join("config.toml")).unwrap(),
+            saved
+        );
+        config.web.properties.get_mut(&key).unwrap().clear();
+        assert_eq!(save(&config).status_code(), StatusCode(200));
+        assert!(
+            state.web_session.lock().unwrap().is_none(),
+            "reload closes old private origin"
+        );
+        let response = plasma_config_response("?output=DP-1", &state);
+        let reset: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
+        assert_eq!(reset["web_properties"]["speed"]["value"], 2);
+        assert_ne!(reset["web_protocol_url"], first["web_protocol_url"]);
+        let library = scan_wallpaper_engine_project(&fixture).unwrap();
+        assert_eq!(library.web_properties.len(), 6);
+        assert!(library.scene_properties.is_empty());
+    }
+
+    #[test]
+    fn browser_requests_cannot_read_or_control_management() {
+        use super::*;
+        use std::net::TcpStream;
+        let directory = tempfile::tempdir().unwrap();
+        let state = config_test_state(directory.path());
+        let server = Server::http("127.0.0.1:0").unwrap();
+        let cases = [
+            ("GET", "/api/v1/config", "Origin: http://127.0.0.1:12345"),
+            ("POST", "/api/v1/playback/pause", "Origin: null"),
+            ("GET", "/api/v1/plasma/config", "Sec-Fetch-Mode: no-cors"),
+        ];
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                for _ in cases {
+                    handle_request(server.recv().unwrap(), &state);
+                }
+            });
+            for (method, path, header) in cases {
+                let mut stream = TcpStream::connect(server.server_addr().to_ip().unwrap()).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                write!(stream,"{method} {path} HTTP/1.1\r\nHost: localhost\r\n{header}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).unwrap();
+                assert!(response.starts_with("HTTP/1.1 403"), "{response}");
+            }
+        });
+        assert!(!state.playback.is_paused());
+        assert!(state.web_session.lock().unwrap().is_none());
     }
 
     #[test]
@@ -1806,7 +2002,21 @@ mod tests {
         let response = plasma_config_response("/api/v1/plasma/config?output=DP-1", &state);
         assert_eq!(response.status_code(), StatusCode(200));
         let config: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
-        assert_eq!(config["web_url"], "/api/v1/wallpaper/web/pages/main.html");
+        let url = config["web_url"].as_str().unwrap();
+        assert!(url.starts_with("http://127.0.0.1:"));
+        assert!(url.ends_with("/pages/main.html"));
+        assert!(
+            config["web_protocol_url"]
+                .as_str()
+                .unwrap()
+                .contains("/__better_wallpaper_frame/")
+        );
+        let response = plasma_config_response("/api/v1/plasma/config?output=DP-2", &state);
+        let second: serde_json::Value = serde_json::from_reader(response.into_reader()).unwrap();
+        assert_eq!(
+            second["web_url"], config["web_url"],
+            "outputs share one source session"
+        );
         assert_eq!(config["web_properties"]["speed"]["value"], 2);
         assert_eq!(config["paused"], true);
         assert_eq!(config["muted"], true);

@@ -89,5 +89,9 @@ Chromium 沙箱保持启用。`SKIP_BUILD=1` 要求 `target/web-wallpaper/better
 
 本地开发可设置 `BETTER_WALLPAPER_WEB_PLAYER` 指向该构建产物；安装后 daemon 默认查找
 同目录程序。网页的私有资源服务不依赖管理服务，`--no-ui` 也可播放；
-`--run-for-seconds` 可限制 niri 网页播放时长。默认属性和暂停回调兼容 Wallpaper Engine，
-音频频谱/媒体信息回调暂未接入。
+`--run-for-seconds` 可限制 niri 网页播放时长。两个后端共用打包的 `WebSurface.qml` 和
+`WebBridge.js`，支持有界属性覆盖、立体声音频频谱及 MPRIS 媒体回调。
+启用桌面频谱时需要 `parec`（PulseAudio 工具包，可连接 PipeWire Pulse 服务）；
+MPRIS 使用 zbus 读取用户会话总线，无 `playerctl` 依赖。两项默认关闭。
+验证脚本仅把产物安装到临时 staging；开发集成探针另见
+[A5 验收](../docs/validation/a5-web-protocol.md)。

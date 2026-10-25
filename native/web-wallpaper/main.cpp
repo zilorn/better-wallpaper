@@ -41,6 +41,9 @@ int main(int argc, char **argv)
         return view.status() == QQuickView::Ready ? 0 : 1;
     }
 
+    // Explicit test harness for the installed Plasma QML consumer, outside plasmashell.
+    const int plasmaArgument = app.arguments().indexOf("--test-plasma-qml");
+    const QString plasmaQml = plasmaArgument >= 0 ? app.arguments().value(plasmaArgument + 1) : QString();
     QJsonObject config;
     bool initialized = false;
     QByteArray input;
@@ -66,14 +69,20 @@ int main(int argc, char **argv)
             auto view = std::make_unique<QQuickView>();
             view->setScreen(screen);
             view->setResizeMode(QQuickView::SizeRootObjectToView);
-            view->setInitialProperties({
-                {"sourceUrl", config.value("url").toString()},
-                {"propertiesJson", QString::fromUtf8(QJsonDocument(config.value("properties").toObject()).toJson(QJsonDocument::Compact))},
-                {"paused", config.value("paused").toBool()},
-                {"fpsLimit", config.value("fps").toInt(60)},
-                {"muted", config.value("muted").toBool()}
-            });
-            view->setSource(QUrl("qrc:/WebWallpaper.qml"));
+            if (!plasmaQml.isEmpty()) {
+                view->setInitialProperties({{"daemonUrl", config.value("daemonUrl").toString()}});
+                view->setSource(QUrl::fromLocalFile(plasmaQml));
+            } else {
+                view->setInitialProperties({
+                    {"sourceUrl", config.value("url").toString()},
+                    {"protocolUrl", config.value("protocolUrl").toString()},
+                    {"propertiesJson", QString::fromUtf8(QJsonDocument(config.value("properties").toObject()).toJson(QJsonDocument::Compact))},
+                    {"paused", config.value("paused").toBool()},
+                    {"fpsLimit", config.value("fps").toInt(60)},
+                    {"muted", config.value("muted").toBool()}
+                });
+                view->setSource(QUrl("qrc:/WebWallpaper.qml"));
+            }
             if (view->status() != QQuickView::Ready) {
                 for (const auto &error : view->errors())
                     fprintf(stderr, "%s\n", qPrintable(error.toString()));
@@ -136,7 +145,11 @@ int main(int argc, char **argv)
                 initialized = true;
                 reconcile();
             } else {
-                config["paused"] = message.value("paused");
+                if (message.contains("paused")) config["paused"] = message.value("paused");
+                if (message.contains("outputs")) {
+                    config["outputs"] = message.value("outputs");
+                    reconcile();
+                }
                 for (auto &[screen, view] : views) {
                     Q_UNUSED(screen);
                     view->rootObject()->setProperty("paused", config.value("paused").toBool());

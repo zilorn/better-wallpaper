@@ -440,6 +440,52 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     ui.library.borrow_mut().entries[0].scene_properties[5]["condition"] = Value::Null;
     ui.load_config(original);
 
+    // Web editing reuses native typed editors with an independent per-project map.
+    let original = ui.baseline.borrow().clone();
+    let web: crate::client::Entry = serde_json::from_value(json!({"name":"Web probe","path":"/wallpapers/web/index.html","wallpaper_type":"web","engine_mode":true,"size_bytes":0,"web_properties":scene_properties()})).unwrap();
+    ui.library.borrow_mut().entries.push(web.clone());
+    ui.choose(&web);
+    let prefix = property_prefix(&ui.draft().unwrap());
+    assert_eq!(prefix, "/web/properties/~1wallpapers~1web~1index.html");
+    let caption = ui
+        .property_fields
+        .borrow()
+        .iter()
+        .find_map(|field| {
+            if field.pointer == format!("{prefix}/caption")
+                && let Input::Property(PropertyInput::Text(input)) = &field.input
+            {
+                Some(input.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    caption.set_text("Persistent web caption");
+    let draft = ui.draft().unwrap();
+    assert_eq!(
+        draft["web"]["properties"][&web.path]["caption"],
+        "Persistent web caption"
+    );
+    assert_eq!(draft["scene"], original["scene"]);
+    ui.save.emit_clicked();
+    pump_until("web properties saved", || !ui.busy.get());
+    assert_eq!(
+        config.lock().unwrap()["web"]["properties"][&web.path]["caption"],
+        "Persistent web caption"
+    );
+    ui.load_config(config.lock().unwrap().clone());
+    assert!(!ui.dirty());
+    ui.reset_property_overrides();
+    assert_eq!(
+        ui.draft().unwrap()["web"]["properties"][&web.path],
+        json!({})
+    );
+    assert_eq!(ui.draft().unwrap()["scene"], original["scene"]);
+    ui.save.emit_clicked();
+    pump_until("web defaults saved", || !ui.busy.get());
+    ui.load_config(original);
+
     let backend = ui
         .fields
         .borrow()

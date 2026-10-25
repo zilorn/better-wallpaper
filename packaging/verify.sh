@@ -57,6 +57,8 @@ test ! -e "$WEB"
 test -f "$STAGE/usr/share/better-wallpaper/keep"
 test -f "$PLASMA/metadata.json"
 test -f "$PLASMA/contents/ui/main.qml"
+test -f "$PLASMA/contents/ui/WebSurface.qml"
+test -f "$PLASMA/contents/ui/WebBridge.js"
 test ! -e "$PLASMA/contents/ui/BetterWallpaper"
 test -z "$(find "$STAGE" -name '*.new.*' -print -quit)"
 grep -q '^ExecStart=/usr/bin/better-wallpaper-daemon$' "$UNIT"
@@ -91,7 +93,7 @@ if ldd "$DAEMON" | grep -q 'not found' || ldd "$DESKTOP" | grep -q 'not found' |
     ldd "$DESKTOP"
     exit 1
 fi
-qmllint "$PLASMA/contents/ui/main.qml" "$PROJECT_ROOT/native/web-wallpaper/WebWallpaper.qml"
+qmllint "$PLASMA/contents/ui/WebSurface.qml" "$PLASMA/contents/ui/main.qml" "$PROJECT_ROOT/native/web-wallpaper/WebWallpaper.qml"
 
 log "验证 staging 卸载"
 DESTDIR="$STAGE" PREFIX=/usr "$SCRIPT_DIR/uninstall.sh"

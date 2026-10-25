@@ -8,7 +8,7 @@ Source: `crates/better-wallpaper-daemon/src/server.rs`,
 
 | Method and route | Contract |
 | --- | --- |
-| `GET /api/v1/plasma/config?output=<encoded-name>` | Returns `api_version`, `output`, `enabled`, `media_url`, `media_path`, `wallpaper_type`, `web_url`, `web_properties`, `fill_mode`, `muted`, `paused`, `loop_playback`, `revision`, `scene_rendering_available`. |
+| `GET /api/v1/plasma/config?output=<encoded-name>` | Returns `api_version`, `output`, `enabled`, `media_url`, `media_path`, `wallpaper_type`, `web_url`, `web_properties`, `web_protocol_url`, `fps_limit`, `fill_mode`, `muted`, `paused`, `loop_playback`, `revision`, `scene_rendering_available`. |
 | `POST /api/v1/plasma/heartbeat` | Body `{"output":"screen-name"}` with nonblank name; success `{"accepted":true}`. Invalid body: `400`; oversized/unreadable body: `413`. |
 
 With no configured outputs, all Plasma outputs are enabled. Otherwise names must
@@ -43,10 +43,22 @@ legacy module and obsolete browser management assets as well as QML lint,
 installation, and uninstallation. Management uses GTK; the HTTP configuration,
 heartbeat and wallpaper asset routes remain independent of management HTML.
 
-Web config now supplies an encoded relative `web_url` preserving nested HTML entry
-paths and `web_properties` containing project defaults. QML injects no-op audio
-and media registration functions before page scripts and invokes user/general
-property callbacks after load. Pause/hidden state retains a screenshot, hides the
-WebEngine item and sets Frozen; resume reactivates it. Browser audio follows mute
-and pause. Headless Rust validation does not prove Plasma rendering/pause behavior.
-User-property editing, audio spectrum and media-information data are unsupported.
+Web config supplies absolute private-loopback `web_url` and host-only
+`web_protocol_url`, plus resolved typed `web_properties` and configured `fps_limit`.
+One daemon-owned session is shared across outputs and retired on config PUT or
+revision replacement. Page scripts have no management routes on their origin;
+management also rejects browser `Origin`/fetch-metadata requests. Current QML
+requires the matching daemon version for these URLs. The legacy management asset
+route is retained for native requests, while browser access is refused.
+
+The shared `WebSurface.qml` / `WebBridge.js` inject listeners before page scripts,
+then user/general/pause callbacks on load. Active views poll data every 33 ms;
+paused/hidden views abort polls and retain a screenshot behind Frozen WebEngine.
+Removing a source navigates to about:blank, unloading the old document and its
+timers. Native config polling remains every two seconds while visible.
+Web toggles separately opt into real stereo monitor audio and read-only MPRIS
+metadata, playback and timeline; missing sources are explicit. Artwork extraction,
+directory imports, file:/// concatenation and generic native APIs remain unsupported.
+The actual main.qml consumer passed the isolated Qt/niri protocol harness; this
+is not a full plasmashell desktop/containment/hotplug validation. See
+[A5 acceptance](../../../../docs/validation/a5-web-protocol.md).
