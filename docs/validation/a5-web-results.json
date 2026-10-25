@@ -7,7 +7,13 @@
     "qt": "6.12.0",
     "session": "niri",
     "output": "DP-1",
-    "plasma_consumer": "actual main.qml in isolated Qt layer window; no full plasmashell containment"
+    "plasma_consumer": "actual main.qml in isolated Qt layer window; no full plasmashell containment",
+    "output_geometry": {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.0,
+      "transform": "Normal"
+    }
   },
   "workspace": {
     "passed": 302,
@@ -68,5 +74,6 @@
     "native_fft_numerical_parity": false,
     "artwork_extraction": false,
     "directory_import": false
-  }
+  },
+  "implementation_commit": "50e0e75"
 }

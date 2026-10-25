@@ -1,6 +1,6 @@
 # A5: bounded web wallpaper properties and desktop data
 
-Date: 2026-10-25. Implementation commit is recorded in the adaptation plan.
+Date: 2026-10-25. Implementation: `50e0e75` (also recorded in the adaptation plan).
 This package implements and tests a documented protocol subset on both consumers.
 It does not establish full Wallpaper Engine compatibility or full Plasma desktop
 lifecycle acceptance; those boundaries remain explicit below.
