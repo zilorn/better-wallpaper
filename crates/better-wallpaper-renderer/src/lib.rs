@@ -7,8 +7,9 @@ mod scene2d;
 pub use cache::{GpuCacheError, GpuResourceCache, GpuResourceKey, MAX_GPU_CACHE_BUDGET_BYTES};
 pub use nvidia::{NvidiaDeviceInfo, NvidiaVulkanContext, NvidiaVulkanError};
 pub use scene2d::{
-    Mat3, Scene2dAssets, Scene2dColorLut, Scene2dDraw, Scene2dError, Scene2dMesh, Scene2dOptions,
-    Scene2dPlan, Scene2dQuad, SceneAudioResponse, SceneAudioSpectrum, SceneFontRender,
-    SceneParallaxState, SceneVideoFrame, SceneVideoTexture, SpriteAnimation, SpriteFrame,
-    build_scene_2d_plan, font_text_texture, resolve_scene_2d_assets, scene_parallax_offset,
+    Mat3, Scene2dAssets, Scene2dColorLut, Scene2dDraw, Scene2dError, Scene2dMesh, Scene2dMotion,
+    Scene2dOptions, Scene2dPlan, Scene2dQuad, SceneAudioResponse, SceneAudioSpectrum,
+    SceneFontRender, SceneParallaxState, SceneVideoFrame, SceneVideoTexture, SpriteAnimation,
+    SpriteFrame, build_scene_2d_plan, font_text_texture, resolve_scene_2d_assets,
+    scene_parallax_offset,
 };

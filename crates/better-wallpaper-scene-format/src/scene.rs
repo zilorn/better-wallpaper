@@ -70,6 +70,8 @@ pub struct SceneMetadata {
     pub has_timeline_animation: bool,
     pub has_sprite_animation: bool,
     pub unsupported_textures: Vec<String>,
+    #[serde(default)]
+    pub unsupported_scene_features: Vec<String>,
     pub has_video_texture: bool,
     pub has_basic_parallax: bool,
     pub has_audio_response: bool,
@@ -287,7 +289,8 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
         }
     }
 
-    if let Ok(graph) = parse_scene_graph(scene_json) {
+    let graph = parse_scene_graph(scene_json);
+    if let Ok(graph) = &graph {
         meta.has_basic_parallax = graph.camera.parallax.is_some()
             && graph.nodes.iter().any(|node| {
                 node.parallax_depth
@@ -297,6 +300,11 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
             .nodes
             .iter()
             .any(|node| matches!(node.kind, crate::SceneNodeKind::Video(_)));
+    }
+
+    if let Err(error) = &graph {
+        meta.unsupported_scene_features
+            .push(format!("Scene runtime: {error}"));
     }
 
     // Objects analysis
@@ -343,6 +351,9 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
             {
                 meta.has_effects = true;
                 for eff in effects {
+                    if eff.get("visible").and_then(bound_bool) == Some(false) {
+                        continue;
+                    }
                     if let Some(file) = eff.get("file").and_then(|v| v.as_str()) {
                         if is_supported_effect(file) {
                             if !meta.supported_effects.iter().any(|effect| effect == file) {
@@ -384,10 +395,19 @@ pub fn analyse_scene(scene_json: &str) -> Result<SceneMetadata, SceneParseError>
     }
 
     // Count only the timeline forms actually accepted by the runtime parser.
-    if let Ok(graph) = parse_scene_graph(scene_json) {
+    if let Ok(graph) = &graph {
+        meta.unsupported_scene_features = graph
+            .unsupported_features
+            .iter()
+            .filter(|feature| feature.feature.contains("timeline"))
+            .map(|feature| format!("{}: {}", feature.path, feature.feature))
+            .collect();
         meta.has_timeline_animation = graph.camera.zoom_animation.is_some()
             || graph.nodes.iter().any(|node| {
-                node.transform.opacity_animation.is_some() || node.backdrop_fade.is_some()
+                node.transform.opacity_animation.is_some()
+                    || node.backdrop_fade.is_some()
+                    || node.transform.origin_animation.is_some()
+                    || node.transform.scale_animation.is_some()
             });
     }
 
@@ -423,7 +443,33 @@ pub fn analyse_scene_with_package(
     let mut color_luts = std::collections::BTreeMap::<String, Result<(), String>>::new();
     let mut color_lut_bytes = 0_u64;
     let mut tint_masks = crate::TintMaskCache::default();
+    let mut animated = std::collections::BTreeSet::new();
+    let mut children = std::collections::BTreeMap::<&str, Vec<&str>>::new();
+    let mut pending = std::collections::VecDeque::new();
     for node in &graph.nodes {
+        if let Some(parent) = node.parent.as_deref() {
+            children.entry(parent).or_default().push(&node.id);
+        }
+        if (node.transform.origin_animation.is_some() || node.transform.scale_animation.is_some())
+            && animated.insert(node.id.as_str())
+        {
+            pending.push_back(node.id.as_str());
+        }
+    }
+    while let Some(parent) = pending.pop_front() {
+        for child in children.get(parent).into_iter().flatten() {
+            if animated.insert(child) {
+                pending.push_back(child);
+            }
+        }
+    }
+    for node in &graph.nodes {
+        if node.audio_visualizer.is_some() && animated.contains(node.id.as_str()) {
+            meta.unsupported_scene_features.push(format!(
+                "Node {}: audio-spectrum transform timelines are unsupported",
+                node.id
+            ));
+        }
         if !matches!(&node.kind, crate::SceneNodeKind::Image(path) if path != "models/util/solidlayer.json")
             || node.texture_override.is_some()
         {
@@ -486,6 +532,12 @@ pub fn analyse_scene_with_package(
         else {
             continue;
         };
+        if model.puppet.is_some() && animated.contains(node.id.as_str()) {
+            meta.unsupported_scene_features.push(format!(
+                "Node {}: puppet transform timelines are unsupported",
+                node.id
+            ));
+        }
         let Some(material) = package
             .find(&model.material)
             .and_then(|entry| package.read_entry_string(entry).ok())
@@ -564,6 +616,7 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         .map(|error| format!("Texture: {error}"))
         .collect::<Vec<_>>();
     let mut warnings = Vec::new();
+    unsupported.extend(meta.unsupported_scene_features.iter().cloned());
     let mut supported = Vec::new();
     let mut level = CompatibilityLevel::L0;
     if meta
@@ -579,7 +632,7 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
     for (present, feature) in [
         (
             meta.has_timeline_animation,
-            "Scalar timelines (opacity, camera zoom, backdrop fade)",
+            "Scalar timelines and bounded linear position/scale offsets (opacity, camera zoom, backdrop fade)",
         ),
         (meta.has_sprite_animation, "Sprite sheet animation"),
         (meta.has_sounds, "Scene background audio"),
@@ -776,7 +829,7 @@ mod tests {
             "foliagesway",
             "shine",
         ] {
-            let scene = serde_json::json!({"objects":[{"image":"models/bg.json", "effects":[{"file":format!("effects/{effect}/effect.json")}]}]});
+            let scene = serde_json::json!({"objects":[{"image":"models/bg.json", "effects":[{"file":format!("effects/{effect}/effect.json"),"passes":[{"constantshadervalues":{"rayintensity":0.2}}]}]}]});
             let meta = analyse_scene(&scene.to_string()).unwrap();
             let report = compute_compatibility(&meta);
             assert_eq!(report.level, CompatibilityLevel::L3, "{effect}");

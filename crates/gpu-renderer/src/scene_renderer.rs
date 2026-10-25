@@ -665,6 +665,8 @@ impl SceneGpuRenderer {
                     assets.parallax,
                     pointer,
                     draw.quad.parallax_depth,
+                    assets.projection_size,
+                    assets.layout_viewport,
                 );
                 self.gl
                     .uniform_2_f32(parallax_loc.as_ref(), offset[0], offset[1]);
@@ -1299,7 +1301,18 @@ impl SceneGpuRenderer {
                 let mut vertices = if let Some(mesh) = &draw.mesh {
                     puppet_vertices(mesh.positions_at(elapsed_seconds), &mesh.uv, uv)
                 } else {
-                    scene_vertices(&draw.quad.vertices, uv).to_vec()
+                    scene_vertices(
+                        &draw
+                            .quad
+                            .motion
+                            .as_ref()
+                            .map_or(Ok(draw.quad.vertices), |motion| {
+                                motion.vertices_at(elapsed_seconds)
+                            })
+                            .map_err(|error| error.to_string())?,
+                        uv,
+                    )
+                    .to_vec()
                 };
                 if draw.quad.dynamic_scale == Some(DynamicScaleKind::ClockSecondX) {
                     apply_clock_second_scale(&mut vertices, local_date_time().second as f32 / 60.0);
@@ -1370,6 +1383,7 @@ impl SceneGpuRenderer {
     }
 
     pub fn clear_textures(&mut self) {
+        self.parallax = Default::default();
         unsafe {
             for (_, texture) in self.color_luts.drain() {
                 self.gl.delete_texture(texture);

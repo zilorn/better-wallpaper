@@ -100,3 +100,15 @@ See [A2 acceptance](../../../../docs/validation/a2-lut-rendering.md).
 Pixel parity is tested separately in surfaceless EGL on NVIDIA and llvmpipe.
 This live test does not establish compositor pixel readback, physical color
 accuracy, other outputs, hotplug/restart or long-running A9 stability.
+
+## A4 Effects/Motion Presentation — Single-Output Desktop Verified
+
+`effects_motion_niri` is an explicit test requiring
+BETTER_WALLPAPER_NIRI_TEST_OUTPUT. On 2026-10-25 six Tint/motion/parallax layouts
+completed 108 accepted submissions on DP-1 at 1920x1080, with frozen/rewound
+scene times, reload and six backend/EGL replacements. Native pointer sign,
+projection units, defaults and smoothing are measured separately in an isolated
+original-program window and shared GPU tests. This does not demonstrate real
+niri pointer focus through other clients, global tracking, compositor pixel
+readback, multiple outputs, hotplug/restart or the A9 soak. See
+[A4 acceptance](../../../../docs/validation/a4-motion.md).

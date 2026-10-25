@@ -74,23 +74,33 @@ impl ScalarAnimation {
         if self.fps <= 0.0 || self.length_frames <= 0.0 {
             return last.value;
         }
-        let mut frame = elapsed_seconds.max(0.0) as f32 * self.fps;
-        if self.mode == AnimationMode::Loop {
-            frame = frame.rem_euclid(self.length_frames);
+        let seconds = if elapsed_seconds.is_finite() {
+            elapsed_seconds.max(0.0)
         } else {
-            frame = frame.min(self.length_frames);
+            0.0
+        };
+        let mut frame = seconds * f64::from(self.fps);
+        if self.mode == AnimationMode::Loop {
+            if !frame.is_finite() {
+                frame = seconds.rem_euclid(f64::from(self.length_frames) / f64::from(self.fps))
+                    * f64::from(self.fps);
+            }
+            frame = frame.rem_euclid(f64::from(self.length_frames));
+        } else {
+            frame = frame.min(f64::from(self.length_frames));
         }
-        if frame <= first.frame {
+        if frame <= f64::from(first.frame) {
             return first.value;
         }
         for pair in self.keyframes.windows(2) {
             let [left, right] = pair else { continue };
-            if frame <= right.frame {
+            if frame <= f64::from(right.frame) {
                 let span = right.frame - left.frame;
                 if span <= f32::EPSILON {
                     return right.value;
                 }
-                let amount = ((frame - left.frame) / span).clamp(0.0, 1.0);
+                let amount =
+                    ((frame - f64::from(left.frame)) / f64::from(span)).clamp(0.0, 1.0) as f32;
                 return left.value + (right.value - left.value) * amount;
             }
         }
@@ -102,6 +112,30 @@ impl ScalarAnimation {
 pub struct ScalarKeyframe {
     pub frame: f32,
     pub value: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VectorAnimation {
+    pub channels: [Option<ScalarAnimation>; 3],
+    /// Retained editor metadata. Native transform channels are offsets with
+    /// either observed value of this flag, unlike absolute scalar channels.
+    pub relative: bool,
+}
+
+impl VectorAnimation {
+    pub fn value_at(&self, base: Vec3, elapsed_seconds: f64) -> Vec3 {
+        let base = [base.x, base.y, base.z];
+        let values: [f32; 3] = std::array::from_fn(|axis| {
+            self.channels[axis].as_ref().map_or(base[axis], |channel| {
+                channel.value_at(elapsed_seconds) + base[axis]
+            })
+        });
+        Vec3 {
+            x: values[0],
+            y: values[1],
+            z: values[2],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -333,6 +367,10 @@ pub struct SceneTransform {
     pub opacity: Option<f32>,
     #[serde(default)]
     pub opacity_animation: Option<ScalarAnimation>,
+    #[serde(default)]
+    pub origin_animation: Option<VectorAnimation>,
+    #[serde(default)]
+    pub scale_animation: Option<VectorAnimation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
@@ -555,9 +593,9 @@ fn parse_camera_parallax(
         Ok(value)
     };
     let settings = SceneParallax {
-        amount: bounded("cameraparallaxamount", 0.1, 100.0)?,
-        delay: bounded("cameraparallaxdelay", 0.1, 10.0)?,
-        mouse_influence: bounded("cameraparallaxmouseinfluence", 1.0, 10.0)?,
+        amount: bounded("cameraparallaxamount", 0.5, 100.0)?,
+        delay: bounded("cameraparallaxdelay", 0.1, 3.0)?,
+        mouse_influence: bounded("cameraparallaxmouseinfluence", 0.5, 10.0)?,
     };
     Ok(enabled.then_some(settings))
 }
@@ -722,6 +760,18 @@ fn parse_node(
         .transpose()?;
 
     let parallax_depth = optional_vec2(object, "parallaxDepth", &path)?;
+    for field in ["angles", "size", "parallaxDepth"] {
+        if object
+            .get(field)
+            .is_some_and(|value| value.get("animation").is_some())
+        {
+            mark(
+                unsupported,
+                &format!("{path}.{field}"),
+                "unsupported transform timeline channel",
+            );
+        }
+    }
     if parallax_depth.is_some_and(|depth| depth.x.abs() > 100.0 || depth.y.abs() > 100.0) {
         return Err(SceneParseError::InvalidValue {
             field: format!("{path}.parallaxDepth"),
@@ -751,6 +801,16 @@ fn parse_node(
             .unwrap_or(true),
         kind,
         transform: SceneTransform {
+            origin_animation: transform_animation(
+                object.get("origin"),
+                &format!("{path}.origin"),
+                unsupported,
+            )?,
+            scale_animation: transform_animation(
+                object.get("scale"),
+                &format!("{path}.scale"),
+                unsupported,
+            )?,
             origin: object
                 .get("origin")
                 .map(|value| parse_vec3_lenient(&format!("{path}.origin"), value))
@@ -921,6 +981,77 @@ fn parse_scene_text(
     })
 }
 
+fn transform_animation(
+    value: Option<&Value>,
+    path: &str,
+    unsupported: &mut BTreeSet<UnsupportedFeature>,
+) -> Result<Option<VectorAnimation>, SceneParseError> {
+    let Some(value) = value.filter(|v| v.get("animation").is_some()) else {
+        return Ok(None);
+    };
+    match parse_vector_animation(value, path) {
+        Ok(animation) => Ok(animation),
+        Err(error) => {
+            mark(
+                unsupported,
+                path,
+                &format!("unsupported transform timeline: {error}"),
+            );
+            Ok(None)
+        }
+    }
+}
+
+fn parse_vector_animation(
+    value: &Value,
+    path: &str,
+) -> Result<Option<VectorAnimation>, SceneParseError> {
+    validate_linear_animation(value, path, 3)?;
+    let animation = &value["animation"];
+    let mut channels = [None, None, None];
+    for (axis, channel) in channels.iter_mut().enumerate() {
+        let Some(keys) = animation
+            .get(format!("c{axis}"))
+            .filter(|keys| keys.as_array().is_none_or(|keys| !keys.is_empty()))
+        else {
+            continue;
+        };
+        let input = serde_json::json!({"animation":{"options":animation["options"],"c0":keys}});
+        *channel = parse_scalar_animation(&input, path)?;
+        let parsed = channel.as_ref().expect("present animation");
+        if axis == 2 && parsed.keyframes.iter().any(|key| key.value != 0.0) {
+            return Err(SceneParseError::InvalidValue {
+                field: path.into(),
+                detail: "only XY transform timeline offsets are supported".into(),
+            });
+        }
+        if parsed.fps > 1000.0
+            || parsed.length_frames > 1_000_000_000.0
+            || parsed.keyframes.iter().any(|k| {
+                k.frame < 0.0 || k.frame > parsed.length_frames || k.value.abs() > 1_000_000.0
+            })
+            || parsed
+                .keyframes
+                .windows(2)
+                .any(|k| k[0].frame >= k[1].frame)
+        {
+            return Err(SceneParseError::InvalidValue {
+                field: path.into(),
+                detail:
+                    "transform timeline exceeds bounds or contains duplicate/out-of-range frames"
+                        .into(),
+            });
+        }
+    }
+    Ok(channels
+        .iter()
+        .any(Option::is_some)
+        .then_some(VectorAnimation {
+            channels,
+            relative: animation["relative"] == true,
+        }))
+}
+
 pub(crate) fn parse_scalar_animation(
     value: &Value,
     path: &str,
@@ -942,10 +1073,14 @@ pub(crate) fn parse_scalar_animation(
         })?;
     let fps = number_field(options, "fps", &format!("{path}.animation.options"))?;
     let length_frames = number_field(options, "length", &format!("{path}.animation.options"))?;
-    if fps <= 0.0 || length_frames <= 0.0 {
+    if !(0.0..=1000.0).contains(&fps)
+        || fps == 0.0
+        || !(0.0..=1_000_000_000.0).contains(&length_frames)
+        || length_frames == 0.0
+    {
         return Err(SceneParseError::InvalidValue {
             field: format!("{path}.animation.options"),
-            detail: "animation fps and length must be positive".into(),
+            detail: "animation fps must be in 0..=1000 and length in 0..=1e9, both positive".into(),
         });
     }
     let mode = match options
@@ -989,6 +1124,18 @@ pub(crate) fn parse_scalar_animation(
         });
     }
     keyframes.sort_by(|left, right| left.frame.total_cmp(&right.frame));
+    if keyframes
+        .iter()
+        .any(|key| key.frame < 0.0 || key.frame > length_frames)
+        || keyframes
+            .windows(2)
+            .any(|pair| pair[0].frame == pair[1].frame)
+    {
+        return Err(SceneParseError::InvalidValue {
+            field: path.into(),
+            detail: "animation frames must be unique and within the authored length".into(),
+        });
+    }
     Ok(Some(ScalarAnimation {
         keyframes,
         fps,

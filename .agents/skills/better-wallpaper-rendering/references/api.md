@@ -47,8 +47,10 @@ through referenced image model/material base textures; unused textures do not
 raise the tier. Library scanning and `scene-validate` use this package-aware path;
 unpacked `scene-inspect` can only classify features visible in scene.json.
 Effect identifiers and audio-spectrum recognition are shared with the IR parser.
-Scalar timelines currently cover opacity, camera zoom and composition backdrop
-fade; arbitrary transform timelines are not implied. Bloom and camera shake still generate ignored-feature warnings. Basic camera
+Scalar timelines cover opacity, camera zoom and composition backdrop fade. A4
+also admits bounded autonomous linear XY origin/scale offsets on ordinary quads;
+curves, scripts, scheduling, angle/size/depth channels and mesh consumers retain
+explicit limitations. Bloom and camera shake still generate ignored-feature warnings. Basic camera
 parallax is identified only with enabled camera settings and authored layer depth;
 its report includes the wallpaper-surface pointer-focus limitation.
 
@@ -327,3 +329,30 @@ stacks/multiple passes, other modes, HDR, curves/scripts and linear masks retain
 concrete unsupported diagnostics; runtime preserves the base image. Package-aware
 compatibility adds Tint to supported features only after the shared check. Mixed
 scenes keep their limitations. See [A4 Tint acceptance](../../../../docs/validation/a4-tint.md).
+
+## A4 motion and calibrated parallax
+
+`SceneTransform.origin_animation`/`scale_animation` carry `VectorAnimation`: up
+to 1,024 keys per channel, fps (0,1000], length (0,1e9], unique in-range frames,
+offset magnitude <=1e6 and empty/zero Z. Native vector channels add to saved
+transforms for either observed editor-relative flag. Scalar channels remain
+absolute; frame arithmetic uses f64 scene time, including long-running loops.
+Unsupported transform controls retain saved values and specific compatibility
+diagnostics. `Scene2dQuad.motion` shares authored transforms in root-to-leaf
+order, with at most 64 ancestors; `Scene2dMotion::vertices_at` rejects non-finite
+results. Puppet and procedural spectrum motion consumers are explicitly excluded.
+
+`scene_parallax_offset` now takes authored projection and layout viewport as well
+as settings, pointer and depth. Displacement is in half-projection units followed
+by cover/zoom, fixing wide-scene offsets. Defaults are native amount 0.5, delay
+0.1 and influence 0.5. Delay zero is immediate; delay (0,3] uses the native capped
+step min(1, dt*10*(1-delay/3)); 3 holds position. Equal paused timestamps freeze
+input, rewind and clear/reload reset state. Native smoothing depends on cadence,
+replacing the former exponential time-constant assumption. Input remains local
+to the current exposed wallpaper surface.
+
+Eighteen independently repeated native endpoint images, one measured native
+smoothing trace and 230 motion comparisons per device pass on NVIDIA and Mesa.
+Tint now has 184 comparisons per device including fractional alpha and missing
+mask recovery. All eleven GPU cases and 108 live niri submissions pass. See
+[A4 acceptance](../../../../docs/validation/a4-motion.md) for limits and commands.

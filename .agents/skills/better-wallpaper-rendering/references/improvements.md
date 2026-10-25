@@ -37,7 +37,7 @@ translation. `SceneGpuRenderer::draw_scene_with_pointer` applies the displacemen
 The niri seat/pointer handlers forward only current wallpaper-surface events and
 clear pointer state on leave/removal. The daemon gates it with `scene.mouse` and
 `scene.parallax`; the GTK UI enables these controls with a niri limitation label.
-Regression tests cover frame-rate independence, pause, recentering, depth axes,
+Regression tests cover the native per-frame recurrence, pause, recentering, depth axes,
 invalid parameters, disabled input and stale surfaces after hotplug.
 
 Completion: verify actual pointer-driven playback in niri with multiple outputs,
@@ -232,8 +232,26 @@ The selected 30-package occurrence survey finds 83 authored Tint instances
 (31 default-enabled after bound visibility), all unmasked. One visible
 package-verified LDR pass now supports modes 0/2/7/30, properties, linear alpha
 animation and bounded point/clamp red masks. Twelve owned original-program
-captures repeat exactly; 176 llvmpipe comparisons pass with max error one.
+captures repeat exactly; final 184 comparisons on NVIDIA and llvmpipe pass with
+max error one, including fractional alpha and missing-mask recovery.
 Linear-mask edges differ by up to five bytes and remain explicitly rejected;
 no threshold was relaxed. Other blend modes, stacks, HDR, curves/scripts and
 resampling/minification need separate evidence. See [A4 Tint](../../../../docs/validation/a4-tint.md);
 this does not imply complete effect fidelity, Plasma scenes or an A9 soak.
+
+## A4 Motion and Parallax — Bounded Native Contract Complete
+
+Owned native probes establish additive XY origin/scale channels (including saved
+values and empty axes), absolute scalar channels, parallax sign/amount/influence,
+native defaults, projection/cover/zoom units and the capped per-frame smoothing
+formula. Shared motion plans now apply autonomous linear XY timelines on scene
+time with hierarchy/finite-value bounds. Unsupported curves, scripts, schedules,
+wrap loops, other channels and mesh consumers retain concrete diagnostics.
+Eighteen native images repeat exactly; both renderers pass 230 new motion
+comparisons, the prior eleven GPU cases and 108 single-output niri submissions.
+See [A4 acceptance](../../../../docs/validation/a4-motion.md).
+
+Remaining extensions need separate evidence: native fractional-clock capture,
+linear-mask resampling, broader effect ordering/blend modes/HDR, Bezier/event
+animation, mesh motion and actual multi-output pointer/lifecycle validation.
+The selected real script/Bezier timelines remain excluded; A7/A8/A9 are unchanged.

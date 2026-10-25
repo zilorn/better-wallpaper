@@ -181,3 +181,30 @@ fn tint_rejects_unverified_shaders_stacks_passes_parameters_and_masks() {
         );
     }
 }
+
+#[test]
+fn mixed_puppet_motion_keeps_supported_tint_and_reports_unsupported_consumer() {
+    let mut entries = fixture("tint");
+    let mut input: Value = serde_json::from_slice(&entries["scene.json"]).unwrap();
+    input["objects"][0]["origin"] = json!({"value":"64 64 0","animation":{"c0":[{"frame":0,"value":1}],"options":{"fps":30,"length":30,"mode":"single"}}});
+    entries.insert("scene.json".into(), serde_json::to_vec(&input).unwrap());
+    entries.insert(
+        "models/probe.json".into(),
+        br#"{"material":"materials/probe.json","puppet":"models/probe.mdl"}"#.to_vec(),
+    );
+    let pkg = package(entries);
+    let report =
+        compute_compatibility(&analyse_scene_with_package(&input.to_string(), &pkg).unwrap());
+    assert!(
+        report
+            .supported_features
+            .iter()
+            .any(|feature| feature.contains("tint/effect.json"))
+    );
+    assert!(
+        report
+            .unsupported_features
+            .iter()
+            .any(|feature| feature.contains("puppet transform timelines"))
+    );
+}

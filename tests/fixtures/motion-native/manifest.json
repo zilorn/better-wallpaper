@@ -1,0 +1,116 @@
+{
+  "program": {
+    "exe_sha256": "40e2ce021e9352324fadb3b8f72b8ba2a7ee95b71cc571d5b9f84be75cd993b0",
+    "version": "2.8.42",
+    "steam_build": 23967692
+  },
+  "pointer": {
+    "parallax-center": [
+      64,
+      64
+    ],
+    "parallax-right": [
+      96,
+      64
+    ],
+    "parallax-up": [
+      64,
+      32
+    ],
+    "parallax-negative": [
+      96,
+      64
+    ],
+    "parallax-zoom": [
+      96,
+      64
+    ],
+    "parallax-influence": [
+      96,
+      64
+    ],
+    "parallax-amount": [
+      96,
+      64
+    ],
+    "parallax-off": [
+      96,
+      64
+    ],
+    "parallax-smooth": [
+      96,
+      64
+    ],
+    "parallax-aspect": [
+      96,
+      64
+    ],
+    "parallax-defaults": [
+      96,
+      64
+    ]
+  },
+  "sha256": {
+    "baseline/project.json": "8de9abea34b39f026fafed7c51bf81e634daf53a21fb2f0f863f8818f9bfc47e",
+    "baseline/scene.pkg": "111e1fa1b73eb88b85108c6f6d8763c2ca71b3d2b71f3ec3853f375c2ee6d860",
+    "layer-alpha/project.json": "c40ec227f043ba5e07f89b2566fafe8f7b1341f498bcef80d9e424cd2624e9fc",
+    "layer-alpha/scene.pkg": "a0b765aacc269bb2a8000d5c56004a7ee2c0e9de5bc275b5db3512308b10c9d0",
+    "origin/project.json": "6def58ea04a156bb72688c4d0a874eb04c67442c031be7953bc8fa67a43b7572",
+    "origin/scene.pkg": "c2881ad23df6888057c5ce2af9adc1cdeb0031c01ce7f74a97d5b7c1c5872a49",
+    "parallax-amount/project.json": "6188676ec52af92e232f67929d9972e8ae5acb84c5d25063295957090c0b6a3f",
+    "parallax-amount/scene.pkg": "7e9b6ba8156984c29e85bd672456782fc915a1349e057f67528245ce69f9ff10",
+    "parallax-aspect/project.json": "e08844d23291d3df1c812f3a4dc029620d62d21f5bd602f83057dda2a6ef1841",
+    "parallax-aspect/scene.pkg": "7f6fa5148ad1fb584f0b28ee3cf4cf6b573798f07b0a91dee4b1c042e8090c84",
+    "parallax-center/project.json": "2b98d76acd63e0f09fd02938bbbf1d76a375e9174fb4fda8216554240fc52465",
+    "parallax-center/scene.pkg": "75729dbd4c42abfc0769b5389c2d11c51e9814b55e874e1cd10e06e924fa4391",
+    "parallax-influence/project.json": "196070a4c761e06dd5ed29570046838008c0abc30fdb3a52495483c0d0c19b2b",
+    "parallax-influence/scene.pkg": "592a11950f57c3e75fcdfb27a9b204784a4ec89b6d9665e44b91e881d5d124cc",
+    "parallax-negative/project.json": "2d36b3737a4a06ec39a7096b6efbcb1336a36c38a49bbfa11d38c512f0f0257a",
+    "parallax-negative/scene.pkg": "9f55e7654de21e499be849f0605e4718026c00b076bae3ecc666e6a3eaba2101",
+    "parallax-off/project.json": "8e372da67b49b0f283da97af75eff006da3b9e665a3e7eda2c2b295236049427",
+    "parallax-off/scene.pkg": "1dff34ca8d9ffc185d4bda2fc98233b89afd5ce22b190edf31147a54f60c0a0c",
+    "parallax-right/project.json": "6ebe5f63736cf51eced9ab37a296b2648ec3ec1039f181755148548965aea585",
+    "parallax-right/scene.pkg": "75729dbd4c42abfc0769b5389c2d11c51e9814b55e874e1cd10e06e924fa4391",
+    "parallax-smooth/project.json": "33025a26fbae3534fc6ff0215b51bf1be083aedb7a8e4b70b810c330a04ff274",
+    "parallax-smooth/scene.pkg": "a981c078216b449bb076f6a998331f30b84f5596c7a28b5b2b21da7359a30a93",
+    "parallax-up/project.json": "5877abffae04a2bd07a6bed6913732b4e22785f1b375211067d7a4bc7e029189",
+    "parallax-up/scene.pkg": "75729dbd4c42abfc0769b5389c2d11c51e9814b55e874e1cd10e06e924fa4391",
+    "parallax-zoom/project.json": "1bbfafcf4484e20d8e0bd801976ba0f0a71654f797fb0289d8044175a28279ce",
+    "parallax-zoom/scene.pkg": "9503d70a1728ff1f87e5bfed3de77039a536ec89dfb79536783456d70c38685f",
+    "relative/project.json": "66a4856540dc0224f60a6e72ef65841608e96ae4faf7fafb396686d4bc7a1579",
+    "relative/scene.pkg": "13364c0a03cee4dcbdcf81c7906e6816641b6371513f1d30ec634ad9fd1d7bc5",
+    "scale/project.json": "9cdc73d0c1b9d6eae56dab5f549907db1cc9ed78172cadd37b6fe1214b48fd15",
+    "scale/scene.pkg": "aad833589f807e5327fd1a2c2abb03a4d79710e06eadfa88d1e7fc02c7fcf90c",
+    "scale-relative/project.json": "0aebda0d5f42c0419d2e7097269f4a7da6231d8028b951574cd01a092271dd7e",
+    "scale-relative/scene.pkg": "1a9662299431baa9e25ef5c446e9f2221dc18f74b5c4f510add465ee0c740649",
+    "zoom/project.json": "de0838c687b08532d5d097274e2fabd7931a480951d73185a606ce1818f83f27",
+    "zoom/scene.pkg": "719a3919f48c87c591c27918f9574799742c6067217cc4de1cbbd23b1d95abd3",
+    "captures/baseline.png": "a2796996c71b7ceed3fadef1fb9cf082d4e92ccf0ca7cf7ab7cac5b75f114627",
+    "captures/layer-alpha.png": "5a0a92d1c78c45a9353bba8f551e20ba8b3fa8bc6debb805fa665adb8c57c49a",
+    "captures/origin.png": "47ff1ed59eacd796d851c1127ec64e64f74f87ec5ae640527cbd22269801a1ed",
+    "captures/parallax-amount.png": "35d21225fd55ac699b7ef0bb3acef015dd7c4094f70a1ae80f232477a8706b55",
+    "captures/parallax-center.png": "a2796996c71b7ceed3fadef1fb9cf082d4e92ccf0ca7cf7ab7cac5b75f114627",
+    "captures/parallax-influence.png": "51c132df5c181e0918dfadf9e0384bb784dcc47b488ce1ecdc7d69f6b2097558",
+    "captures/parallax-negative.png": "7150f6a900ca5ef95a590ded82291f51e97b1927b692f55673c1685887101664",
+    "captures/parallax-off.png": "a2796996c71b7ceed3fadef1fb9cf082d4e92ccf0ca7cf7ab7cac5b75f114627",
+    "captures/parallax-right.png": "8808e782438cc588c4caf93199c5393bc5043761030eb5cca1daf874369a08cb",
+    "captures/parallax-up.png": "0563f374df224d18d7a31b08528a1d84fb77bd525329fcf15674c54f37f57465",
+    "captures/parallax-zoom.png": "47fbe39f208e8255a629be77a25eb02415165db4863405f605ed7f76f06d55f2",
+    "captures/relative.png": "47ff1ed59eacd796d851c1127ec64e64f74f87ec5ae640527cbd22269801a1ed",
+    "captures/scale-relative.png": "a438bec611681ca1a4bc2d9668402a8be9dec95491f8da8911a3ffc6e078ab6a",
+    "captures/scale.png": "13b4595f5350d5d3f88b13a36441f4ea459122dc931b9eb0131f30b9ce5a3a7f",
+    "captures/zoom.png": "e0926894e1ce70a515a9bd2dc793635ef0a0641d6d1fd4e4ab3a44c197255f8c",
+    "captures/parallax-aspect.png": "35d21225fd55ac699b7ef0bb3acef015dd7c4094f70a1ae80f232477a8706b55",
+    "captures/parallax-smooth.png": "35d21225fd55ac699b7ef0bb3acef015dd7c4094f70a1ae80f232477a8706b55",
+    "trajectory.json": "5b7777dc35ba8009bdfe03ad6a638899985e99d3d1d8a87c9f5af30c3e3dc97d",
+    "parallax-defaults/scene.pkg": "3ac457f83286f14db41c6ea4045a58bf84a855ecf2ffbcd5485f1d890e771207",
+    "parallax-defaults/project.json": "d1a04e2f4cc392d2a1be3c2a6d10f01fd4dc7b917172b0e9b0c1301a8e11c41f",
+    "captures/parallax-defaults.png": "8808e782438cc588c4caf93199c5393bc5043761030eb5cca1daf874369a08cb"
+  },
+  "comparison_gate": {
+    "ssim_min": 0.995,
+    "rgba_mse_max": 1,
+    "channel_error_max": 2,
+    "motion_center_error_max_pixels": 0.5
+  }
+}

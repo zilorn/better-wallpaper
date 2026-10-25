@@ -1588,7 +1588,7 @@ mod tests {
             ("audio", r#"{"objects":[{"sound":"sounds/bg.ogg"}]}"#, 2),
             (
                 "effects",
-                r#"{"general":{"bloom":true},"objects":[{"image":"models/bg.json","effects":[{"file":"effects/shake/effect.json"}]},{"particle":"particles/snow.json"}]}"#,
+                r#"{"general":{"bloom":true},"objects":[{"image":"models/bg.json","effects":[{"file":"effects/shake/effect.json","passes":[{"constantshadervalues":{}}]}]},{"particle":"particles/snow.json"}]}"#,
                 3,
             ),
         ] {

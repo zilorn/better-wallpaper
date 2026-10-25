@@ -109,6 +109,45 @@ fn tint_matches_native_blending_masks_alpha_and_lifecycle() {
                 }
             }
         }
+        let animated = assets("animated");
+        renderer.clear_textures();
+        renderer.upload_scene_textures(&animated).unwrap();
+        for (time, reference) in [
+            (0., "bypass"),
+            (0.375, "partial"),
+            (0.375, "partial"),
+            (1., "tint"),
+        ] {
+            renderer.draw_scene(&animated, time).unwrap();
+            let score = metrics(&context.pixels(128, 128), &expected(reference), 128, 128);
+            assert!(passes(&score), "Tint alpha timeline {time}: {score:?}");
+            comparisons += 1;
+        }
+        let valid = assets("mask");
+        let mut missing = valid.clone();
+        missing.draws[0]
+            .tint
+            .as_mut()
+            .unwrap()
+            .mask
+            .as_mut()
+            .unwrap()
+            .path = "missing-mask".into();
+        renderer.clear_textures();
+        renderer.upload_scene_textures(&valid).unwrap();
+        assert!(
+            renderer
+                .draw_scene(&missing, 0.)
+                .unwrap_err()
+                .contains("Required Tint mask")
+        );
+        renderer.draw_scene(&valid, 0.).unwrap();
+        assert!(passes(&metrics(
+            &context.pixels(128, 128),
+            &expected("mask"),
+            128,
+            128
+        )));
     }
     println!("Tint native comparisons: {comparisons}");
 }

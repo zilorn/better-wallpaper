@@ -92,3 +92,15 @@ exits the Qt helper and reaches the existing niri supervisor backoff. Bounded CL
 playback applies `--run-for-seconds`. Pointer interaction is browser input on the
 exposed wallpaper; desktop-wide input is unavailable. Browser animation rate is
 not capped by video FPS/fill/loop configuration.
+
+## A4 shared motion/parallax consumption
+
+The shared renderer now evaluates bounded linear XY transform offsets on the
+scene clock and applies parallax in authored half-projection units through
+cover/zoom. Native defaults are amount 0.5, delay 0.1 and influence 0.5. Positive
+delay (<=3) uses min(1, dt*10*(1-delay/3)); zero is immediate and 3 holds position.
+Frozen time freezes input; rewind/asset clear reset smoothing. Seat/surface event
+normalization, focus limitations and hotplug clearing are unchanged. A4's opt-in
+`effects_motion_niri` test completed 108 submissions and six context replacements
+on DP-1, separately from offscreen pixel/native pointer-trajectory checks. See
+[A4 acceptance](../../../../docs/validation/a4-motion.md).

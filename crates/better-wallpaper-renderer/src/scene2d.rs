@@ -80,6 +80,59 @@ pub struct Scene2dOptions {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Scene2dMotion {
+    view: Mat3,
+    size: [f32; 2],
+    /// Root to leaf, shared once per authored node; at most 64 ancestors.
+    transforms: Vec<Arc<better_wallpaper_scene_format::SceneTransform>>,
+}
+
+impl Scene2dMotion {
+    pub fn vertices_at(&self, elapsed_seconds: f64) -> Result<[[f32; 2]; 4], Scene2dError> {
+        let mut world = Mat3::IDENTITY;
+        for transform in &self.transforms {
+            let origin = transform
+                .origin
+                .unwrap_or(better_wallpaper_scene_format::Vec3 {
+                    x: 0.,
+                    y: 0.,
+                    z: 0.,
+                });
+            let scale = transform
+                .scale
+                .unwrap_or(better_wallpaper_scene_format::Vec3 {
+                    x: 1.,
+                    y: 1.,
+                    z: 1.,
+                });
+            let origin = transform
+                .origin_animation
+                .as_ref()
+                .map_or(origin, |animation| {
+                    animation.value_at(origin, elapsed_seconds)
+                });
+            let scale = transform
+                .scale_animation
+                .as_ref()
+                .map_or(scale, |animation| {
+                    animation.value_at(scale, elapsed_seconds)
+                });
+            world = world
+                * Mat3::translation(origin.x, origin.y)
+                * Mat3::rotation(transform.angles.map_or(0., |angles| angles.z))
+                * Mat3::scale(scale.x, scale.y);
+        }
+        let vertices = quad_vertices(self.view * world, self.size[0], self.size[1]);
+        if vertices.iter().flatten().any(|v| !v.is_finite()) {
+            return Err(Scene2dError::InvalidMotion(
+                "non-finite transform result".into(),
+            ));
+        }
+        Ok(vertices)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Scene2dQuad {
     pub node_id: String,
     pub resource: String,
@@ -91,6 +144,7 @@ pub struct Scene2dQuad {
     pub layout_transform: Mat3,
     /// Quad corners in NDC, ordered top-left, top-right, bottom-right, bottom-left.
     pub vertices: [[f32; 2]; 4],
+    pub motion: Option<Scene2dMotion>,
     pub opacity: f32,
     pub opacity_animation: Option<ScalarAnimation>,
     pub texture_override: Option<String>,
@@ -145,7 +199,9 @@ impl SceneParallaxState {
         } else if settings.delay <= f32::EPSILON {
             1.0
         } else {
-            1.0 - (-delta / f64::from(settings.delay)).exp() as f32
+            // Native camera update: min(1, dt * 10 * (1 - delay / 3)).
+            // This is a per-frame step, not an exponential time constant.
+            (delta * 10.0 * (1.0 - f64::from(settings.delay) / 3.0)).clamp(0.0, 1.0) as f32
         };
         for (position, target) in self.position.iter_mut().zip(target) {
             *position += (target - *position) * alpha;
@@ -158,10 +214,20 @@ pub fn scene_parallax_offset(
     settings: Option<better_wallpaper_scene_format::SceneParallax>,
     pointer: [f32; 2],
     depth: [f32; 2],
+    projection_size: [f32; 2],
+    layout_viewport: [u32; 2],
 ) -> [f32; 2] {
     settings.map_or([0.0; 2], |settings| {
+        let cover = (layout_viewport[0] as f32 / projection_size[0])
+            .max(layout_viewport[1] as f32 / projection_size[1]);
         std::array::from_fn(|axis| {
-            (-pointer[axis] * settings.amount * settings.mouse_influence * depth[axis])
+            (-pointer[axis]
+                * settings.amount
+                * settings.mouse_influence
+                * depth[axis]
+                * projection_size[axis]
+                * cover
+                / layout_viewport[axis] as f32)
                 .clamp(-2.0, 2.0)
         })
     })
@@ -315,6 +381,8 @@ pub enum Scene2dError {
     MissingParent { node: String, parent: String },
     #[error("scene node parent cycle contains: {0}")]
     ParentCycle(String),
+    #[error("unsupported scene transform timeline: {0}")]
+    InvalidMotion(String),
     #[error("scene node {0} has an invalid opacity")]
     InvalidOpacity(String),
     #[error("scene image node {node} references unknown model {model}")]
@@ -419,6 +487,9 @@ pub fn resolve_scene_2d_assets(
                     level.width as f32,
                     level.height as f32,
                 );
+                if let Some(motion) = &mut text_quad.motion {
+                    motion.size = [level.width as f32, level.height as f32];
+                }
                 debug!(
                     node = %quad.node_id,
                     dynamic = ?text.dynamic,
@@ -1151,6 +1222,11 @@ fn load_puppet_mesh(
     logical_width: u32,
     logical_height: u32,
 ) -> Result<Scene2dMesh, Scene2dError> {
+    if quad.motion.is_some() {
+        return Err(Scene2dError::InvalidMotion(
+            "puppet transform timelines require a separate mesh-motion consumer".into(),
+        ));
+    }
     let entry = package
         .find(path)
         .ok_or_else(|| Scene2dError::MissingPuppet(path.to_owned()))?;
@@ -1342,6 +1418,12 @@ pub fn build_scene_2d_plan(
         "Building aspect-preserving scene layout in project canvas coordinates; editor camera pan ignored"
     );
 
+    let mut animated = vec![false; graph.nodes.len()];
+    let transforms: Vec<_> = graph
+        .nodes
+        .iter()
+        .map(|node| Arc::new(node.transform.clone()))
+        .collect();
     let mut worlds = vec![None; graph.nodes.len()];
     let mut visible = vec![None; graph.nodes.len()];
     let mut visiting = HashSet::new();
@@ -1353,6 +1435,7 @@ pub fn build_scene_2d_plan(
             &mut worlds,
             &mut visible,
             &mut visiting,
+            &mut animated,
         )?;
     }
 
@@ -1402,6 +1485,11 @@ pub fn build_scene_2d_plan(
             return Err(Scene2dError::InvalidOpacity(node.id.clone()));
         }
         if let Some(visualizer) = node.audio_visualizer {
+            if animated[index] {
+                skipped_nodes += 1;
+                warn!(node = %node.id, "Skipping audio-spectrum draw with unsupported transform timelines");
+                continue;
+            }
             let origin = node
                 .transform
                 .origin
@@ -1437,6 +1525,7 @@ pub fn build_scene_2d_plan(
                     }),
                     layout_transform: transform,
                     vertices: quad_vertices(transform, size.x, size.y),
+                    motion: None,
                     opacity,
                     opacity_animation: node.transform.opacity_animation.clone(),
                     texture_override: node.texture_override.clone(),
@@ -1455,6 +1544,30 @@ pub fn build_scene_2d_plan(
             }
             continue;
         }
+        let motion = if animated[index] {
+            let mut chain = Vec::new();
+            let mut current = Some(index);
+            while let Some(index) = current {
+                if chain.len() >= 64 {
+                    return Err(Scene2dError::InvalidMotion(
+                        "animated hierarchy exceeds 64 nodes".into(),
+                    ));
+                }
+                chain.push(transforms[index].clone());
+                current = graph.nodes[index]
+                    .parent
+                    .as_deref()
+                    .map(|parent| indexes[parent]);
+            }
+            chain.reverse();
+            Some(Scene2dMotion {
+                view,
+                size: [size.x, size.y],
+                transforms: chain,
+            })
+        } else {
+            None
+        };
         let transform = view * worlds[index].unwrap_or(Mat3::IDENTITY);
         quads.push(Scene2dQuad {
             node_id: node.id.clone(),
@@ -1468,6 +1581,7 @@ pub fn build_scene_2d_plan(
             audio_response: None,
             layout_transform: transform,
             vertices: quad_vertices(transform, size.x, size.y),
+            motion,
             opacity,
             opacity_animation: node
                 .backdrop_fade
@@ -1511,6 +1625,7 @@ fn resolve_node(
     worlds: &mut [Option<Mat3>],
     visible: &mut [Option<bool>],
     visiting: &mut HashSet<usize>,
+    animated: &mut [bool],
 ) -> Result<(), Scene2dError> {
     if worlds[index].is_some() {
         return Ok(());
@@ -1541,7 +1656,15 @@ fn resolve_node(
         * Mat3::scale(scale.x, scale.y);
     let (world, inherited_visibility) = if let Some(parent) = node.parent.as_deref() {
         let parent_index = indexes[parent];
-        resolve_node(parent_index, graph, indexes, worlds, visible, visiting)?;
+        resolve_node(
+            parent_index,
+            graph,
+            indexes,
+            worlds,
+            visible,
+            visiting,
+            animated,
+        )?;
         (
             worlds[parent_index].unwrap_or(Mat3::IDENTITY) * local,
             visible[parent_index].unwrap_or(false),
@@ -1549,6 +1672,12 @@ fn resolve_node(
     } else {
         (local, true)
     };
+    animated[index] = node.transform.origin_animation.is_some()
+        || node.transform.scale_animation.is_some()
+        || node
+            .parent
+            .as_deref()
+            .is_some_and(|parent| animated[indexes[parent]]);
     worlds[index] = Some(world);
     visible[index] = Some(inherited_visibility && node.visible);
     visiting.remove(&index);
@@ -1560,8 +1689,88 @@ mod tests {
     use super::*;
     use better_wallpaper_scene_format::parse_scene_graph;
 
+    fn moving_scene() -> String {
+        serde_json::json!({"general":{"orthogonalprojection":{"width":128,"height":128}},"objects":[
+            {"id":1,"container":true,"origin":{"value":"64 64 0","animation":{"relative":true,"c0":[{"frame":0,"value":0},{"frame":30,"value":16}],"options":{"fps":30,"length":30,"mode":"single"}}},
+             "scale":{"value":"1 1 1","animation":{"c0":[{"frame":0,"value":0},{"frame":30,"value":1}],"c1":[{"frame":0,"value":0},{"frame":30,"value":1}],"options":{"fps":30,"length":30,"mode":"single"}}}},
+            {"id":2,"parent":1,"image":"models/a.json","origin":"16 0 0","size":"8 8"}
+        ]}).to_string()
+    }
+
     #[test]
-    fn parallax_is_frame_rate_independent_frozen_by_pause_and_axis_bounded() {
+    fn transform_timelines_follow_authored_offset_units_and_parent_order() {
+        let graph = parse_scene_graph(&moving_scene()).unwrap();
+        let plan = build_scene_2d_plan(
+            &graph,
+            Scene2dOptions {
+                viewport_width: 128,
+                viewport_height: 128,
+            },
+        )
+        .unwrap();
+        let motion = plan.quads[0].motion.as_ref().unwrap();
+        for (time, center, width) in [
+            (0., 0.25, 0.125),
+            (0.5, 0.5, 0.1875),
+            (1., 0.75, 0.25),
+            (1., 0.75, 0.25),
+            (0., 0.25, 0.125),
+        ] {
+            let vertices = motion.vertices_at(time).unwrap();
+            assert!(((vertices[0][0] + vertices[1][0]) * 0.5 - center).abs() < 1e-6);
+            assert!((vertices[1][0] - vertices[0][0] - width).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn animated_hierarchies_and_nonfinite_results_have_bounds() {
+        let mut value: serde_json::Value = serde_json::from_str(&moving_scene()).unwrap();
+        let objects = value["objects"].as_array_mut().unwrap();
+        objects.truncate(1);
+        for id in 2..=65 {
+            objects.push(serde_json::json!({"id":id,"parent":id-1,"container":true}));
+        }
+        objects.push(serde_json::json!({"id":66,"parent":65,"image":"models/a.json","size":"8 8"}));
+        let graph = parse_scene_graph(&value.to_string()).unwrap();
+        assert!(matches!(
+            build_scene_2d_plan(
+                &graph,
+                Scene2dOptions {
+                    viewport_width: 128,
+                    viewport_height: 128
+                }
+            ),
+            Err(Scene2dError::InvalidMotion(_))
+        ));
+        let mut motion = build_scene_2d_plan(
+            &parse_scene_graph(&moving_scene()).unwrap(),
+            Scene2dOptions {
+                viewport_width: 128,
+                viewport_height: 128,
+            },
+        )
+        .unwrap()
+        .quads[0]
+            .motion
+            .clone()
+            .unwrap();
+        let mut transform = (*motion.transforms[0]).clone();
+        transform.scale = Some(better_wallpaper_scene_format::Vec3 {
+            x: 1e30,
+            y: 1e30,
+            z: 1.,
+        });
+        transform.scale_animation = None;
+        let shared = Arc::new(transform);
+        motion.transforms = vec![shared; 4];
+        assert!(matches!(
+            motion.vertices_at(1.),
+            Err(Scene2dError::InvalidMotion(_))
+        ));
+    }
+
+    #[test]
+    fn parallax_uses_native_frame_steps_and_freezes_on_pause() {
         let settings = better_wallpaper_scene_format::SceneParallax {
             amount: 0.25,
             delay: 0.2,
@@ -1576,12 +1785,16 @@ mod tests {
         for frame in 1..=60 {
             actual = fast.update(Some(settings), f64::from(frame) / 60.0, Some([1.0, -1.0]));
         }
-        assert!((actual[0] - expected[0]).abs() < 0.00001);
+        assert!(expected[0] > actual[0]); // Native capped Euler steps depend on cadence.
         assert_eq!(fast.update(Some(settings), 1.0, Some([-1.0, 1.0])), actual);
-        let offset = scene_parallax_offset(Some(settings), actual, [2.0, 0.0]);
+        let offset =
+            scene_parallax_offset(Some(settings), actual, [2.0, 0.0], [128., 128.], [128, 128]);
         assert!(offset[0] < -0.24);
         assert_eq!(offset[1], 0.0);
-        assert_eq!(scene_parallax_offset(None, actual, [1.0, 1.0]), [0.0, 0.0]);
+        assert_eq!(
+            scene_parallax_offset(None, actual, [1.0, 1.0], [128., 128.], [128, 128]),
+            [0.0, 0.0]
+        );
         assert_eq!(fast.update(None, 1.0, None), [0.0, 0.0]);
         fast.update(Some(settings), 2.0, Some([1.0, 1.0]));
         let recentered = fast.update(Some(settings), 3.0, None);

@@ -206,3 +206,10 @@ before adding it to supported features. Unsupported variants retain concrete
 node-specific diagnostics while supported parts of mixed scenes remain visible
 in the existing GTK report. Property overrides affect runtime admission; library
 metadata still describes serialized defaults. See [Tint acceptance](../../../../docs/validation/a4-tint.md).
+
+A4 compatibility reports identify bounded linear XY position/scale offsets and
+retain specific unsupported timeline/consumer and invalid scene-IR reasons.
+Disabled effects do not grant a tier or an unsupported-operation warning. Mixed
+scenes retain supported features alongside limits in the existing GTK report;
+no configuration/route/schema change or new execution of scripts is implied.
+See [motion acceptance](../../../../docs/validation/a4-motion.md).
