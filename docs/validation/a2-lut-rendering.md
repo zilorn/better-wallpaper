@@ -1,6 +1,7 @@
 # A2 bounded LUT rendering acceptance
 
-Date: 2026-10-25. Implementation and completion commits are recorded in the
+Date: 2026-10-25. Implementation commit: `57c136e`
+(`feat: render bounded volume color grading LUTs`). Completion is recorded in the
 [adaptation plan](../wallpaper-engine-adaptation-plan.md). This completes A2's
 bounded raw RGBA8/PNG, base-only, LDR LUT operation; it does not complete A4's
 general effect fidelity, A8's Plasma consumer or A9's broader release gates.
