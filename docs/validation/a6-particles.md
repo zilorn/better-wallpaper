@@ -4,6 +4,7 @@ Date: 2026-10-25. Scope was committed first in `733695d`; the
 [subset and matrix](a6-particle-subset.md) record admission, evidence and intended
 gates. This implements a limited 2D native-format adapter for the shared niri
 scene path. It does not provide general particle or Plasma scene compatibility.
+Implementation and acceptance commit: `a5320ad` (`feat: render bounded deterministic 2D particles`).
 
 ## Implemented behavior
 
