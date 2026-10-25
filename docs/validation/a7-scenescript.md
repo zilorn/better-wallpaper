@@ -1,7 +1,8 @@
 # A7 restricted SceneScript acceptance
 
 Date: 2026-10-25. The [scope/feasibility record](a7-scenescript-scope.md), delivered
-in `e4996b6`, fixes the bounded subset and resource/lifecycle contracts. The
+in `e4996b6`, fixes the bounded subset and resource/lifecycle contracts. Runtime
+implementation and validation are committed as `282bc51`. The
 [survey](a7-script-survey.json) records 900 script bindings across 30 local
 projects; candidate member counts include comments/dead code and do not measure
 executions, supported projects or playback success.
@@ -73,7 +74,8 @@ equivalence is claimed.
 
 - The full workspace tests and required Clippy pass; formatting and strict
   all-target checks for format/renderer/GPU plus the niri integration target pass.
-  The final totals are recorded in the adaptation plan.
+  Final totals: 308 passed, zero failed, 18 explicit desktop/GPU tests ignored in
+  the ordinary run; the twelve GPU and new niri cases were run explicitly.
 - Both actual GPUs, NVIDIA RTX 3060 Ti and Mesa llvmpipe, pass all twelve explicit
   GPU cases, including the eleven prior atlas/LUT/Tint/motion suites. A7 adds
   184 native/analytical/lifecycle comparisons per device. Seven positive native
@@ -84,7 +86,9 @@ equivalence is claimed.
   code rejection, const/ASI/increment semantics, budgets, malformed serialized
   instructions, non-finite math, type/capability faults, mixed reporting without
   L4, numeric defaults/overrides, descriptor size/root boundaries, shared-output
-  fault isolation, parent order, pause, rewind and fresh-plan recovery.
+  fault isolation, composed-transform overflow fallback, parent order, pause,
+  rewind and fresh-plan recovery. Final A7 GPU/niri targets were repeated after
+  the overflow safeguard; the full twelve-case GPU runs preceded that guard.
 - Live niri on DP-1 (1920x1080, scale 1, normal transform) completed 90 submissions
   across origin, scale, property, motion and fault layouts, fresh-plan reloads,
   frozen/rewound time and five backend/context replacements. This is presentation
