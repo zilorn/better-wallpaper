@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8">
+<style>body{margin:0;background:#15243b;color:white;font:24px sans-serif}canvas{width:100%;height:100%}</style>
+<canvas id="canvas" width="400" height="240"></canvas><img id="image" alt="Project image">
+<script>
+const reportUrl = new URL(location.href).searchParams.get('report');
+function report(kind, data) {
+    if (reportUrl) fetch(reportUrl + '?event=' + encodeURIComponent(JSON.stringify({kind,data})), {mode:'no-cors'}).catch(()=>{});
+}
+const events = [];
+let count = 0;
+window.wallpaperPropertyListener = {
+    applyUserProperties(properties) {
+        events.push('properties'); report('properties', properties);
+        if (properties.image) { image.src = properties.image.value; image.onload = () => report('asset', image.naturalWidth); }
+    },
+    applyGeneralProperties(properties) { events.push('general'); report('general', properties); },
+    setPaused(paused) { events.push('pause'); report('pause', paused); }
+};
+wallpaperRegisterAudioListener(audio => {
+    if (++count % 15 === 0) report('audio', {count,length:audio.length,left:Math.max(...audio.slice(0,64)),right:Math.max(...audio.slice(64)),leftPeak:audio.slice(0,64).indexOf(Math.max(...audio.slice(0,64))),rightPeak:audio.slice(64).indexOf(Math.max(...audio.slice(64)))});
+});
+wallpaperRegisterMediaStatusListener(event => report('status', event));
+wallpaperRegisterMediaPropertiesListener(event => report('media', event));
+wallpaperRegisterMediaPlaybackListener(event => report('playback', {state:event.state,playing:wallpaperMediaIntegration.PLAYBACK_PLAYING}));
+wallpaperRegisterMediaTimelineListener(event => report('timeline', event));
+report('registration', {audio:typeof wallpaperRegisterAudioListener,media:typeof wallpaperRegisterMediaPropertiesListener});
+setInterval(() => report('tick', {order:events.slice(0,3),status:window.betterWallpaperStatus}), 200);
+</script>

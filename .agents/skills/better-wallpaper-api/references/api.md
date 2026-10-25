@@ -110,7 +110,7 @@ saved preference to take effect. Playback reloads still use the running backend.
 The GTK UI consumes this flag and prompts for a service restart; otherwise it
 reports a reload request without claiming that playback has already restarted.
 
-Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
+Config sections: `version`, `general`, `wallpaper`, optional `scene`, `web`, `library`,
 `decode`, `outputs`. Key values and limits:
 
 - Backends: `auto`, `niri`, `kde`, `headless`; wallpaper types: `video`, `web`, `scene`.
@@ -139,7 +139,7 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
 
 | Method and route | Contract |
 | --- | --- |
-| `GET /api/v1/library` | Returns `entries`, configured `roots`, discovered `engine_roots`, `truncated`. Entries contain `name`, `path`, `engine_mode`, `wallpaper_type`, `preview_path`, `size_bytes`, `modified_unix_seconds`, optional `scene_compatibility` and nonempty `scene_properties`. |
+| `GET /api/v1/library` | Returns `entries`, configured `roots`, discovered `engine_roots`, `truncated`. Entries contain `name`, `path`, `engine_mode`, `wallpaper_type`, `preview_path`, `size_bytes`, `modified_unix_seconds`, optional `scene_compatibility` and nonempty `scene_properties` / `web_properties`. |
 | `GET /api/v1/library/media?path=<encoded-path>` | Requires a scanned library entry. Supports single byte ranges (`206`, `Content-Range`). Missing/invalid parameter: `400`; unavailable file: `404`; outside library: `403`; invalid range: `416`. |
 | `GET /api/v1/library/thumbnail?path=<encoded-path>` | Requires a scanned entry; serves web preview images or cached FFmpeg JPEG thumbnails. Web entries without previews return `404`; FFmpeg generation failure can return `422`. |
 | `GET /api/v1/wallpaper/media` | Serves the configured wallpaper path with range support; `404` when none is configured. |
@@ -199,7 +199,12 @@ random loopback port with no management routes, stopped on reload/teardown;
 Plasma retains the management asset route. MIME types include fonts and WASM.
 The wallpaper page offers explicit video/web selection and preserves type when
 editing a path. Web selection does not imply full Wallpaper Engine parity;
-default user properties are loaded, audio-spectrum/media callbacks remain stubs.
+A5 supports project-scoped typed overrides, stereo desktop spectrum, and read-only
+MPRIS properties/playback/timeline callbacks through a shared Qt bridge. Both
+backends load a private read-only asset origin; management rejects requests with
+`Origin` or `Sec-Fetch-Mode` (403), including browser WebSocket access. Native
+GTK/QML requests have neither header. The legacy management asset route remains
+available to native requests; current pages use the private origin.
 
 A4 package analysis also validates the bounded Tint effect/material and masks
 before adding it to supported features. Unsupported variants retain concrete
@@ -213,3 +218,26 @@ Disabled effects do not grant a tier or an unsupported-operation warning. Mixed
 scenes retain supported features alongside limits in the existing GTK report;
 no configuration/route/schema change or new execution of scripts is implied.
 See [motion acceptance](../../../../docs/validation/a4-motion.md).
+
+## A5 web configuration
+
+`web.audio_processing` and `web.media_integration` default false. They opt in to
+sharing the output monitor (never microphone) and MPRIS data with active pages;
+wallpaper mute does not disable these sources. `web.properties` maps configured
+absolute project/entry paths to string-valued override maps: at most 32 projects,
+256 overrides total, path keys <=4096 bytes, property keys 1..128 bytes, values
+<=4096 bytes. Absent keys use defaults; an empty string is an explicit edit;
+clearing a project's map restores defaults. Aliased configured paths remain
+separate. This extends v2 configuration with defaults; v1 migration is preserved.
+
+PUT validates selected web overrides before atomic persistence/reload: supported
+bool/slider/combo/color/textinput/file types only; checkbox booleans, finite
+in-range sliders (integer unless fraction enabled), existing scalar combo options,
+three 0..1 color components, and files canonicalized within the project. Slider
+callbacks carry numbers, bools carry booleans, combo values keep authored scalar
+types. File callbacks carry encoded private-origin HTTP URLs, never arbitrary
+file grants. Directory imports and file:/// concatenation are unsupported.
+Web descriptors are limited to 1 MiB/256 valued properties. Library editor metadata
+normalizes scalar combo values to strings solely for the native widget schema.
+Both ordinary config and private-origin reload tests cover restart persistence,
+invalid-edit rejection and reset. See [A5 acceptance](../../../../docs/validation/a5-web-protocol.md).

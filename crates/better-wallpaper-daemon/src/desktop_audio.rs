@@ -149,7 +149,7 @@ impl Drop for DesktopAudioCapture {
     }
 }
 
-struct SpectrumAnalyzer {
+pub(crate) struct SpectrumAnalyzer {
     window: Vec<f32>,
     hann: Vec<f32>,
     coefficients: [f32; SPECTRUM_BINS],
@@ -184,7 +184,7 @@ impl Default for SpectrumAnalyzer {
 }
 
 impl SpectrumAnalyzer {
-    fn push_sample(&mut self, sample: f32, spectrum: &SceneAudioSpectrum) -> bool {
+    pub(crate) fn push_sample(&mut self, sample: f32, spectrum: &SceneAudioSpectrum) -> bool {
         self.channel_sum += if sample.is_finite() { sample } else { 0.0 };
         self.channel_index += 1;
         if self.channel_index < CHANNELS {

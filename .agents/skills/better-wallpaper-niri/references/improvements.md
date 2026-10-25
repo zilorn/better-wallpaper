@@ -68,8 +68,10 @@ run with NoNewPrivileges, PrivateTmp and ProtectSystem=strict. Command: `python3
 
 Completion: verify real multi-output resize/hotplug, compositor restart and varied
 Wallpaper Engine projects. Browser-native HTML/CSS/JS/WebGL and default property
-callbacks are supported; audio-spectrum/media callbacks are registration stubs.
-User-property editing and full proprietary engine integration remain gaps.
+callbacks are supported. A5 adds typed property editing, live stereo spectrum and
+read-only MPRIS text/playback/timeline callbacks with opt-in controls and leased
+source cleanup. Full proprietary engine integration remains outside this subset;
+see [A5 acceptance](../../../../docs/validation/a5-web-protocol.md).
 
 ## A1 Atlas Presentation — Single-Output Desktop Verified
 

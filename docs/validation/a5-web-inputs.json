@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-25",
+  "owned_inputs": [
+    {
+      "path": "tests/fixtures/web-protocol/pages/index.html",
+      "sha256": "43f649e32fd6b473612ba400aaadbb9146c4ed53957bddb95a22cdcb6e82aee0",
+      "bytes": 1894
+    },
+    {
+      "path": "tests/fixtures/web-protocol/pages/probe.svg",
+      "sha256": "aea47ffc708978b6e968731353d3b3b522bd8d475843d44d82291884a49a4f21",
+      "bytes": 115
+    },
+    {
+      "path": "tests/fixtures/web-protocol/project.json",
+      "sha256": "8ec3b7f95f1d07e95fae7b4919898a2d7ee0134dfd8df25a5ba6011c4ecf25d9",
+      "bytes": 716
+    }
+  ],
+  "fixed_inputs": {
+    "canvas": [
+      400,
+      240
+    ],
+    "fps": 37,
+    "overrides": {
+      "enabled": "false",
+      "speed": "0.25",
+      "caption": "Saved caption"
+    },
+    "audio": {
+      "sample_rate": 48000,
+      "channels": 2,
+      "left_hz": 440,
+      "right_hz": 2000,
+      "pcm_amplitude": 12000,
+      "pcm_format": "s16le",
+      "seconds": 30,
+      "seed": null
+    },
+    "media": {
+      "player": "org.mpris.MediaPlayer2.betterwallpaper_a5",
+      "title": "Owned A5 Track",
+      "artist": "Owned Artist",
+      "position_seconds": 7.25,
+      "duration_seconds": 123
+    }
+  },
+  "native_reference_captured": false
+}

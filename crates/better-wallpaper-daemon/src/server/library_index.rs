@@ -265,6 +265,7 @@ impl LibraryIndex {
                         .map(|duration| duration.as_secs()),
                     scene_compatibility: None,
                     scene_properties: Vec::new(),
+                    web_properties: Vec::new(),
                 });
             }
         }

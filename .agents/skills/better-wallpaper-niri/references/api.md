@@ -77,7 +77,8 @@ stays enabled. This path does not use the Rust EGL video/scene renderer.
 
 The daemon starts an ephemeral loopback asset origin without management APIs,
 including in `--no-ui` mode. Newline JSON over stdin initializes URL, enabled
-output names, default properties, mute and pause; later messages update pause.
+output names, resolved typed properties, private protocol URL, mute and pause;
+later messages update pause or output selection.
 Empty output configuration follows the primary output. Explicit enabled outputs
 wait when absent; all-disabled configuration stays idle. Qt handles surface sizes;
 screen removal destroys its view, screen addition and a one-second reconciliation
@@ -104,3 +105,25 @@ normalization, focus limitations and hotplug clearing are unchanged. A4's opt-in
 `effects_motion_niri` test completed 108 submissions and six context replacements
 on DP-1, separately from offscreen pixel/native pointer-trajectory checks. See
 [A4 acceptance](../../../../docs/validation/a4-motion.md).
+
+## A5 web data lifecycle
+
+`AssetServer` owns one `WebProtocol` worker per project session. Qt host-side XHR
+polls every 33 ms with at most one request in flight. Its random 128-bit capability
+URL is sent to the host, not the page. A 500 ms consumer lease starts/stops desktop
+sources; multiple views share them. Capture uses stereo float32le 48 kHz output
+monitor data from `parec`, 64 low-to-high bins per channel, 128 finite 0..1 values.
+Unavailable capture sends no fabricated audio. MPRIS is read-only and polled every
+500 ms with bounded player/call work. Both sources require their Web opt-in toggle.
+
+`WebSurface.qml` / `WebBridge.js` are shared with Plasma and embedded in the helper.
+Callbacks register at document creation; initialization sends user properties,
+general FPS and pause before data. Media events are change-only; audio is sampled
+around 30 Hz. Exceptions are isolated; replacing/unregistering listeners is bounded.
+Paused/hidden/unloaded views abort polls and freeze or unload their document.
+Empty sources explicitly navigate to about:blank, preventing hidden old-page
+timers. Output removal destroys the view; re-add creates fresh registrations.
+The idle helper continues monitoring outputs; capture subprocesses are reaped
+when leases expire, and all sources/workers are joined on origin teardown.
+See [A5 acceptance](../../../../docs/validation/a5-web-protocol.md) for exact subset,
+source absence, protocol tests and limits; no native spectrum-number parity is claimed.

@@ -9,7 +9,7 @@ import org.kde.plasma.plasmoid
 WallpaperItem {
     id: root
 
-    readonly property string daemonUrl: "http://127.0.0.1:43129"
+    property string daemonUrl: "http://127.0.0.1:43129"
     readonly property string outputName: Screen.name
     property bool wallpaperEnabled: false
     property bool wallpaperPaused: false
@@ -21,8 +21,8 @@ WallpaperItem {
     property string wallpaperType: "video"
     property url webSource: ""
     property var webProperties: ({})
-    property bool webCaptured: false
-    property var webCapturedResult: null
+    property url webProtocolUrl: ""
+    property int webFpsLimit: 60
     property bool sceneRenderingAvailable: false
 
     Component.onCompleted: {
@@ -31,27 +31,7 @@ WallpaperItem {
     }
     Component.onDestruction: console.info("[Better Wallpaper] Plasma wallpaper instance destroyed")
 
-    function syncWebPlayback() {
-        if (!wallpaperPaused && visible && wallpaperEnabled) {
-            webView.lifecycleState = WebEngineView.LifecycleState.Active
-            webCaptured = false
-            webSnapshot.source = ""
-            webCapturedResult = null
-            webView.runJavaScript("window.wallpaperPropertyListener?.setPaused?.(false)")
-        } else if (!webView.loading && webSource.toString() !== "" && !webCaptured) {
-            webView.runJavaScript("window.wallpaperPropertyListener?.setPaused?.(true)")
-            webView.grabToImage(function(result) {
-                if (!root.wallpaperPaused && root.visible && root.wallpaperEnabled) return
-                root.webCapturedResult = result
-                webSnapshot.source = result.url
-                root.webCaptured = true
-                webView.lifecycleState = WebEngineView.LifecycleState.Frozen
-            })
-        }
-    }
-
     function syncPlayback() {
-        if (wallpaperType === "web") syncWebPlayback()
         if (wallpaperType === "video" && wallpaperEnabled && visible && !wallpaperPaused && mediaSource.toString() !== "") {
             if (mediaPlayer.playbackState !== MediaPlayer.PlayingState) mediaPlayer.play()
         } else if (mediaPlayer.playbackState === MediaPlayer.PlayingState) {
@@ -92,14 +72,14 @@ WallpaperItem {
             wallpaperFillMode = config.fill_mode
             wallpaperType = config.wallpaper_type || "video"
             webProperties = config.web_properties || ({})
+            webProtocolUrl = config.web_protocol_url || ""
+            webFpsLimit = config.fps_limit || 60
             sceneRenderingAvailable = config.scene_rendering_available === true
             if (wallpaperEnabled && config.media_path && configRevision !== String(config.revision)) {
                 configRevision = String(config.revision)
                 if (wallpaperType === "web") {
                     mediaSource = ""
-                    webView.lifecycleState = WebEngineView.LifecycleState.Active
-                    webCaptured = false
-                    webSource = config.web_url ? daemonUrl + config.web_url + "?revision=" + config.revision : ""
+                    webSource = config.web_url ? config.web_url + (config.web_url.indexOf("?") >= 0 ? "&" : "?") + "revision=" + config.revision : ""
                     console.info("[Better Wallpaper] web wallpaper source configured: " + config.media_path)
                 } else if (wallpaperType === "video") {
                     webSource = ""
@@ -137,33 +117,16 @@ WallpaperItem {
         visible: root.wallpaperType === "video"
     }
 
-    WebEngineView {
+    WebSurface {
         id: webView
         anchors.fill: parent
-        visible: root.wallpaperType === "web" && root.wallpaperEnabled && !root.webCaptured
-        url: root.webSource
-        audioMuted: root.wallpaperMuted || root.wallpaperPaused
-        settings.localContentCanAccessRemoteUrls: true
-        userScripts.collection: [{
-            name: "wallpaper-engine-compatibility",
-            injectionPoint: WebEngineScript.DocumentCreation,
-            worldId: WebEngineScript.MainWorld,
-            sourceCode: "window.wallpaperRegisterAudioListener = function() {}; window.wallpaperRegisterMediaPropertiesListener = function() {};"
-        }]
-        onLoadingChanged: (loadRequest) => {
-            if (loadRequest.status === WebEngineView.LoadFailedStatus)
-                console.error("[Better Wallpaper] web wallpaper load failed: " + loadRequest.errorString)
-            else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                webView.runJavaScript("window.wallpaperPropertyListener?.applyUserProperties?.(" + JSON.stringify(root.webProperties) + "); window.wallpaperPropertyListener?.applyGeneralProperties?.({fps:60});")
-                root.syncWebPlayback()
-            }
-        }
-    }
-
-    Image {
-        id: webSnapshot
-        anchors.fill: parent
-        visible: root.wallpaperType === "web" && root.wallpaperEnabled && root.webCaptured
+        visible: root.wallpaperType === "web" && root.wallpaperEnabled
+        sourceUrl: root.webSource
+        protocolUrl: root.webProtocolUrl
+        propertiesJson: JSON.stringify(root.webProperties)
+        fpsLimit: root.webFpsLimit
+        paused: root.wallpaperPaused || !root.visible || !root.wallpaperEnabled
+        muted: root.wallpaperMuted
     }
 
     Column {

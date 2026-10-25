@@ -100,3 +100,15 @@ nested entry URLs and literal plus signs, and serves fonts/WASM/range media.
 Regression coverage exercises uppercase Web discovery, UTF-8 nested assets,
 properties, invalid ranges, traversal, symlinks and private-origin teardown.
 The UI keeps web type while editing paths and exposes explicit type selection.
+
+## Web Property Editing and Data Protocol — A5 Implemented
+
+GTK now reuses native typed fields for web properties, persisted per configured
+project path in `web.properties`. Independent opt-in settings enable stereo output
+spectrum and MPRIS text/playback/timeline data. Private origins keep wallpaper
+assets and leased read-only data separate from management; browser-origin and
+fetch-metadata requests to management are refused. Tests cover typed values,
+atomic persistence/reload/reset, file boundaries, native GTK editing and both Qt
+consumers. Artwork extraction, directory import, file:/// concatenation and full
+Plasma-session/multi-output desktop verification remain outside this subset.
+See [A5 acceptance](../../../../docs/validation/a5-web-protocol.md).

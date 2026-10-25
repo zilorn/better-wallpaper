@@ -161,6 +161,18 @@ impl Field {
     }
 }
 
+fn property_prefix(config: &Value) -> String {
+    if config["wallpaper"]["wallpaper_type"] == "web" {
+        let project = config["wallpaper"]["path"].as_str().unwrap_or_default();
+        format!(
+            "/web/properties/{}",
+            project.replace('~', "~0").replace('/', "~1")
+        )
+    } else {
+        "/scene/properties".into()
+    }
+}
+
 fn set_pointer(value: &mut Value, pointer: &str, new: Value) {
     let parts: Vec<_> = pointer
         .trim_start_matches('/')
@@ -624,6 +636,20 @@ impl Desktop {
             true,
         );
         self.toggle(wallpaper, tr("Mute sound"), "/wallpaper/muted", true);
+        wallpaper.append(&section(tr("Web settings")));
+        self.toggle(
+            wallpaper,
+            tr("Desktop audio spectrum"),
+            "/web/audio_processing",
+            false,
+        );
+        self.toggle(
+            wallpaper,
+            tr("Media information (MPRIS)"),
+            "/web/media_integration",
+            false,
+        );
+        wallpaper.append(&wrapped_label(tr("Web properties are saved per project. File properties must stay inside the project folder. Desktop audio and media information are shared with the wallpaper only when enabled.")));
         wallpaper.append(&section(tr("Scene settings")));
         wallpaper.append(&wrapped_label(tr("Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented.")));
         self.choice(
@@ -787,7 +813,8 @@ impl Desktop {
             select_wallpaper(&mut draft, entry);
         }
         if self.reset_properties.get() {
-            set_pointer(&mut draft, "/scene/properties", json!({}));
+            let prefix = property_prefix(&draft);
+            set_pointer(&mut draft, &prefix, json!({}));
         }
         for field in self.property_fields.borrow().iter() {
             field.apply(&mut draft);
@@ -848,11 +875,17 @@ impl Desktop {
         else {
             return;
         };
-        if entry.scene_properties.is_empty() {
+        let property_definitions = if entry.wallpaper_type == "web" {
+            &entry.web_properties
+        } else {
+            &entry.scene_properties
+        };
+        let prefix = property_prefix(config);
+        if property_definitions.is_empty() {
             return;
         }
         self.properties.append(&section(tr("Wallpaper properties")));
-        for property in &entry.scene_properties {
+        for property in property_definitions {
             let Some(key) = property["key"].as_str() else {
                 continue;
             };
@@ -861,8 +894,10 @@ impl Desktop {
                 .filter(|s| !s.is_empty())
                 .unwrap_or(key);
             let default = property_value(&property["value"]);
-            let current = config["scene"]["properties"][key]
-                .as_str()
+            let pointer = format!("{prefix}/{}", key.replace('~', "~0").replace('/', "~1"));
+            let current = config
+                .pointer(&pointer)
+                .and_then(Value::as_str)
                 .unwrap_or(&default);
             let (input, widget) = PropertyInput::new(property, current, &self.window);
             widget.set_tooltip_text(Some(&format!("{} · {}", key, property["prop_type"])));
@@ -872,10 +907,7 @@ impl Desktop {
                 property["condition"].as_str().map(str::to_owned),
             ));
             let field = Field {
-                pointer: format!(
-                    "/scene/properties/{}",
-                    key.replace('~', "~0").replace('/', "~1")
-                ),
+                pointer,
                 input: Input::Property(input),
                 default: json!(default),
                 initial: RefCell::new(Value::Null),
@@ -899,7 +931,8 @@ impl Desktop {
     fn reset_property_overrides(self: &Rc<Self>) {
         self.reset_properties.set(true);
         if let Ok(mut draft) = self.draft() {
-            draft["scene"]["properties"] = json!({});
+            let prefix = property_prefix(&draft);
+            set_pointer(&mut draft, &prefix, json!({}));
             self.render_properties_for(&draft);
             self.message(
                 tr("Property overrides cleared. Save changes to apply the defaults."),
@@ -916,7 +949,8 @@ impl Desktop {
             .map(|field| {
                 let key = field
                     .pointer
-                    .strip_prefix("/scene/properties/")
+                    .rsplit('/')
+                    .next()
                     .unwrap_or_default()
                     .replace("~1", "/")
                     .replace("~0", "~");

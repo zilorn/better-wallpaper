@@ -129,3 +129,18 @@ apply; compatibility tiers are metadata analysis, not playback guarantees.
 
 GTK APIs follow the [gtk-rs main-loop guidance](https://gtk-rs.org/gtk4-rs/stable/latest/book/main_event_loop.html):
 blocking I/O runs on GIO workers and only the main thread updates widgets.
+
+## Web properties (A5)
+
+Web library entries expose `web_properties`; the existing native typed controls
+edit `/web/properties/<configured absolute path>/<property>`. Overrides survive
+switching projects and service restarts. Reset clears only the selected project's
+map. The selected path is the map key, so directory and HTML aliases have separate
+drafts. String values are persisted; the daemon converts supported checkbox,
+slider and combo values to their authored callback types. File selection accepts
+only files inside the project; the page receives an encoded private-origin URL.
+The two Web settings toggles separately enable desktop stereo spectrum and
+read-only MPRIS information. Both default off and are independent of page sound
+mute and scene audio settings. English and Chinese display regressions include
+web edit/save/reload/reset and preservation of scene settings. See
+[A5 acceptance](validation/a5-web-protocol.md) for protocol and desktop limits.
