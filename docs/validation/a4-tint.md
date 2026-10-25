@@ -68,7 +68,9 @@ maximum channel error 1. This includes zero strength, disable, normal-mode alpha
 mask red/padding, frozen/rewound times, two reloads and two contexts. The retained
 linear-mask negative probe is excluded from supported comparisons and tested for
 admission failure. Final integration results and other-device/desktop boundaries
-are recorded with A4's motion acceptance.
+are recorded with [A4's motion acceptance](a4-motion.md). The final targeted
+matrix adds fractional-alpha and missing-mask recovery checks: 184 comparisons
+on each of NVIDIA RTX 3060 Ti and Mesa llvmpipe, maximum channel error one.
 
 The first native capture attempt was blocked by local-display socket permissions;
 the bounded capture succeeded with local access. Logs are `/tmp/a4-tint-*.log`;
