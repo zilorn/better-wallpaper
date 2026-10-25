@@ -644,7 +644,7 @@ fn parse_node(
         "video",
     ];
     let path = format!("objects[{index}]");
-    let unknown_fields = object
+    let mut unknown_fields = object
         .keys()
         .filter(|key| !KNOWN_FIELDS.contains(&key.as_str()))
         .cloned()
@@ -657,7 +657,28 @@ fn parse_node(
     }
 
     let kind = if let Some(resource) = string_resource(object, "particle", &path)? {
-        mark(unsupported, &path, "particle system");
+        mark(
+            unsupported,
+            &path,
+            "particle system requires package validation",
+        );
+        // Keep unsupported particle node semantics available to shared admission.
+        for (key, value) in object {
+            let allowed = matches!(key.as_str(), "id" | "name" | "particle")
+                || (matches!(
+                    key.as_str(),
+                    "origin" | "scale" | "angles" | "alpha" | "visible"
+                ) && !value.is_object())
+                || (key == "instanceoverride" && value.is_null());
+            if !allowed && !unknown_fields.contains(key) {
+                unknown_fields.push(key.clone());
+                mark(
+                    unsupported,
+                    &format!("{path}.{key}"),
+                    "unsupported particle node field",
+                );
+            }
+        }
         SceneNodeKind::Particle(resource)
     } else if object.contains_key("instanceoverride") {
         mark(unsupported, &path, "particle instance override");
@@ -1989,7 +2010,7 @@ fn video_node_kind(resource: String) -> Result<SceneNodeKind, SceneParseError> {
     Ok(SceneNodeKind::Video(resource))
 }
 
-fn validate_resource_path(path: &str) -> Result<String, SceneParseError> {
+pub(crate) fn validate_resource_path(path: &str) -> Result<String, SceneParseError> {
     let normalized = path.replace('\\', "/");
     let has_drive = normalized.len() >= 2
         && normalized.as_bytes()[0].is_ascii_alphabetic()

@@ -264,10 +264,6 @@ fn run_playback(
             return Ok(());
         };
         let scene_config = config.scene.clone().unwrap_or_default();
-        info!(
-            particle_limit = scene_config.particle_limit,
-            "scene particle limits are not implemented; saved value is ignored"
-        );
         let prepared = prepare_scene(project_dir, &scene_config)?;
         info!(
             ?backend,
@@ -676,7 +672,21 @@ fn prepare_scene(
     .context("failed to build shared scene draw plan")?;
     let (resolved_draw_count, asset_error, assets) =
         match resolve_scene_2d_assets(&package, plan.clone()) {
-            Ok(assets) => (assets.draws.len(), None, Some(assets)),
+            Ok(mut assets) => {
+                assets.set_particle_limit(scene_config.particle_limit);
+                let reserved: u32 = assets
+                    .draws
+                    .iter()
+                    .filter_map(|d| d.particles.as_ref())
+                    .map(|p| p.capacity)
+                    .sum();
+                info!(
+                    particle_limit = scene_config.particle_limit,
+                    reserved_particles = reserved,
+                    "Prepared bounded scene particle budget"
+                );
+                (assets.draws.len(), None, Some(assets))
+            }
             Err(error) => (0, Some(error.to_string()), None),
         };
     Ok(PreparedScene {
@@ -690,6 +700,29 @@ fn prepare_scene(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn scene_preparation_enforces_the_saved_particle_limit() {
+        let project = tempfile::tempdir().unwrap();
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/particles/continuous");
+        for name in ["project.json", "scene.pkg"] {
+            std::fs::copy(fixtures.join(name), project.path().join(name)).unwrap();
+        }
+        for limit in [0, 3, 10_000] {
+            let config = better_wallpaper_core::SceneConfig {
+                particle_limit: limit,
+                ..Default::default()
+            };
+            let prepared = super::prepare_scene(project.path(), &config).unwrap();
+            let assets = prepared.assets.unwrap();
+            assert_eq!(assets.draws.len(), 1);
+            assert_eq!(
+                assets.draws[0].particles.as_ref().unwrap().capacity,
+                limit.min(20)
+            );
+        }
+    }
+
     #[test]
     fn niri_failure_retries_without_reload_in_no_ui_mode() {
         let config = std::sync::Arc::new(std::sync::RwLock::new(

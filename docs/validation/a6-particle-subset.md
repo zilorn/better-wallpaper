@@ -10,7 +10,7 @@ Admit one `boxrandom` emitter, four explicit initializers (`lifetimerandom`,
 `sizerandom`, `velocityrandom`, `colorrandom`), one force-free `movement`
 operator and one default `sprite` renderer. Lifetime must be constant; position
 and velocity are XY only. Support either a continuous rate or one initial burst,
-with nonnegative start time and finite optional emission duration. Reject unknown
+with zero start time and finite optional emission duration. Reject unknown
 fields, operators, nonzero flags, control-point offsets, instance overrides,
 scripts, parented/animated particle transforms, effects and nonplanar transforms.
 No gravity, drag, trails, child systems, events, turbulence or collisions.
@@ -19,13 +19,14 @@ Use one package-owned static 2D texture, one `genericparticle` pass and explicit
 translucent/additive blending. Reject video, volumes, animation/frame tables,
 extra textures/passes, shader overrides and nondefault shader combinations.
 Frame selection is the complete static image (frame zero); animated and random
-atlas frame selection remain unsupported. Native sprite width is the size;
-height is width times texture height/width. Color modulates sampled RGBA.
+atlas frame selection remain unsupported. Independent native probes calibrated
+sprite width to half the authored initializer size; height is width times texture
+height/width. Color modulates sampled RGBA. Only a base mip is admitted.
 
 Continuous births have monotonically numbered identities. Evaluate their age
 and constant-velocity position directly from the shared f64 scene clock; do
 not integrate wall time or replay missed frames. Births begin after one rate
-interval; burst births occur at start time. Death excludes age >= lifetime.
+interval; burst births occur at zero. Death excludes age >= lifetime.
 Use a fixed, documented counter hash of node identity, birth identity and random
 channel. It is an application policy, not an emulation of the native RNG stream.
 Equal scene times reproduce particles; rewind/reload needs no historical state.
@@ -69,7 +70,7 @@ time and all ranges. The matrix covers:
 | --- | --- |
 | Burst/static, non-square texture | Width/aspect, UV orientation, static frame zero, color modulation |
 | Additive/translucent overlap | Analytical pixels and independent native stable captures |
-| Continuous, finite duration, delayed start | Birth/death boundaries and fixed time snapshots |
+| Continuous, finite duration, nonzero start | Birth/death boundaries and fixed snapshots; nonzero start explicitly rejected |
 | Random box/velocity/size/color | Repeatability, bounds, seed/node separation and cadence independence |
 | Zero/tiny/full budgets and multiple systems | Global cap, stable thinning, no late resurrection and bounded work |
 | Pause/resume, rewind, long uptime | Frozen bytes, no wall-time catch-up, constant bounded work |

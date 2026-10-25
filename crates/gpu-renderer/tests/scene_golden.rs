@@ -28,6 +28,8 @@ mod tint_native;
 
 #[path = "support/motion_native.rs"]
 mod motion_native;
+#[path = "support/particles.rs"]
+mod particles;
 
 struct Offscreen {
     egl: egl::DynamicInstance<egl::EGL1_5>,

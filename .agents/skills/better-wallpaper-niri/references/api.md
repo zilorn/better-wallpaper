@@ -50,7 +50,9 @@ leave the scene centered. `scene.mouse` and `scene.parallax` must both be enable
 Pointer focus is limited to exposed background: movement over other clients is
 unavailable, and leaving the wallpaper returns toward center. Keyboard focus and
 window interactions remain owned by the compositor. No global pointer tracking
-or arbitrary script interaction is claimed. `scene.particle_limit` remains ignored.
+or arbitrary script interaction is claimed. `scene.particle_limit` now bounds the
+admitted A6 static-sprite particle subset through shared assets; scene time freezes
+sampling on pause and context replacement reuploads the retained CPU textures.
 
 Preserve frame callback pacing, configured output selection, resize behavior, and
 buffer lifetime. EGL resources must be released before their Wayland connection

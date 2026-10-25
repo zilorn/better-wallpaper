@@ -326,6 +326,24 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     pump_until("resume request", || !ui.busy.get() && !ui.paused.get());
 
     let scene = ui.library.borrow().entries[0].clone();
+    let particle_limit = ui
+        .fields
+        .borrow()
+        .iter()
+        .find_map(|field| {
+            if field.pointer == "/scene/particle_limit"
+                && let Input::Number(spin) = &field.input
+            {
+                return Some(spin.clone());
+            }
+            None
+        })
+        .unwrap();
+    assert_eq!(particle_limit.value(), 10_000.);
+    particle_limit.set_value(0.);
+    assert_eq!(ui.draft().unwrap()["scene"]["particle_limit"], 0);
+    particle_limit.set_value(7.);
+    assert_eq!(ui.draft().unwrap()["scene"]["particle_limit"], 7);
     ui.choose(&scene);
     assert!(ui.dirty());
     assert_eq!(ui.draft().unwrap()["wallpaper"]["engine_mode"], true);
@@ -388,6 +406,7 @@ fn native_window_connects_edits_saves_filters_and_recovers() {
     });
     assert!(!ui.dirty());
     assert_eq!(config.lock().unwrap()["wallpaper"]["muted"], false);
+    assert_eq!(config.lock().unwrap()["scene"]["particle_limit"], 7);
     assert_eq!(
         config.lock().unwrap()["future_setting"],
         json!({"keep":true})

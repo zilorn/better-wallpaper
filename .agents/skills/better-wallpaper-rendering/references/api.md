@@ -55,11 +55,37 @@ parallax is identified only with enabled camera settings and authored layer dept
 its report includes the wallpaper-surface pointer-focus limitation.
 
 `SceneConfig::mouse` and `parallax` gate basic niri camera parallax together.
-`particle_limit` remains reserved, reported as ignored and not offered in the GTK UI.
-No arbitrary mouse scripts, depth-map effect or particle budgeting is implied.
+`particle_limit` enforces one aggregate admitted-particle capacity (0–100,000,
+default 10,000), in authored draw order; zero disables particles. GTK exposes it.
+No arbitrary mouse scripts or depth-map effect is implied.
 The native GTK client also exposes mouse/parallax/audio settings and preserves
 library compatibility details; it omits the reserved particle/script controls.
 Its scene property editor changes configuration overrides, not renderer support.
+
+A6 adds `particle::ParticleSystem`, `resolve_particle` and shared node admission
+in the format crate. One boxrandom emitter, explicit fixed lifetime, linear
+position/velocity/size/color ranges, force-free movement and a default sprite
+renderer are admitted. Package-owned unpadded single-image/base-mip TEX and one
+genericparticle translucent/additive pass are required. Unknown fields/operators,
+atlas/video frames, effects, control-point offsets, scripts, parented/animated or
+nonplanar particle transforms fail admission with specific compatibility/log
+reasons. Package-aware analysis alone can grant L3 for validated particles;
+scene.json-only analysis requests package validation. Mixed scenes retain limits.
+
+`Scene2dDraw.particles` retains one immutable system and the FNV-1a node seed.
+`Scene2dAssets::set_particle_limit` partitions capacity across systems; the daemon
+applies saved configuration during scene preparation. Sampling uses f64 scene
+time and SplitMix64 counter channels, without per-frame integration or history.
+Budget pressure drops fixed birth residues, with no late resurrection; this and
+the RNG are documented application policies, not native random/maxcount parity.
+At most 64 systems, 100,000 scene particles, 8 MiB per particle texture and 32 MiB
+retained particle texture bytes are admitted. Repeated definitions share pixels.
+Each system submits one triangle batch, at most 24 MiB of vertex staging for the
+hard scene limit. GPU clear releases batch storage and textures; drop deletes the
+buffers with their owning context. Ordinary draws restore their white vertex
+color and original layout. Native static probes calibrate rendered width to half
+the authored size and preserve texture aspect. See the [subset and matrix](../../../../docs/validation/a6-particle-subset.md)
+and [acceptance](../../../../docs/validation/a6-particles.md) for verified boundaries.
 
 TEX container contracts are verified against local Wallpaper Engine 2.8.42
 native-reader evidence in `docs/reverse-engineering/wallpaper-engine-textures.md`.

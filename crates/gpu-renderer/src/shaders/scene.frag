@@ -1,4 +1,5 @@
 precision highp float;
+varying vec4 v_color;
 
 const float PI = 3.14159265;
 const float TWO_PI = 6.2831853;
@@ -454,5 +455,5 @@ void main() {
     color.rgb = colorLut(color.rgb);
     color = applyPulses(color);
     color = applyShine(color);
-    gl_FragColor = vec4(color.rgb, color.a * u_opacity);
+    gl_FragColor = vec4(color.rgb, color.a * u_opacity) * v_color;
 }

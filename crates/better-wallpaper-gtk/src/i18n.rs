@@ -106,9 +106,10 @@ fn translate(source: &str, chinese: bool) -> &str {
         "Loop playback" => "循环播放",
         "Mute sound" => "静音",
         "Scene settings" => "场景设置",
-        "Scene support depends on the playback backend. Basic pointer parallax is available on exposed niri wallpaper surfaces. Particle limits and scripts are not implemented." => {
-            "场景支持情况取决于播放后端。niri 支持鼠标位于桌面背景时的基础视差；粒子数量限制和脚本执行尚未实现。"
+        "Scene support depends on the playback backend. niri supports basic wallpaper-surface parallax and a limited 2D particle subset. Zero disables particles. Scripts are not implemented." => {
+            "场景支持情况取决于播放后端。niri 支持桌面背景上的基础视差和有限的二维粒子；粒子上限设为 0 可关闭粒子。脚本执行尚未实现。"
         }
+        "Particle limit" => "粒子上限",
         "Quality" => "画质",
         "Mouse input" => "鼠标输入",
         "Basic parallax" => "基础视差",

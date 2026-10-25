@@ -86,7 +86,7 @@ pub struct SceneConfig {
     /// Enable authored basic camera parallax in the niri scene renderer.
     pub parallax: bool,
     pub audio_processing: bool,
-    /// Reserved for particle rendering; validated and persisted but not enforced.
+    /// Aggregate capacity for admitted 2D particles; zero disables emission.
     pub particle_limit: u32,
     pub script_enabled: bool,
     pub properties: BTreeMap<String, String>,

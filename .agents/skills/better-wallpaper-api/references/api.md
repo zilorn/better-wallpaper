@@ -124,8 +124,10 @@ Config sections: `version`, `general`, `wallpaper`, optional `scene`, `library`,
   moving over another window returns the scene toward center. The GTK UI enables
   both controls and explains the niri-only input limitation. No arbitrary mouse
   scripts or Plasma scene consumer is implied.
-- `scene.particle_limit` remains a reserved field: validation/persistence preserve
-  it, but the runtime ignores it and the GTK UI does not offer an editor for it.
+- `scene.particle_limit` caps admitted 2D particles across the scene in draw order;
+  zero disables them. The daemon applies it when preparing/reloading assets and
+  GTK exposes an integer editor. Native maxcount and the 100,000 hard cap also
+  apply. It does not enable excluded particle operators or Plasma scene playback.
 - `scene.audio_processing` enables niri desktop spectrum capture for supported
   audio-response draws; capture failures fall back to rendering without spectrum
   data. `scene.script_enabled` does not execute scripts.

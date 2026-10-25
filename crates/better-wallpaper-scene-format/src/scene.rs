@@ -61,6 +61,8 @@ pub struct SceneMetadata {
     pub camera_fade: bool,
     pub object_count: usize,
     pub has_particles: bool,
+    pub supported_particle_systems: usize,
+    pub unsupported_particle_systems: Vec<String>,
     pub has_sounds: bool,
     pub has_text: bool,
     pub has_3d_materials: bool,
@@ -443,10 +445,47 @@ pub fn analyse_scene_with_package(
     let mut color_luts = std::collections::BTreeMap::<String, Result<(), String>>::new();
     let mut color_lut_bytes = 0_u64;
     let mut tint_masks = crate::TintMaskCache::default();
+    let mut particle_bytes = 0_u64;
+    let mut particle_count = 0;
+    let mut particle_cache = std::collections::BTreeMap::<String, Result<(), String>>::new();
     let mut animated = std::collections::BTreeSet::new();
     let mut children = std::collections::BTreeMap::<&str, Vec<&str>>::new();
     let mut pending = std::collections::VecDeque::new();
     for node in &graph.nodes {
+        if let crate::SceneNodeKind::Particle(path) = &node.kind {
+            if !node.visible {
+                continue;
+            }
+            let result = crate::particle::validate_particle_node(node).and_then(|()| {
+                particle_count += 1;
+                if particle_count > crate::particle::MAX_PARTICLE_SYSTEMS {
+                    return Err("scene exceeds 64 particle systems".into());
+                }
+                particle_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| {
+                        let asset = crate::particle::resolve_particle(
+                            package,
+                            path,
+                            crate::particle::MAX_SCENE_PARTICLE_TEXTURE_BYTES - particle_bytes,
+                        )?;
+                        particle_bytes += asset
+                            .texture
+                            .levels
+                            .iter()
+                            .map(|l| l.data.len() as u64)
+                            .sum::<u64>();
+                        Ok(())
+                    })
+                    .clone()
+            });
+            match result {
+                Ok(()) => meta.supported_particle_systems += 1,
+                Err(error) => meta
+                    .unsupported_particle_systems
+                    .push(format!("Particle node {}: {error}", node.id)),
+            }
+        }
         if let Some(parent) = node.parent.as_deref() {
             children.entry(parent).or_default().push(&node.id);
         }
@@ -463,6 +502,10 @@ pub fn analyse_scene_with_package(
             }
         }
     }
+    meta.has_particles = graph
+        .nodes
+        .iter()
+        .any(|n| n.visible && matches!(n.kind, crate::SceneNodeKind::Particle(_)));
     for node in &graph.nodes {
         if node.audio_visualizer.is_some() && animated.contains(node.id.as_str()) {
             meta.unsupported_scene_features.push(format!(
@@ -650,7 +693,10 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
             supported.push(feature.into());
         }
     }
-    if !meta.supported_effects.is_empty() || meta.has_audio_response {
+    if !meta.supported_effects.is_empty()
+        || meta.has_audio_response
+        || meta.supported_particle_systems > 0
+    {
         level = CompatibilityLevel::L3;
         supported.extend(
             meta.supported_effects
@@ -660,6 +706,10 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         if meta.has_audio_response {
             supported.push("Audio spectrum response (recognized native pattern)".into());
         }
+        if meta.supported_particle_systems > 0 {
+            supported.push("Bounded 2D particles (box emission, constant lifetime, force-free movement, static sprites)".into());
+            warnings.push("Particles use deterministic application seeds and a shared scene budget; native random streams are not reproduced. Plasma has no scene consumer.".into());
+        }
     }
 
     // L1 checks (2D images, transforms)
@@ -667,9 +717,13 @@ pub fn compute_compatibility(meta: &SceneMetadata) -> CompatibilityReport {
         warnings
             .push("Text objects require a package, Wallpaper Engine asset, or system font".into());
     }
-    if meta.has_particles {
-        unsupported.push("Particle systems (planned for L3)".into());
+    if meta.has_particles
+        && meta.supported_particle_systems == 0
+        && meta.unsupported_particle_systems.is_empty()
+    {
+        unsupported.push("Particle systems require package-aware subset validation".into());
     }
+    unsupported.extend(meta.unsupported_particle_systems.iter().cloned());
     if meta.has_scene_script {
         unsupported.push("SceneScript (planned for L4)".into());
     }
