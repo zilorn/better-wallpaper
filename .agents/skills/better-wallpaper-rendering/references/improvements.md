@@ -255,3 +255,14 @@ Remaining extensions need separate evidence: native fractional-clock capture,
 linear-mask resampling, broader effect ordering/blend modes/HDR, Bezier/event
 animation, mesh motion and actual multi-output pointer/lifecycle validation.
 The selected real script/Bezier timelines remain excluded; A7/A8/A9 are unchanged.
+
+## A7 SceneScript — Scope and Feasibility Defined
+
+The bounded 30-package inventory records 900 script bindings and candidate
+language/host dependencies without storing commercial source. The selected next
+step is a finite numeric update subset, with explicit source/instruction/storage
+budgets and static read-only object/property access. Native probes show that
+previous-value expressions accumulate; stateful updates need a separate shared
+scheduler and remain excluded. See [scope](../../../../docs/validation/a7-scenescript-scope.md).
+This scope record does not enable execution, L4, arbitrary JavaScript or Plasma
+scene playback; implementation/acceptance must be recorded separately.
